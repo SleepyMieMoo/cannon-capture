@@ -70,7 +70,7 @@ export class BattleSim {
     this.ai.reset(this.lanes, level.ai?.retargetMs ?? TUNING.aiRetargetMs, this.board)
     level.cannons.forEach((def, index) => {
       this.cannons.push(
-        new Cannon(scene, def.id, def.name, def.x, def.y, def.side, (index % 3) * TUNING.fireStaggerMs, def.kind, def.delay),
+        new Cannon(scene, def.id, def.name, def.x, def.y, def.side, (index % 3) * TUNING.fireStaggerMs, def.kind),
       )
     })
     for (const def of level.cannons) {
@@ -140,9 +140,9 @@ export class BattleSim {
    * then reloads for its new type's full interval (at least
    * TUNING.swapLockMs). Free in puzzles: it does not spend an aim.
    */
-  playerSwap(cannon: Cannon, kind: CannonKind, delay?: number): boolean {
+  playerSwap(cannon: Cannon, kind: CannonKind): boolean {
     if (this.ended || cannon.side !== 'player') return false
-    if (!cannon.setKind(kind, delay)) return false
+    if (!cannon.setKind(kind)) return false
     this.events.swapped?.(cannon)
     return true
   }

@@ -60,7 +60,8 @@ describe('sanitizeLevel and share codes', () => {
   it('passes every campaign level through unchanged', () => {
     for (const level of CAMPAIGN) {
       const clean = sanitizeLevel(level)
-      expect(clean.cannons).toEqual(level.cannons)
+      // The legacy sniper `delay` field (still on one campaign cannon) is ignored and dropped.
+      expect(clean.cannons).toEqual(level.cannons.map(({ delay: _legacy, ...c }) => c))
       expect(clean.walls).toEqual(level.walls)
       expect(clean.fans.map((f) => ({ ...f, force: undefined }))).toEqual(level.fans.map((f) => ({ ...f, force: undefined })))
       expect(clean.kind ?? 'battle').toBe(level.kind ?? 'battle')
