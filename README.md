@@ -64,23 +64,29 @@ The title screen has **Map editor** and **My maps**.
 
 The editor builds a normal `LevelDef` (the same format as the campaign), so anything you make can be played, shared, or dropped into the campaign.
 
+Everything sits in two slim bars at the top, so the board gets the full width:
+
+- **Top toolbar:** the tools (Move, Gold, Enemy, Neutral, Wall, Fan, Delete), undo/redo, Snap, **Map ▾**, **Share ▾**, **?** (controls), then **Playtest**, **Save**, **My maps** and **Menu**.
+- **Second bar:** the map name, the settings for whatever is selected, the save/validation status, and the zoom − / % / + / Fit buttons.
+
 - **Place:** pick a tool and click the board. The tools are gold, enemy and neutral cannons, walls, and fans.
 - **Move:** drag anything. A short click just selects it.
 - **Delete:** use the Delete tool, or select something and press Del.
-- **Edit the selection** in the **Selected** tab:
+- **Edit the selection** right in the second bar:
   - cannons: owner and an optional starting aim. Click **Set aim**, then a cannon or a spot on the board.
   - walls: length, thickness and rotation in 15° steps.
   - fans: direction, strength and radius.
 - **Snap to grid** (16 px) is on by default. **Undo/Redo** cover every edit, including New map and Import.
-- **Map tab:**
+- **Map ▾:**
   - name
   - mode: Battle against the AI, or Puzzle with an aim budget (or unlimited)
   - AI difficulty for battles
   - size
   - an optional hint banner
-- **Playtest** jumps straight into the map. **Editor** (top right, or the end screen) brings you back to the same working copy.
+- **Share ▾:** get or paste a share code (`CC1:...`), or download/upload a `.json` file.
+- **Playtest** jumps straight into the map, starting at the editor's view (zoom capped at near). **Editor** (top right, or the end screen) brings you back to the same working copy at exactly the zoom and position you left.
 - **Validation:** a map needs at least one gold cannon. Battles also need an enemy. Puzzles need neutrals and no enemy.
-- The working copy is kept as a draft in `localStorage`, so a reload or a playtest never loses it.
+- The working copy is kept as a draft in `localStorage`, so a reload or a playtest never loses it. The camera (zoom and position) is saved with the draft and with each saved map, so a map reopens where you left it. A new map opens fitted to the board.
 
 ### Map sizes and the camera
 
