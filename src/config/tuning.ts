@@ -18,6 +18,13 @@ export const TUNING = {
   shotSpeed: 340,
   /** Fan boost is capped at shotSpeed * shotSpeedCap. */
   shotSpeedCap: 1.75,
+  /** How fast a cannon's barrel turns toward its aim, in degrees per second. */
+  turnSpeedDeg: 110,
+  /**
+   * Cannons keep firing along the barrel while they turn, but hold fire while
+   * the barrel is more than this many degrees off their aim (a big swing).
+   */
+  holdFireAboveDeg: 75,
   shotRadius: 6,
   cannonRadius: 26,
   /** Extra pixels added to the click/touch target. */

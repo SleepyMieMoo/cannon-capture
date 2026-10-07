@@ -17,6 +17,13 @@ export interface CannonDef {
   side: Side
   /** Id of the cannon this one aims at when the level starts. */
   aimAt?: string
+  /** Or a free aim point when the level starts (ignored if aimAt is set). */
+  aimPoint?: Point
+}
+
+export interface Point {
+  x: number
+  y: number
 }
 
 export interface FanDef {

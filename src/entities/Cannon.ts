@@ -2,8 +2,9 @@ import Phaser from 'phaser'
 import { TUNING } from '../config/tuning'
 import { lerpColor, shade, sideColor, theme } from '../config/theme'
 import { aimAngle, aimShot, type Ball } from '../sim/ballistics'
+import { angleDelta, turnToward } from '../sim/aim'
 import { applyCaptureHit } from '../sim/capture'
-import type { Side } from '../types'
+import type { Point, Side } from '../types'
 
 export class Cannon {
   readonly id: string
@@ -12,7 +13,12 @@ export class Cannon {
   readonly y: number
   readonly root: Phaser.GameObjects.Container
   side: Side
+  /** Aim at another cannon (re-aims automatically once it becomes ours). */
   target: Cannon | null = null
+  /** Or aim at a free point on the board. */
+  aimPoint: Point | null = null
+  /** Current barrel direction in radians. Turns toward the aim at a limited speed. */
+  angle: number
   captureAttacker: Side | null = null
   captureProgress = 0
   selected = false
@@ -40,6 +46,7 @@ export class Cannon {
     this.y = y
     this.side = side
     this.cooldown = staggerMs
+    this.angle = side === 'enemy' ? Math.PI : side === 'player' ? 0 : -Math.PI / 2
     this.body = scene.add.graphics()
     this.barrel = scene.add.graphics()
     this.root = scene.add.container(x, y, [this.body, this.barrel])
@@ -49,6 +56,31 @@ export class Cannon {
   setTarget(target: Cannon | null): void {
     if (target === this) return
     this.target = target
+    if (target) this.aimPoint = null
+  }
+
+  setAimPoint(point: Point): void {
+    this.target = null
+    this.aimPoint = { x: point.x, y: point.y }
+  }
+
+  /** Where this cannon wants to point, or null if it has no aim. */
+  aim(): Point | null {
+    if (this.target) return { x: this.target.x, y: this.target.y }
+    return this.aimPoint
+  }
+
+  /** Point the barrel straight at the current aim (used when a level starts). */
+  snapToAim(): void {
+    const aim = this.aim()
+    if (aim) this.angle = aimAngle(this, aim)
+  }
+
+  /** How far the barrel still has to turn, in degrees (0 when there is no aim). */
+  aimErrorDeg(): number {
+    const aim = this.aim()
+    if (!aim) return 0
+    return Math.abs((angleDelta(this.angle, aimAngle(this, aim)) * 180) / Math.PI)
   }
 
   /** Returns true when this hit flips ownership. */
@@ -66,6 +98,7 @@ export class Cannon {
     if (result.flipped) {
       this.pop = 1.24
       this.target = null
+      this.aimPoint = null
       this.cooldown = TUNING.captureKickoffMs
     }
     return result.flipped
@@ -79,22 +112,28 @@ export class Cannon {
     this.hitFlash = Math.max(0, this.hitFlash - dt / 160)
     this.muzzle = Math.max(0, this.muzzle - dt)
     this.pop = Math.max(1, this.pop - dt / 380)
-    if (frozen) return null
-    if (this.side === 'neutral' || !this.target || this.target.side === this.side) {
-      if (this.target && this.target.side === this.side) this.target = null
-      return null
+    if (this.side === 'neutral') return null
+    if (this.target && this.target.side === this.side) this.target = null
+
+    const aim = this.aim()
+    if (aim) {
+      const step = ((TUNING.turnSpeedDeg * Math.PI) / 180) * (dt / 1000)
+      this.angle = turnToward(this.angle, aimAngle(this, aim), step)
     }
+    if (frozen || !aim) return null
+
     this.cooldown -= dt
     if (this.cooldown > 0) return null
+    if (this.aimErrorDeg() > TUNING.holdFireAboveDeg) {
+      // Mid-swing: stay loaded and fire as soon as the barrel comes round.
+      this.cooldown = 0
+      return null
+    }
     this.cooldown = TUNING.fireIntervalMs
     this.muzzle = 110
-    return aimShot(
-      this,
-      this.target,
-      TUNING.cannonRadius + 12,
-      TUNING.shotSpeed,
-      this.id,
-    )
+    // Fire along the barrel's current direction, not straight at the aim.
+    const along = { x: this.x + Math.cos(this.angle) * 100, y: this.y + Math.sin(this.angle) * 100 }
+    return aimShot(this, along, TUNING.cannonRadius + 12, TUNING.shotSpeed, this.id)
   }
 
   draw(time: number): void {
@@ -151,9 +190,6 @@ export class Cannon {
   }
 
   private facing(): number {
-    if (this.target) return aimAngle(this, this.target)
-    if (this.side === 'enemy') return Math.PI
-    if (this.side === 'player') return 0
-    return -Math.PI / 2
+    return this.angle
   }
 }
