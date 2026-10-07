@@ -22,14 +22,26 @@ import type { LevelDef, Point, Rect, Side } from '../types'
 import { drawStar, makeButton } from '../ui/button'
 import { SwapMenu } from '../ui/swapMenu'
 import { layoutScale } from '../render/resolution'
-import { KINDS, kindLabel, nextKind } from '../config/kinds'
+import { KINDS, fmtNum, kindLabel, nextKind } from '../config/kinds'
 
 interface Spark {
   x: number
   y: number
   life: number
   color: number
+  /** Radius scale (machine gun hits are small). */
+  size?: number
 }
+
+/** Heals in progress on one cannon, summed into one popup. */
+interface HealTally {
+  amount: number
+  /** ms until the popup shows. */
+  left: number
+}
+
+/** Machine guns heal 0.3 at a time; their heals are summed over this long. */
+const HEAL_TALLY_MS = 450
 
 interface Ping {
   x: number
@@ -72,6 +84,7 @@ export class BattleScene extends Phaser.Scene {
   private walls: Wall[] = []
   private fans: Fan[] = []
   private sparks: Spark[] = []
+  private heals = new Map<Cannon, HealTally>()
   private pings: Ping[] = []
   /** Last pointer position on the board, for the aim preview (null off-board or on touch). */
   private pointer: Point | null = null
@@ -164,6 +177,7 @@ export class BattleScene extends Phaser.Scene {
     this.walls = []
     this.fans = []
     this.sparks = []
+    this.heals = new Map()
     this.pings = []
     this.pointer = null
     this.selected = null
@@ -191,9 +205,9 @@ export class BattleScene extends Phaser.Scene {
       this,
       {
       bounce: (x, y) => this.sparks.push({ x, y, life: 1, color: theme.spark }),
-      hit: (x, y, side) => this.sparks.push({ x, y, life: 1, color: sideColor(side) }),
+      hit: (x, y, side, kind) => this.sparks.push({ x, y, life: 1, color: sideColor(side), size: kind === 'machinegun' ? 0.45 : 1 }),
       captured: (cannon) => this.popup(cannon.x, cannon.y, 'Captured', cssHex(sideColor(cannon.side))),
-      healed: (cannon, amount) => this.popup(cannon.x, cannon.y - 8, `+${amount} heal`, cssHex(sideColor(cannon.side))),
+      healed: (cannon, amount) => this.tallyHeal(cannon, amount),
       noAims: (cannon) => this.popup(cannon.x, cannon.y, 'No aims left', theme.textMuted),
       swapped: (cannon) => this.popup(cannon.x, cannon.y, kindLabel(cannon.kind), cssHex(sideColor(cannon.side))),
       aimed: (point) => {
@@ -242,6 +256,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.sim.ended && !this.shownEnd) this.finish()
 
     this.fadeSparks(dt)
+    this.flushHeals(dt)
     for (const ping of this.pings) ping.life -= dt / 420
     this.pings = this.pings.filter((ping) => ping.life > 0)
     this.drawFx(time)
@@ -764,6 +779,30 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * "+N heal" popups. A whole-number heal shows at once; fractional ones
+   * (machine guns) are summed for a moment so a burst reads as one "+1.5 heal".
+   */
+  private tallyHeal(cannon: Cannon, amount: number): void {
+    const tally = this.heals.get(cannon)
+    if (tally) tally.amount += amount
+    else if (Number.isInteger(amount)) this.showHeal(cannon, amount)
+    else this.heals.set(cannon, { amount, left: HEAL_TALLY_MS })
+  }
+
+  private flushHeals(dt: number): void {
+    for (const [cannon, tally] of this.heals) {
+      tally.left -= dt
+      if (tally.left > 0) continue
+      this.heals.delete(cannon)
+      this.showHeal(cannon, tally.amount)
+    }
+  }
+
+  private showHeal(cannon: Cannon, amount: number): void {
+    this.popup(cannon.x, cannon.y - 8, `+${fmtNum(amount)} heal`, cssHex(sideColor(cannon.side)))
+  }
+
   private popup(x: number, y: number, message: string, color: string): void {
     const text = this.world(
       this.add
@@ -828,6 +867,18 @@ export class BattleScene extends Phaser.Scene {
 
     for (const shot of this.sim.shots) {
       const color = sideColor(shot.side)
+      if (shot.kind === 'machinegun') {
+        // Machine gun round: a small, short tracer (cheap to draw, there are lots).
+        const { vx, vy } = shot.ball
+        const v = Math.hypot(vx, vy) || 1
+        const tx = shot.ball.x - (vx / v) * 11
+        const ty = shot.ball.y - (vy / v) * 11
+        g.lineStyle(5, color, 0.95)
+        g.lineBetween(tx, ty, shot.ball.x, shot.ball.y)
+        g.lineStyle(2, 0xffffff, 0.8)
+        g.lineBetween(tx + (vx / v) * 5, ty + (vy / v) * 5, shot.ball.x, shot.ball.y)
+        continue
+      }
       if (shot.kind === 'sniper') {
         // Sniper round: a long, thin streak and a smaller, brighter head.
         const { vx, vy } = shot.ball
@@ -861,8 +912,9 @@ export class BattleScene extends Phaser.Scene {
     }
 
     for (const spark of this.sparks) {
+      const k = spark.size ?? 1
       g.fillStyle(spark.color, spark.life * 0.7)
-      g.fillCircle(spark.x, spark.y, 4 + (1 - spark.life) * 10)
+      g.fillCircle(spark.x, spark.y, (4 + (1 - spark.life) * 10) * k)
     }
   }
 

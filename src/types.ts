@@ -17,7 +17,7 @@ export interface WallDef extends Rect {
 export type MapSize = 'small' | 'medium' | 'large' | 'huge'
 
 /** Tower types. More can slot in later (see src/config/kinds.ts). */
-export const CANNON_KINDS = ['normal', 'sniper'] as const
+export const CANNON_KINDS = ['normal', 'sniper', 'machinegun'] as const
 
 export type CannonKind = (typeof CANNON_KINDS)[number]
 

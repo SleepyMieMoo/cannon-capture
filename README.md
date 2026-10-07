@@ -24,23 +24,29 @@ A cannon tints toward whoever is hitting it, and a ring around it fills in their
 - Neutrals work the same way. If pink is part-way through a neutral and you shoot it, you push their progress back first. Once their progress is gone, your hits start counting toward your own capture (and the other way round).
 - The enemy heals too. Once you are halfway through one of its cannons, it sends its nearest cannon with a clear shot to heal it.
 - Clicking a damaged gold cannon while another one is selected heals it. Clicking a healthy gold cannon still switches the selection.
-- Heals scale with the shot: a sniper heal takes off 2.
+- Heals scale with the shot: a sniper heal takes off 2, a machine gun heal 0.3 (a burst of machine gun heals shows as one summed popup, like "+1.5 heal").
 
 **Tower types.** Every cannon has a type, and a captured cannon keeps its type (if pink takes your sniper, they get a sniper).
 
-| Type | Fire rate | Damage per hit | Shots | Look |
-| --- | --- | --- | --- | --- |
-| Normal | Every 1 s (some early levels slow pink down) | 1 | Normal speed and range | Short, thick barrel |
-| Sniper | Every 3 s | 2 | 2× speed and 2× range | Long, thin barrel with a scope, a reticle on the body and two dots; long thin shot streaks |
+| Type | Fire rate | Damage per hit | Shots | Turn speed | Accuracy | Look |
+| --- | --- | --- | --- | --- | --- | --- |
+| Normal | Every 1 s (some early levels slow pink down) | 1 | Normal speed and range | 110°/s | Up to ±1.25° off | Short, thick barrel |
+| Sniper | Every 3 s | 2 | 2× speed and 2× range | Half (55°/s) | Exact | Long, thin barrel with a scope, a reticle on the body and two dots; long thin shot streaks |
+| Machine gun | Every 0.2 s (5 a second) | 0.3 | Normal speed, half the range | Double (220°/s) | Up to ±7° off | Twin short, chunky barrels with alternating flashes, three bars on the body; small, short tracers |
 
-Snipers do less damage per second than a normal cannon (2 every 3 s against 1 every second). What they get is reach, and their fast shots punch through headwinds that turn normal shots back. They obey the same turn speed and only fire once lined up. Range: every shot already lives 4.5 s (about 1,530 px for a normal shot, up to 3 wall bounces). A sniper shot keeps that lifetime at twice the speed, so it reaches about 3,060 px. Normal cannons are unchanged.
+- Every shot lives 4.5 s, so a normal shot reaches about 1,530 px (up to 3 wall bounces). Sniper shots fly twice as fast for the same time, about 3,060 px. Machine gun shots fly at normal speed for half the time, about 765 px.
+- Snipers do less damage per second (2 every 3 s) but have reach, perfect aim, and fast shots that punch through headwinds. They turn slowly, so re-aiming one takes a while.
+- Machine guns do the most damage per second (1.5) but only up close, and their spread makes long or narrow bank shots miss. They swing onto a new target fast.
+- Normal cannons now wobble a little (up to ±1.25°), so a very narrow bank shot can miss now and then. The spread is random but seeded per cannon, so a replay is the same every time.
+- Every type only fires once its barrel is lined up. Damage can be a fraction (0.3): the capture meter, healing, tint and ring all track it exactly.
+- When a level slows pink's fire rate (for example 1.3 s instead of 1 s), its snipers and machine guns slow by the same factor.
 
-**Swapping type in play.** Hover one of your cannons and a small menu (Normal / Sniper) pops up above it. Click one to swap. On touch, long-press a cannon, or tap the selected cannon again. With a cannon selected, **T** swaps it too.
+**Swapping type in play.** Hover one of your cannons and a small menu (Normal / Sniper / Machine gun) pops up above it. Click one to swap. On touch, long-press a cannon, or tap the selected cannon again. With a cannon selected, **T** steps it to the next type (Normal → Sniper → Machine gun).
 
-- After a swap the cannon reloads for its new type's full interval (at least 1 s) before it shoots again: 1 s for Normal, 3 s for a Sniper. A light ring on the cannon fills up while it reloads. So swapping back and forth never gains you damage.
+- After a swap the cannon reloads for its new type's full interval (at least 1 s) before it shoots again: 1 s for Normal or a Machine gun, 3 s for a Sniper. A light ring on the cannon fills up while it reloads. So swapping back and forth never gains you damage.
 - In puzzles, swapping is free and does not spend an aim.
 - While a cannon is selected for aiming, only that cannon's own menu shows, so the menu never covers an aim click elsewhere.
-- Pink swaps too, kept simple: if one of your cannons can only be reached as a sniper, or one of its cannons can't reach anything as it is, it swaps that cannon.
+- Pink swaps too, kept simple: if one of your cannons can only be reached as another type, or one of its cannons can't reach anything as it is, it swaps that cannon. It also swaps a normal cannon to a machine gun when one of your cannons is close (within 3/4 of the gun's range, on a lane wide enough for the spread), and back once nothing is in reach. It only counts a lane as usable when it is at least as wide as the type's spread.
 
 The enemy obeys the same turn speed. Your aim shows as a gold dashed line with a crosshair at free aim points; while a cannon is selected, a pale line previews where your next click would aim. Faint pink lines are the enemy's. The mint ring is a fan blowing downward. P1 starts aimed into the tall wall, so re-aim it. Restart from the corner, or press **R** on the end screen. Works with taps on touch screens too.
 
@@ -72,7 +78,7 @@ Early battles go easy on you: the enemy fires a little slower (`ai.fireMs`) in l
 
 `npm test` runs every campaign level headless with an autoplayer that follows the same rules you do: same turn speed, same aim budget, and it only re-aims every couple of seconds. Puzzles must be solved within their aim budget, and battles must be won against the real enemy AI at three different frame rates. The same autoplayer can play in the browser: `?level=<id>&debug&bot&speed=10` (add `bot=mirror` for the spread-fire style).
 
-Sniper Duel's win check is skipped for now (it still has to load and play without errors): the sniper changed to one 3 s / 2-damage variant after that level was tuned, and the campaign is due for a redesign.
+The win checks for Crossfire, Last Stand and Sniper Duel are skipped for now (they still have to load and play without errors). Those levels were tuned before the current tower rules (one 3 s / 2-damage sniper, machine guns, per-type turn speed and spread), and the campaign is due for a redesign.
 
 ### Adding a level
 
@@ -102,7 +108,7 @@ Everything sits in two slim bars at the top, so the board gets the full width:
 - **Move:** drag anything. A short click just selects it.
 - **Delete:** use the Delete tool, or select something and press Del.
 - **Edit the selection** right in the second bar:
-  - cannons: owner, **Type** (Normal / Sniper) and an optional starting aim. Click **Set aim**, then a cannon or a spot on the board. Press **T** to toggle the selected cannon between Normal and Sniper. The type set here is the cannon's starting type in play.
+  - cannons: owner, **Type** (Normal / Sniper / Machine gun) and an optional starting aim. Click **Set aim**, then a cannon or a spot on the board. Press **T** to step the selected cannon through Normal → Sniper → Machine gun. The type set here is the cannon's starting type in play.
   - walls: length, thickness and rotation in 15° steps.
   - fans: direction, strength and radius.
 - **Snap to grid** (16 px) is on by default. **Undo/Redo** cover every edit, including New map and Import.
@@ -148,7 +154,7 @@ The enemy AI works on any size and any number of cannons. It still plans with la
 | X | Delete tool |
 | Del / Backspace | Delete the selection |
 | Q / E | Rotate the selected wall or fan by 15° |
-| T | Selected cannon: toggle Normal ↔ Sniper |
+| T | Selected cannon: next type (Normal → Sniper → Machine gun) |
 | G | Toggle snap |
 | P | Playtest |
 | Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) | Undo / redo |
@@ -207,13 +213,18 @@ All gameplay numbers live in [`src/config/tuning.ts`](src/config/tuning.ts).
 | `fanForce` | 540 | How hard fans accelerate a shot (px/s²) |
 | `aiRetargetMs` | 1600 | How often the enemy re-aims |
 | `aiFinishBias` | 80 | How strongly the AI finishes a cannon it is already capturing |
-| `sniper.speedMul` | 2 | Sniper shot speed relative to `shotSpeed` |
-| `sniper.lifetimeMul` | 1 | Sniper shot lifetime relative to `shotLifetimeMs` (1 = same time, so twice as far at twice the speed) |
-| `sniper.turnMul` | 1 | Sniper barrel turn speed relative to `turnSpeedDeg` |
-| `sniper.fireMs` | 3000 | Time between sniper shots (ms) |
-| `sniper.damage` | 2 | Damage per sniper hit (also how much a sniper heal takes off) |
+| `towers.<type>` | see below | Per tower type (`normal`, `sniper`, `machinegun`): `fireMs`, `damage`, `speedMul`, `lifetimeMul`, `turnMul`, `spreadDeg` |
+| `aiMachineGunReach` | 0.75 | The AI swaps a normal cannon to a machine gun when a foe is within this share of the gun's range |
 | `swapLockMs` | 1000 | Minimum reload after swapping type in play |
 | `aiHealAtProgress` | 4 | The AI sends a healer once a foe has this much capture progress on one of its cannons |
+
+Per-type values in `TUNING.towers` (range = `speedMul` × `lifetimeMul` × the normal range):
+
+| Type | `fireMs` | `damage` | `speedMul` | `lifetimeMul` | `turnMul` | `spreadDeg` |
+| --- | --- | --- | --- | --- | --- | --- |
+| `normal` | null (side's rate: `fireIntervalMs`, or a level's `ai.fireMs`) | 1 | 1 | 1 | 1 | 1.25 |
+| `sniper` | 3000 | 2 | 2 | 1 | 0.5 | 0 |
+| `machinegun` | 200 | 0.3 | 1 | 0.5 | 2 | 7 |
 
 Colours live in [`src/config/theme.ts`](src/config/theme.ts), so the board can be reskinned without touching gameplay. All 11 themes are there as data; change `ACTIVE_THEME` to switch (default: Dark Choco). The level layout is data in [`src/levels/skirmish.ts`](src/levels/skirmish.ts).
 

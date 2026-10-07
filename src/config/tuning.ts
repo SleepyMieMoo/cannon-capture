@@ -50,24 +50,30 @@ export const TUNING = {
    */
   aiHealAtProgress: 4,
   /**
-   * Sniper cannons. Their shots fly speedMul times as fast. Every shot lives
-   * shotLifetimeMs * lifetimeMul, so at the same lifetime a sniper shot also
-   * travels speedMul times as far. One variant: a shot every fireMs for
-   * `damage` capture progress (heals the same amount on a friend).
+   * Tower types, one block each. Shots fly at shotSpeed * speedMul and live
+   * shotLifetimeMs * lifetimeMul, so range = speedMul * lifetimeMul * the
+   * normal range. fireMs: ms between shots (null = the side's normal rate,
+   * fireIntervalMs or a level's ai.fireMs). damage: capture progress per hit,
+   * and how much a hit heals on a friend (fractions are fine). turnMul: barrel
+   * turn speed relative to turnSpeedDeg. spreadDeg: each shot leaves the
+   * barrel up to this many degrees off its aim, at random (0 = exact).
    */
-  sniper: {
-    speedMul: 2,
-    lifetimeMul: 1,
-    /** Barrel turn speed relative to turnSpeedDeg. */
-    turnMul: 1,
-    fireMs: 3000,
-    damage: 2,
+  towers: {
+    normal: { speedMul: 1, lifetimeMul: 1, turnMul: 1, fireMs: null, damage: 1, spreadDeg: 1.25 },
+    sniper: { speedMul: 2, lifetimeMul: 1, turnMul: 0.5, fireMs: 3000, damage: 2, spreadDeg: 0 },
+    machinegun: { speedMul: 1, lifetimeMul: 0.5, turnMul: 2, fireMs: 200, damage: 0.3, spreadDeg: 7 },
   },
   /**
    * Swapping a cannon's type in play: it reloads for its new type's full
    * fire interval (at least this long) before it can shoot again.
    */
   swapLockMs: 1000,
+  /**
+   * The AI swaps a normal cannon to a machine gun when the foe it is shooting
+   * is within this share of the machine gun's range (and its lane is wide
+   * enough for the spread).
+   */
+  aiMachineGunReach: 0.75,
   /** Keep the current target unless a new one is clearly better, in pixels. */
   aiRetargetSlack: 200,
 } as const

@@ -3,7 +3,7 @@ import type { Rect } from '../types'
 import { TUNING } from '../config/tuning'
 import { pickAiTarget } from '../sim/targeting'
 import { MIN_LANE_DEG, lanesOf, type Lane, type LaneTable } from '../sim/solver'
-import { KIND_IDS, laneKey } from '../config/kinds'
+import { KIND_IDS, laneKey, minLaneFor, shotRangeFor } from '../config/kinds'
 import type { Cannon } from '../entities/Cannon'
 import type { CannonKind, Point, Side } from '../types'
 
@@ -45,7 +45,9 @@ export class AiController {
     for (const cannon of cannons) {
       if (cannon.side !== this.side || busy.has(cannon)) continue
       const lanes = lanesOf(this.lanes, cannon)
-      const reachable = prey.filter((other) => (lanes?.get(other.id)?.widthDeg ?? 0) >= MIN_LANE_DEG)
+      // Lanes narrower than the cannon's spread miss too often to count.
+      const need = minLaneFor(cannon.kind, MIN_LANE_DEG)
+      const reachable = prey.filter((other) => (lanes?.get(other.id)?.widthDeg ?? 0) >= need)
       const pool = reachable.length ? reachable : prey
       const currentId = this.picks.get(cannon.id) ?? cannon.target?.id ?? null
       const choice = pickAiTarget(
@@ -93,6 +95,10 @@ export interface SwapOrder {
  *    one could after a swap: swap the cannon with the widest such lane.
  * 2. A cannon that can't reach any foe as it is, but could as another type,
  *    swaps to the type that reaches the most foes.
+ * 3. A normal cannon with a foe close by (within TUNING.aiMachineGunReach of
+ *    the machine gun's range, on a lane wide enough for its spread) swaps to
+ *    a machine gun, unless it is about to finish a capture.
+ * A lane only counts when it is at least as wide as that type's spread.
  * Only uses lanes that are already built.
  */
 export function planSwaps(side: Side, cannons: Cannon[], lanes: LaneTable, skip: Set<Cannon> = new Set()): SwapOrder[] {
@@ -100,11 +106,14 @@ export function planSwaps(side: Side, cannons: Cannon[], lanes: LaneTable, skip:
   const prey = cannons.filter((c) => c.side !== side)
   const width = (c: Cannon, kind: CannonKind, foe: Cannon): number =>
     lanes.get(laneKey(c.id, kind))?.get(foe.id)?.widthDeg ?? 0
+  const hits = (c: Cannon, kind: CannonKind, foe: Cannon): boolean => width(c, kind, foe) >= minLaneFor(kind, MIN_LANE_DEG)
   const orders: SwapOrder[] = []
   const taken = new Set<Cannon>()
   const fitted = cannons.filter((c) => c.side === side)
   for (const foe of prey) {
-    if (fitted.some((c) => width(c, c.kind, foe) >= MIN_LANE_DEG)) continue
+    // A machine gun counts as covering what it could hit as a normal cannon,
+    // so rule 3 and this rule never swap the same cannon back and forth.
+    if (fitted.some((c) => hits(c, c.kind, foe) || (c.kind === 'machinegun' && hits(c, 'normal', foe)))) continue
     let best: SwapOrder | null = null
     let bestW = 0
     for (const c of mine) {
@@ -112,7 +121,7 @@ export function planSwaps(side: Side, cannons: Cannon[], lanes: LaneTable, skip:
       for (const kind of KIND_IDS) {
         if (kind === c.kind) continue
         const w = width(c, kind, foe)
-        if (w >= MIN_LANE_DEG && w > bestW) {
+        if (hits(c, kind, foe) && w > bestW) {
           best = { cannon: c, kind }
           bestW = w
         }
@@ -125,8 +134,11 @@ export function planSwaps(side: Side, cannons: Cannon[], lanes: LaneTable, skip:
   }
   for (const c of mine) {
     if (taken.has(c) || !lanes.has(laneKey(c.id, c.kind))) continue
-    const reach = (kind: CannonKind) => prey.filter((p) => width(c, kind, p) >= MIN_LANE_DEG).length
-    if (reach(c.kind) > 0) continue
+    const reach = (kind: CannonKind) => prey.filter((p) => hits(c, kind, p)).length
+    if (reach(c.kind) > 0) {
+      if (c.kind === 'normal' && closeFoeForGun(c)) orders.push({ cannon: c, kind: 'machinegun' })
+      continue
+    }
     let best = c.kind
     let bestReach = 0
     for (const kind of KIND_IDS) {
@@ -140,6 +152,14 @@ export function planSwaps(side: Side, cannons: Cannon[], lanes: LaneTable, skip:
     if (best !== c.kind) orders.push({ cannon: c, kind: best })
   }
   return orders
+
+  function closeFoeForGun(c: Cannon): boolean {
+    if (!lanes.has(laneKey(c.id, 'machinegun'))) return false
+    const prey0 = c.target
+    if (prey0 && prey0.side !== side && prey0.captureAttacker === side && prey0.captureProgress >= TUNING.captureThreshold - 2) return false
+    const reach = shotRangeFor('machinegun') * TUNING.aiMachineGunReach
+    return prey.some((p) => Math.hypot(p.x - c.x, p.y - c.y) <= reach && hits(c, 'machinegun', p))
+  }
 }
 
 export interface HealOrder {
@@ -168,7 +188,7 @@ export function planHeals(side: Side, cannons: Cannon[], lanes: LaneTable): Heal
     let best = Infinity
     for (const c of mine) {
       if (c === friend || busy.has(c)) continue
-      if ((lanesOf(lanes, c)?.get(friend.id)?.widthDeg ?? 0) < MIN_LANE_DEG) continue
+      if ((lanesOf(lanes, c)?.get(friend.id)?.widthDeg ?? 0) < minLaneFor(c.kind, MIN_LANE_DEG)) continue
       const prey = c.target
       if (prey && prey.side !== side && prey.captureAttacker === side && prey.captureProgress >= TUNING.captureThreshold - 2) continue
       const d = Math.hypot(c.x - friend.x, c.y - friend.y)

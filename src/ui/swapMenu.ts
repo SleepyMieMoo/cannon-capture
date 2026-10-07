@@ -1,10 +1,11 @@
 import Phaser from 'phaser'
 import { KIND_IDS, kindLabel } from '../config/kinds'
 import { theme } from '../config/theme'
+import { GAME_WIDTH } from '../config/layout'
 import type { Cannon } from '../entities/Cannon'
 import type { CannonKind } from '../types'
 
-const PILL_W = 78
+const PILL_W = 90
 const PILL_H = 24
 const GAP = 6
 const PAD = 5
@@ -115,7 +116,8 @@ export class SwapMenu {
     const h = PILL_H + PAD * 2
     let y = at.y - radius - 18 - h
     if (y < top) y = at.y + radius + 18 // no room above: open below instead
-    const x = at.x - w / 2
+    // Keep it on screen near the board's left and right edges 
+    const x = Math.max(6, Math.min(GAME_WIDTH - 6 - w, at.x - w / 2))
     this.box = { x, y, w, h }
     this.g.fillStyle(theme.hud, 0.94)
     this.g.fillRoundedRect(x, y, w, h, 10)
