@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { KINDS, KIND_IDS, kindLabel } from '../config/kinds'
+import { KIND_IDS, kindLabel } from '../config/kinds'
 import { theme } from '../config/theme'
 import type { Cannon } from '../entities/Cannon'
 import type { CannonKind } from '../types'
@@ -39,7 +39,7 @@ export class SwapMenu {
         k,
         ui(
           scene.add
-            .text(0, 0, KINDS[k].label, { fontFamily: theme.font, fontSize: '12px', fontStyle: 'bold', color: theme.text })
+            .text(0, 0, kindLabel(k), { fontFamily: theme.font, fontSize: '12px', fontStyle: 'bold', color: theme.text })
             .setOrigin(0.5)
             .setDepth(41)
             .setVisible(false),
@@ -138,8 +138,7 @@ export class SwapMenu {
         this.g.strokeRoundedRect(cx - PILL_W / 2, cy - PILL_H / 2, PILL_W, PILL_H, 8)
       }
       const label = this.labels.get(kind)!
-      const text = kind === cannon.kind ? kindLabel(kind, cannon.delay) : KINDS[kind].delays ? kindLabel(kind, cannon.rememberedDelay(kind)) : KINDS[kind].label
-      label.setText(text).setPosition(cx, cy).setColor(active ? theme.ink : theme.text).setVisible(true)
+      label.setText(kindLabel(kind)).setPosition(cx, cy).setColor(active ? theme.ink : theme.text).setVisible(true)
     })
     // A small tick from the menu to the cannon.
     const tipY = y > at.y ? y : y + h

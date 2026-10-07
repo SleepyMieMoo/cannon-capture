@@ -7,7 +7,6 @@ import { applyCaptureHit } from '../sim/capture'
 import {
   KINDS,
   damageFor,
-  delayFor,
   fireMsFor,
   maxShotSpeedFor,
   shotLifetimeFor,
@@ -38,8 +37,6 @@ export class Cannon {
   side: Side
   /** Tower type. Kept when the cannon is captured. */
   kind: CannonKind
-  /** Sniper: seconds between shots, which is also its damage. */
-  delay: number
   /** Aim at another cannon (re-aims automatically once it becomes ours). */
   target: Cannon | null = null
   /** Or aim at a free point on the board. */
@@ -62,8 +59,6 @@ export class Cannon {
   /** Swap reload: ms total and ms left, for the reload ring. */
   private swapTotal = 0
   private swapLeft = 0
-  /** Last delay used per type, so a 3 s sniper swapped away and back stays 3 s. */
-  private readonly delayMemory: Partial<Record<CannonKind, number>> = {}
   /** The side's normal fire interval, as last seen in update(). */
   private sideMs: number = TUNING.fireIntervalMs
   private muzzle = 0
@@ -78,7 +73,6 @@ export class Cannon {
     side: Side,
     staggerMs: number,
     kind: CannonKind = 'normal',
-    delay?: number,
   ) {
     this.id = id
     this.name = name
@@ -86,8 +80,6 @@ export class Cannon {
     this.y = y
     this.side = side
     this.kind = KINDS[kind] ? kind : 'normal'
-    this.delay = delayFor(this.kind, delay)
-    this.delayMemory[this.kind] = this.delay
     this.cooldown = staggerMs
     this.angle = side === 'enemy' ? Math.PI : side === 'player' ? 0 : -Math.PI / 2
     if (scene) {
@@ -119,17 +111,12 @@ export class Cannon {
 
   /** Capture progress each of its shots adds (or heals). */
   get damage(): number {
-    return damageFor(this.kind, this.delay)
+    return damageFor(this.kind)
   }
 
   /** Milliseconds between its shots. */
   fireMs(sideMs: number = this.sideMs): number {
-    return fireMsFor(this.kind, this.delay, sideMs)
-  }
-
-  /** The delay this cannon would use as `kind` (its last one, or the default). */
-  rememberedDelay(kind: CannonKind): number {
-    return delayFor(kind, kind === this.kind ? this.delay : this.delayMemory[kind])
+    return fireMsFor(this.kind, sideMs)
   }
 
   /** Still reloading after a type swap. */
@@ -142,12 +129,9 @@ export class Cannon {
    * full fire interval (at least TUNING.swapLockMs) before it shoots again.
    * Returns false if nothing would change.
    */
-  setKind(kind: CannonKind, delay?: number): boolean {
-    const nextDelay = delayFor(kind, delay ?? (kind === this.kind ? this.delay : this.delayMemory[kind]))
-    if (kind === this.kind && nextDelay === this.delay) return false
+  setKind(kind: CannonKind): boolean {
+    if (kind === this.kind || !KINDS[kind]) return false
     this.kind = kind
-    this.delay = nextDelay
-    this.delayMemory[kind] = nextDelay
     const lock = Math.max(TUNING.swapLockMs, this.fireMs())
     this.cooldown = lock
     this.swapTotal = lock
@@ -376,7 +360,7 @@ export class Cannon {
     this.root.setDepth(this.selected ? 6 : 5)
   }
 
-  /** Sniper marking on the body: a reticle, plus one pip per second of delay (= damage). */
+  /** Sniper marking on the body: a reticle, plus one pip per point of damage. */
   private drawSniperBadge(g: Phaser.GameObjects.Graphics, color: number): void {
     const r = TUNING.cannonRadius
     const ink = shade(color, 0.35)
@@ -387,7 +371,8 @@ export class Cannon {
     g.lineBetween(0, -r * 0.78, 0, -r * 0.28)
     g.lineBetween(0, r * 0.28, 0, r * 0.78)
     g.fillStyle(ink, 0.95)
-    for (let i = 0; i < this.delay; i++) g.fillCircle((i - (this.delay - 1) / 2) * 7, r * 0.5 + 9, 2.2)
+    const pips = this.damage
+    for (let i = 0; i < pips; i++) g.fillCircle((i - (pips - 1) / 2) * 7, r * 0.5 + 9, 2.2)
   }
 
   private facing(): number {

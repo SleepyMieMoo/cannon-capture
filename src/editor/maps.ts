@@ -1,4 +1,4 @@
-import { KINDS, delayFor, isKind } from '../config/kinds'
+import { isKind } from '../config/kinds'
 import { TUNING } from '../config/tuning'
 import { MAP_SIZE_IDS, boardFor } from '../levels/board'
 import type { CannonDef, FanDef, LevelDef, MapSize, Side, WallDef } from '../types'
@@ -91,10 +91,8 @@ export function sanitizeLevel(raw: unknown): LevelDef {
     ids.add(id)
     const def: CannonDef = { id, name: str(o.name, id.toUpperCase(), 16), x: inX(o.x), y: inY(o.y), side }
     // Tower type (added later): missing or unknown means normal, so old maps and CC1 codes still load.
-    if (isKind(o.kind) && o.kind !== 'normal') {
-      def.kind = o.kind
-      if (KINDS[o.kind].delays && typeof o.delay === 'number') def.delay = delayFor(o.kind, o.delay)
-    }
+    // Any old sniper delay (2 s / 3 s) is dropped: there is one sniper now.
+    if (isKind(o.kind) && o.kind !== 'normal') def.kind = o.kind
     if (typeof o.aimAt === 'string') def.aimAt = o.aimAt
     else if (o.aimPoint && typeof o.aimPoint === 'object') {
       const p = o.aimPoint as Record<string, unknown>

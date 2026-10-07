@@ -52,17 +52,16 @@ export const TUNING = {
   /**
    * Sniper cannons. Their shots fly speedMul times as fast. Every shot lives
    * shotLifetimeMs * lifetimeMul, so at the same lifetime a sniper shot also
-   * travels speedMul times as far. They fire every `delay` seconds (2 or 3,
-   * set per cannon) for that much damage, so their damage per second matches
-   * a normal cannon; the edge is reach, speed and punching through wind.
+   * travels speedMul times as far. One variant: a shot every fireMs for
+   * `damage` capture progress (heals the same amount on a friend).
    */
   sniper: {
     speedMul: 2,
     lifetimeMul: 1,
     /** Barrel turn speed relative to turnSpeedDeg. */
     turnMul: 1,
-    defaultDelay: 2,
-    delays: [2, 3],
+    fireMs: 3000,
+    damage: 2,
   },
   /**
    * Swapping a cannon's type in play: it reloads for its new type's full

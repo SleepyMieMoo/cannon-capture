@@ -22,7 +22,7 @@ import type { LevelDef, Point, Rect, Side } from '../types'
 import { drawStar, makeButton } from '../ui/button'
 import { SwapMenu } from '../ui/swapMenu'
 import { layoutScale } from '../render/resolution'
-import { kindLabel } from '../config/kinds'
+import { KINDS, kindLabel, nextKind } from '../config/kinds'
 
 interface Spark {
   x: number
@@ -195,7 +195,7 @@ export class BattleScene extends Phaser.Scene {
       captured: (cannon) => this.popup(cannon.x, cannon.y, 'Captured', cssHex(sideColor(cannon.side))),
       healed: (cannon, amount) => this.popup(cannon.x, cannon.y - 8, `+${amount} heal`, cssHex(sideColor(cannon.side))),
       noAims: (cannon) => this.popup(cannon.x, cannon.y, 'No aims left', theme.textMuted),
-      swapped: (cannon) => this.popup(cannon.x, cannon.y, kindLabel(cannon.kind, cannon.delay), cssHex(sideColor(cannon.side))),
+      swapped: (cannon) => this.popup(cannon.x, cannon.y, kindLabel(cannon.kind), cssHex(sideColor(cannon.side))),
       aimed: (point) => {
         this.pings.push({ x: point.x, y: point.y, life: 1, color: theme.select })
         this.hideBanner()
@@ -302,8 +302,7 @@ export class BattleScene extends Phaser.Scene {
   private onTypeKey(): void {
     const sel = this.selected
     if (!sel || this.ended) return
-    const order = ['normal', 'sniper'] as const
-    this.sim.playerSwap(sel, order[(order.indexOf(sel.kind) + 1) % order.length])
+    this.sim.playerSwap(sel, nextKind(sel.kind))
   }
 
   private toLayout(pointer: Phaser.Input.Pointer): Point {
@@ -614,10 +613,8 @@ export class BattleScene extends Phaser.Scene {
     const pill = lp && this.swapMenu.open ? this.swapMenu.pillAt(lp.x, lp.y) : null
     if (pill && this.swapMenu.cannon) {
       const c = this.swapMenu.cannon
-      if (pill === c.kind) return `${c.name} is a ${kindLabel(c.kind, c.delay)}.`
-      return pill === 'sniper'
-        ? `Swap ${c.name} to Sniper: 2× shot speed and range, damage = delay. It reloads before its first shot.`
-        : `Swap ${c.name} to Normal: 1 damage every second. It reloads before its first shot.`
+      if (pill === c.kind) return `${c.name} is a ${kindLabel(c.kind)}: ${KINDS[c.kind].blurb}.`
+      return `Swap ${c.name} to ${kindLabel(pill)}: ${KINDS[pill].blurb}. It reloads before its first shot.`
     }
     if (!this.selected) {
       if (this.hover && this.hover.side === 'player') return `Click to select ${this.hover.name}, or pick a type above it (long-press on touch).`

@@ -10,36 +10,37 @@ import { CANNON_KINDS, type CannonKind } from '../types'
 export interface KindSpec {
   id: CannonKind
   label: string
-  /** One-line description for menus. */
+  /** One-line description for menus and hints. */
   blurb: string
   speedMul: number
   lifetimeMul: number
   turnMul: number
-  /** Selectable fire delays in seconds (damage = delay), or null for the side's normal rate. */
-  delays: readonly number[] | null
-  defaultDelay: number
+  /** Milliseconds between shots, or null for the side's normal rate. */
+  fireMs: number | null
+  /** Capture progress per hit (and heal per friendly hit). */
+  damage: number
 }
 
 export const KINDS: Record<CannonKind, KindSpec> = {
   normal: {
     id: 'normal',
     label: 'Normal',
-    blurb: 'Fires every second, 1 damage',
+    blurb: '1 damage every second',
     speedMul: 1,
     lifetimeMul: 1,
     turnMul: 1,
-    delays: null,
-    defaultDelay: 1,
+    fireMs: null,
+    damage: 1,
   },
   sniper: {
     id: 'sniper',
     label: 'Sniper',
-    blurb: '2× speed and range, damage = delay',
+    blurb: `${TUNING.sniper.damage} damage every ${TUNING.sniper.fireMs / 1000} s, 2× shot speed and range`,
     speedMul: TUNING.sniper.speedMul,
     lifetimeMul: TUNING.sniper.lifetimeMul,
     turnMul: TUNING.sniper.turnMul,
-    delays: TUNING.sniper.delays,
-    defaultDelay: TUNING.sniper.defaultDelay,
+    fireMs: TUNING.sniper.fireMs,
+    damage: TUNING.sniper.damage,
   },
 }
 
@@ -47,13 +48,6 @@ export const KIND_IDS: readonly CannonKind[] = CANNON_KINDS
 
 export function isKind(v: unknown): v is CannonKind {
   return typeof v === 'string' && (CANNON_KINDS as readonly string[]).includes(v)
-}
-
-/** A valid delay for this kind (snipers: 2 or 3 s; others ignore it). */
-export function delayFor(kind: CannonKind, delay?: number): number {
-  const spec = KINDS[kind]
-  if (!spec.delays) return spec.defaultDelay
-  return delay !== undefined && spec.delays.includes(delay) ? delay : spec.defaultDelay
 }
 
 export function shotSpeedFor(kind: CannonKind): number {
@@ -70,13 +64,13 @@ export function shotLifetimeFor(kind: CannonKind): number {
 }
 
 /** Milliseconds between shots. Normal cannons use their side's rate (`sideMs`). */
-export function fireMsFor(kind: CannonKind, delay: number, sideMs: number): number {
-  return KINDS[kind].delays ? delay * 1000 : sideMs
+export function fireMsFor(kind: CannonKind, sideMs: number): number {
+  return KINDS[kind].fireMs ?? sideMs
 }
 
 /** Capture progress per hit (and heal per friendly hit). */
-export function damageFor(kind: CannonKind, delay: number): number {
-  return KINDS[kind].delays ? delay : 1
+export function damageFor(kind: CannonKind): number {
+  return KINDS[kind].damage
 }
 
 export function turnSpeedDegFor(kind: CannonKind): number {
@@ -88,6 +82,11 @@ export function laneKey(id: string, kind: CannonKind = 'normal'): string {
   return kind === 'normal' ? id : `${id}#${kind}`
 }
 
-export function kindLabel(kind: CannonKind, delay?: number): string {
-  return KINDS[kind].delays ? `${KINDS[kind].label} ${delayFor(kind, delay)}s` : KINDS[kind].label
+export function kindLabel(kind: CannonKind): string {
+  return KINDS[kind].label
+}
+
+/** The next type in order (T key in play and in the editor). */
+export function nextKind(kind: CannonKind): CannonKind {
+  return KIND_IDS[(KIND_IDS.indexOf(kind) + 1) % KIND_IDS.length]
 }

@@ -1,4 +1,4 @@
-import { KINDS, KIND_IDS, delayFor, kindLabel } from '../config/kinds'
+import { KINDS, KIND_IDS, kindLabel, nextKind } from '../config/kinds'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import { TUNING } from '../config/tuning'
@@ -270,7 +270,7 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private makeCannon(def: CannonDef): Cannon {
-    const view = new Cannon(this, def.id, def.name, def.x, def.y, def.side, 0, def.kind, def.delay)
+    const view = new Cannon(this, def.id, def.name, def.x, def.y, def.side, 0, def.kind)
     const aim = this.startAim(def)
     if (aim) view.angle = Math.atan2(aim.y - def.y, aim.x - def.x)
     if (view.root) this.world(view.root)
@@ -1029,7 +1029,7 @@ export class EditorScene extends Phaser.Scene {
       ['V · X', 'Move tool · Delete tool'],
       ['Del', 'Delete the selection'],
       ['Q / E', 'Rotate wall or fan 15°'],
-      ['T', 'Selected cannon: next type (Normal → Sniper 2s → Sniper 3s)'],
+      ['T', 'Selected cannon: Normal ↔ Sniper'],
       ['G · P', 'Snap · Playtest'],
       ['Ctrl+Z / Ctrl+Y', 'Undo / redo'],
       ['Esc', 'Close, cancel or deselect'],
@@ -1166,26 +1166,16 @@ export class EditorScene extends Phaser.Scene {
       side.value = c.side
       const type = h(
         'select.cc-sel.xs',
-        { title: 'Tower type (T)', onchange: () => this.setKind(ref.index, type.value as CannonKind) },
+        { title: `Tower type (T). ${KIND_IDS.map((k) => `${KINDS[k].label}: ${KINDS[k].blurb}`).join(' · ')}`, onchange: () => this.setKind(ref.index, type.value as CannonKind) },
         ...KIND_IDS.map((k) => h('option', { value: k }, KINDS[k].label)),
       )
       type.value = c.kind ?? 'normal'
-      const spec = KINDS[c.kind ?? 'normal']
-      const delay = spec.delays
-        ? h(
-            'select.cc-sel.xs',
-            { title: 'Seconds between shots = damage per hit', onchange: () => this.setKind(ref.index, c.kind ?? 'normal', Number(delay!.value)) },
-            ...spec.delays.map((d) => h('option', { value: String(d) }, `${d} s · ${d} dmg`)),
-          )
-        : null
-      if (delay) delay.value = String(delayFor(c.kind ?? 'normal', c.delay))
       const target = c.aimAt ? L.cannons.find((o) => o.id === c.aimAt) : null
       const aimText = target ? `at ${target.name}` : c.aimPoint ? `at (${c.aimPoint.x}, ${c.aimPoint.y})` : 'none'
       return [
         h('span.cc-field', {}, dot(sideColor(c.side)), h('b', {}, `Cannon ${c.name}`)),
         h('span.cc-field', {}, h('label', {}, 'Owner'), side),
         h('span.cc-field', {}, h('label', {}, 'Type'), type),
-        ...(delay ? [h('span.cc-field', {}, h('label', {}, 'Delay'), delay)] : []),
         h('span.cc-field', {}, h('label', {}, 'Aim'), h('span.cc-val', { style: 'min-width:0' }, aimText)),
         h('button.cc-btn.xs', { onclick: () => {
           this.pickingAim = true
@@ -1247,30 +1237,24 @@ export class EditorScene extends Phaser.Scene {
     ]
   }
 
-  /** Tower type (and sniper delay) for one cannon. */
-  private setKind(index: number, kind: CannonKind, delay?: number): void {
+  /** Tower type for one cannon. */
+  private setKind(index: number, kind: CannonKind): void {
     const c = this.level.cannons[index]
-    const nextDelay = KINDS[kind].delays ? delayFor(kind, delay ?? c.delay) : undefined
-    if ((c.kind ?? 'normal') === kind && c.delay === nextDelay) return
+    if ((c.kind ?? 'normal') === kind && c.delay === undefined) return
     this.edit(() => {
       if (kind === 'normal') delete c.kind
       else c.kind = kind
-      if (nextDelay === undefined) delete c.delay
-      else c.delay = nextDelay
+      delete c.delay
     })
     this.refreshPanel(true)
   }
 
-  /** T key: Normal → Sniper 2s → Sniper 3s → Normal (and any future types in order). */
+  /** T key: Normal ↔ Sniper (and any future types in order). */
   private cycleKind(index: number): void {
     const c = this.level.cannons[index]
-    const options: [CannonKind, number | undefined][] = KIND_IDS.flatMap((k): [CannonKind, number | undefined][] =>
-      KINDS[k].delays ? KINDS[k].delays!.map((d): [CannonKind, number | undefined] => [k, d]) : [[k, undefined]],
-    )
-    const at = options.findIndex(([k, d]) => k === (c.kind ?? 'normal') && (d === undefined || d === delayFor(k, c.delay)))
-    const [kind, delay] = options[(at + 1) % options.length]
-    this.setKind(index, kind, delay)
-    this.status(`${c.name} is now ${kindLabel(kind, delay)}.`)
+    const kind = nextKind(c.kind ?? 'normal')
+    this.setKind(index, kind)
+    this.status(`${c.name} is now ${kindLabel(kind)}.`)
   }
 
   private setSide(index: number, side: Side): void {

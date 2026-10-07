@@ -29,7 +29,10 @@ export interface CannonDef {
   side: Side
   /** Tower type at the start of the level. Defaults to normal. */
   kind?: CannonKind
-  /** Sniper only: seconds between shots, which is also its damage (2 or 3). Defaults to 2. */
+  /**
+   * Legacy: snipers briefly had a 2 s / 3 s delay option. It is ignored now
+   * (there is one sniper variant) and dropped when a map is loaded or shared.
+   */
   delay?: number
   /** Id of the cannon this one aims at when the level starts. */
   aimAt?: string

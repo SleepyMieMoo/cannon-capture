@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { TUNING } from '../src/config/tuning'
-import { KINDS, laneKey, shotLifetimeFor, shotSpeedFor } from '../src/config/kinds'
+import { laneKey, shotLifetimeFor, shotSpeedFor } from '../src/config/kinds'
 import { Cannon } from '../src/entities/Cannon'
 import { BattleSim } from '../src/sim/BattleSim'
 import { decodeShare, encodeShare, sanitizeLevel } from '../src/editor/maps'
@@ -18,7 +18,7 @@ const duel: LevelDef = {
   kind: 'puzzle',
   cannons: [
     { id: 'p1', name: 'P1', x: 200, y: 400, side: 'player', kind: 'sniper' },
-    { id: 'p2', name: 'P2', x: 200, y: 600, side: 'player', kind: 'sniper', delay: 3 },
+    { id: 'p2', name: 'P2', x: 200, y: 600, side: 'player', kind: 'sniper', delay: 2 }, // legacy delay: ignored
     { id: 'p3', name: 'P3', x: 200, y: 200, side: 'player' },
     { id: 'n1', name: 'N1', x: 1000, y: 400, side: 'neutral' },
     { id: 'n2', name: 'N2', x: 1000, y: 600, side: 'neutral' },
@@ -49,7 +49,7 @@ function shotLog(sim: BattleSim) {
 }
 
 describe('sniper cannons', () => {
-  it('fire every 2 s for 2 damage (or 3 s for 3), with shots twice as fast and twice as far', () => {
+  it('fire every 3 s for 2 damage (one variant, old delays ignored), with shots twice as fast and twice as far', () => {
     const sim = new BattleSim(duel)
     const [p1, p2, p3] = ['p1', 'p2', 'p3'].map((id) => sim.byId(id)!)
     p1.setTarget(sim.byId('n1')!)
@@ -59,12 +59,13 @@ describe('sniper cannons', () => {
     const log = shotLog(sim)
     runUntil(sim, () => false, 9000)
     const gaps = (id: string) => log.filter((s) => s.id === id).map((s, i, a) => (i ? s.t - a[i - 1].t : null)).filter((g): g is number => g !== null)
-    for (const g of gaps('p1')) expect(Math.abs(g - 2000)).toBeLessThan(20)
+    expect(gaps('p1').length).toBeGreaterThan(0)
+    for (const g of gaps('p1')) expect(Math.abs(g - 3000)).toBeLessThan(20)
     for (const g of gaps('p2')) expect(Math.abs(g - 3000)).toBeLessThan(20)
     for (const g of gaps('p3')) expect(Math.abs(g - 1000)).toBeLessThan(20)
     const first = (id: string) => log.find((s) => s.id === id)!
     expect(first('p1').damage).toBe(2)
-    expect(first('p2').damage).toBe(3)
+    expect(first('p2').damage).toBe(2)
     expect(first('p3').damage).toBe(1)
     expect(first('p1').speed).toBeCloseTo(first('p3').speed * 2, 5)
     // Same lifetime at twice the speed: twice the distance.
@@ -73,40 +74,36 @@ describe('sniper cannons', () => {
     expect(shotLifetimeFor('normal')).toBe(TUNING.shotLifetimeMs)
   })
 
-  it('a 2 s sniper captures in 4 hits and a 3 s sniper in 3, then the cannon keeps its own type', () => {
+  it('a sniper captures in 4 hits', () => {
     const sim = new BattleSim(duel)
     const n1 = sim.byId('n1')!
-    for (let i = 0; i < 3; i++) expect(n1.receiveHit('player', 2).flipped).toBe(false)
-    expect(n1.receiveHit('player', 2).flipped).toBe(true)
-    const n2 = sim.byId('n2')!
-    n2.receiveHit('player', 3)
-    n2.receiveHit('player', 3)
-    expect(n2.receiveHit('player', 3).flipped).toBe(true)
+    const dmg = sim.byId('p1')!.damage
+    for (let i = 0; i < 3; i++) expect(n1.receiveHit('player', dmg).flipped).toBe(false)
+    expect(n1.receiveHit('player', dmg).flipped).toBe(true)
   })
 
   it('a captured sniper stays a sniper for its new owner', () => {
-    const level: LevelDef = { ...duel, kind: 'battle', cannons: [...duel.cannons.slice(0, 3), { id: 'e1', name: 'E1', x: 1000, y: 400, side: 'enemy', kind: 'sniper', delay: 3 }] }
+    const level: LevelDef = { ...duel, kind: 'battle', cannons: [...duel.cannons.slice(0, 3), { id: 'e1', name: 'E1', x: 1000, y: 400, side: 'enemy', kind: 'sniper' }] }
     const sim = new BattleSim(level)
     const e1 = sim.byId('e1')!
     for (let i = 0; i < 8 && e1.side === 'enemy'; i++) e1.receiveHit('player')
     expect(e1.side).toBe('player')
     expect(e1.kind).toBe('sniper')
-    expect(e1.delay).toBe(3)
-    expect(e1.damage).toBe(3)
+    expect(e1.damage).toBe(2)
   })
 
-  it('sniper heals take 2 (or 3) progress off', () => {
+  it('a sniper heal takes 2 progress off (never past full health)', () => {
     const sim = new BattleSim(duel)
     const p3 = sim.byId('p3')!
     p3.captureAttacker = 'enemy'
-    p3.captureProgress = 5
+    p3.captureProgress = 3
     expect(p3.receiveHit('player', sim.byId('p1')!.damage).healed).toBe(2)
-    expect(p3.receiveHit('player', sim.byId('p2')!.damage).healed).toBe(3)
+    expect(p3.receiveHit('player', sim.byId('p1')!.damage).healed).toBe(1)
     expect(p3.damaged).toBe(false)
   })
 
-  it('swapping type in play reloads for the new interval (at least swapLockMs) and remembers the sniper delay', () => {
-    const c = new Cannon(null, 'x', 'X', 0, 0, 'player', 0, 'sniper', 3)
+  it('swapping type in play reloads for the full new interval (1 s into Normal, 3 s into Sniper)', () => {
+    const c = new Cannon(null, 'x', 'X', 0, 0, 'player', 0, 'sniper')
     c.setAimPoint({ x: 100, y: 0 })
     c.snapToAim()
     expect(c.setKind('normal')).toBe(true)
@@ -115,11 +112,11 @@ describe('sniper cannons', () => {
     while (!c.update(1000 / 60, false, 1000) && t < 5000) t += 1000 / 60
     expect(t).toBeGreaterThanOrEqual(TUNING.swapLockMs - 20)
     expect(t).toBeLessThan(TUNING.swapLockMs + 40)
-    c.setKind('sniper')
-    expect(c.delay).toBe(3)
+    expect(c.setKind('sniper')).toBe(true)
     t = 0
-    while (!c.update(1000 / 60, false, 1000) && t < 5000) t += 1000 / 60
+    while (!c.update(1000 / 60, false, 1000) && t < 6000) t += 1000 / 60
     expect(t).toBeGreaterThanOrEqual(3000 - 20)
+    expect(t).toBeLessThan(3000 + 40)
     expect(c.setKind('sniper')).toBe(false) // nothing changes, no reload
   })
 
@@ -164,11 +161,11 @@ describe('sniper lanes, AI and campaign', () => {
 })
 
 describe('share codes with tower types', () => {
-  it('round-trips type and delay', () => {
+  it('round-trips the type (and drops the old sniper delay)', () => {
     const back = decodeShare(encodeShare(duel))
     expect(back.cannons.map((c) => [c.id, c.kind ?? 'normal', c.delay])).toEqual([
       ['p1', 'sniper', undefined],
-      ['p2', 'sniper', 3],
+      ['p2', 'sniper', undefined],
       ['p3', 'normal', undefined],
       ['n1', 'normal', undefined],
       ['n2', 'normal', undefined],
@@ -188,20 +185,25 @@ describe('share codes with tower types', () => {
     expect(sim.cannons.every((c) => c.kind === 'normal' && c.damage === 1)).toBe(true)
   })
 
-  it('cleans up unknown types and bad delays', () => {
+  it('cleans up unknown types, and maps any old sniper delay to the single sniper', () => {
     const level = sanitizeLevel({
       cannons: [
         { id: 'p1', side: 'player', x: 200, y: 300, kind: 'laser' },
         { id: 'p2', side: 'player', x: 200, y: 500, kind: 'sniper', delay: 7 },
         { id: 'e1', side: 'enemy', x: 900, y: 400, kind: 'normal', delay: 3 },
+        { id: 'e2', side: 'enemy', x: 900, y: 600, kind: 'sniper', delay: 3 },
       ],
       walls: [],
       fans: [],
     })
     expect(level.cannons.map((c) => [c.kind, c.delay])).toEqual([
       [undefined, undefined],
-      ['sniper', KINDS.sniper.defaultDelay],
+      ['sniper', undefined],
       [undefined, undefined],
+      ['sniper', undefined],
     ])
+    const sim = new BattleSim({ ...level, kind: 'battle' })
+    expect(sim.byId('e2')!.damage).toBe(2)
+    expect(sim.byId('e2')!.fireMs()).toBe(3000)
   })
 })
