@@ -1,8 +1,8 @@
-import { AiController, aimViaLane, healViaLane, planHeals, pointAlong } from '../ai/AiController'
+import { AiController, aimViaLane, healViaLane, planHeals, planSwaps, pointAlong } from '../ai/AiController'
 import { TUNING } from '../config/tuning'
 import type { Cannon } from '../entities/Cannon'
 import type { BattleSim } from './BattleSim'
-import { MIN_LANE_DEG, planPuzzle } from './solver'
+import { MIN_LANE_DEG, lanesOf, planPuzzle } from './solver'
 
 /**
  * Autoplayers for your side, used to prove levels can be beaten (tests and
@@ -35,6 +35,7 @@ export class PuzzleBot implements Bot {
     if (!from || !to || from.side !== 'player') return
     const pending = this.pending.get(from.id)
     if (pending && this.sim.byId(pending)?.side !== 'player') return
+    if (from.kind !== step.kind) this.sim.playerSwap(from, step.kind) // free in puzzles
     const aim = step.lane.direct ? to : pointAlong(from, step.lane.angle, this.sim.board)
     if (!this.sim.playerAim(from, aim)) return
     this.pending.set(from.id, to.id)
@@ -61,9 +62,11 @@ export class BattleBot implements Bot {
     if (this.timer > 0) return
     this.timer = this.everyMs
     const { sim } = this
+    // Swap a cannon's type when that is the only way to reach a foe.
+    for (const { cannon, kind } of planSwaps('player', sim.cannons, sim.lanes)) sim.playerSwap(cannon, kind)
     const mine = sim.cannons.filter((c) => c.side === 'player')
     const foes = sim.cannons.filter((c) => c.side !== 'player')
-    const canHit = (m: Cannon, foe: Cannon) => (sim.lanes.get(m.id)?.get(foe.id)?.widthDeg ?? 0) >= MIN_LANE_DEG
+    const canHit = (m: Cannon, foe: Cannon) => (lanesOf(sim.lanes, m)?.get(foe.id)?.widthDeg ?? 0) >= MIN_LANE_DEG
 
     let focus: Cannon | null = null
     let bestScore = -Infinity
@@ -81,7 +84,7 @@ export class BattleBot implements Bot {
 
     // Heal a cannon that is close to flipping, the way a player would.
     for (const { helper, friend } of planHeals('player', sim.cannons, sim.lanes)) {
-      healViaLane(helper, friend, sim.lanes.get(helper.id)?.get(friend.id), sim.board)
+      healViaLane(helper, friend, lanesOf(sim.lanes, helper)?.get(friend.id), sim.board)
       this.aims.delete(helper.id)
     }
 
@@ -100,7 +103,7 @@ export class BattleBot implements Bot {
         }
       }
       if (!target || (this.aims.get(m.id) === target.id && m.aim())) continue
-      aimViaLane(m, target, sim.lanes.get(m.id)?.get(target.id), sim.board)
+      aimViaLane(m, target, lanesOf(sim.lanes, m)?.get(target.id), sim.board)
       this.aims.set(m.id, target.id)
     }
   }

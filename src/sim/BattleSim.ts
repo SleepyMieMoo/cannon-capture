@@ -4,9 +4,9 @@ import { TUNING } from '../config/tuning'
 import { Cannon } from '../entities/Cannon'
 import { Shot } from '../entities/Shot'
 import { boardFor } from '../levels/board'
-import type { LevelDef, Point, Rect, Side } from '../types'
+import type { CannonKind, LevelDef, Point, Rect, Side } from '../types'
 import { Broadphase, type BallisticsOpts, type Body } from './ballistics'
-import { LaneBuilder, levelFans, shotOpts, type LaneTable } from './solver'
+import { LaneBuilder, lanesOf, levelFans, shotOpts, type LaneTable } from './solver'
 
 export type Outcome = 'win' | 'lose'
 
@@ -22,6 +22,8 @@ export interface SimEvents {
   healed?(cannon: Cannon, amount: number): void
   captured?(cannon: Cannon): void
   noAims?(cannon: Cannon): void
+  /** A cannon changed tower type mid-round. */
+  swapped?(cannon: Cannon): void
   aimed?(point: Point): void
 }
 
@@ -67,7 +69,9 @@ export class BattleSim {
     this.fans = levelFans(level)
     this.ai.reset(this.lanes, level.ai?.retargetMs ?? TUNING.aiRetargetMs, this.board)
     level.cannons.forEach((def, index) => {
-      this.cannons.push(new Cannon(scene, def.id, def.name, def.x, def.y, def.side, (index % 3) * TUNING.fireStaggerMs))
+      this.cannons.push(
+        new Cannon(scene, def.id, def.name, def.x, def.y, def.side, (index % 3) * TUNING.fireStaggerMs, def.kind, def.delay),
+      )
     })
     for (const def of level.cannons) {
       const cannon = this.byId(def.id)!
@@ -131,11 +135,23 @@ export class BattleSim {
     return true
   }
 
+  /**
+   * Your swap order: change one of your cannons to another tower type. It
+   * then reloads for its new type's full interval (at least
+   * TUNING.swapLockMs). Free in puzzles: it does not spend an aim.
+   */
+  playerSwap(cannon: Cannon, kind: CannonKind, delay?: number): boolean {
+    if (this.ended || cannon.side !== 'player') return false
+    if (!cannon.setKind(kind, delay)) return false
+    this.events.swapped?.(cannon)
+    return true
+  }
+
   private stepShots(dt: number): void {
     const enemyFire = this.level.ai?.fireMs ?? TUNING.fireIntervalMs
     for (const cannon of this.cannons) {
       const spawned = cannon.update(dt, false, cannon.side === 'enemy' ? enemyFire : TUNING.fireIntervalMs)
-      if (spawned) this.shots.push(new Shot(spawned, cannon.side))
+      if (spawned) this.shots.push(new Shot(spawned, cannon.side, cannon.damage, cannon.kind))
     }
 
     for (let i = this.shots.length - 1; i >= 0; i--) {
@@ -166,14 +182,14 @@ export class BattleSim {
     }
     if (!cannon.aim()) {
       const foe = this.nearestFoe(cannon)
-      if (foe) aimViaLane(cannon, foe, this.lanes.get(cannon.id)?.get(foe.id), this.board)
+      if (foe) aimViaLane(cannon, foe, lanesOf(this.lanes, cannon)?.get(foe.id), this.board)
     }
     this.ai.retarget(this.cannons)
   }
 
   /** Nearest foe it has a lane to, falling back to the nearest foe overall. */
   nearestFoe(cannon: Cannon): Cannon | null {
-    const lanes = this.lanes.get(cannon.id)
+    const lanes = lanesOf(this.lanes, cannon)
     let best: Cannon | null = null
     let bestScore = Infinity
     for (const other of this.cannons) {

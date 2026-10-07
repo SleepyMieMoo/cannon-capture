@@ -9,14 +9,16 @@ import { drawStar, makeButton } from '../ui/button'
 
 /** Node positions along the winding campaign path (world coordinates). */
 const NODES: { x: number; y: number }[] = [
-  { x: 130, y: 450 },
-  { x: 270, y: 300 },
-  { x: 420, y: 430 },
-  { x: 560, y: 260 },
-  { x: 700, y: 410 },
-  { x: 840, y: 240 },
-  { x: 980, y: 400 },
-  { x: 1090, y: 230 },
+  { x: 110, y: 450 },
+  { x: 215, y: 300 },
+  { x: 320, y: 440 },
+  { x: 425, y: 260 },
+  { x: 530, y: 420 },
+  { x: 640, y: 250 },
+  { x: 745, y: 410 },
+  { x: 850, y: 240 },
+  { x: 960, y: 400 },
+  { x: 1080, y: 250 },
 ]
 const NODE_R = 30
 

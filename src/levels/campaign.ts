@@ -2,11 +2,12 @@ import type { LevelDef } from '../types'
 
 const DOWN = Math.PI / 2
 const UP = -Math.PI / 2
+const LEFT = Math.PI
 
 /**
  * The campaign, in unlock order. Each level introduces one idea:
  * capture -> enemy -> bank shots -> walls in battle -> fans -> everything ->
- * a fan-and-wall puzzle -> outnumbered finale.
+ * a fan-and-wall puzzle -> outnumbered finale -> snipers (a puzzle, then a battle).
  *
  * Board: x 24..1176, y 88..696. Cannon radius 26.
  */
@@ -159,5 +160,53 @@ export const CAMPAIGN: LevelDef[] = [
       { x: 640, y: 490, w: 26, h: 150 },
     ],
     fans: [{ x: 760, y: 400, radius: 95, angle: UP, force: 480 }],
+  },
+  {
+    id: 'long-shot',
+    name: 'Long Shot',
+    kind: 'puzzle',
+    hint: 'Snipers (long barrel) shoot 2× as fast and far and punch through wind. Hover a gold cannon to swap its type, free here.',
+    aims: 3,
+    par: 3,
+    cannons: [
+      { id: 'p1', name: 'P1', x: 160, y: 400, side: 'player', kind: 'sniper' },
+      { id: 'p2', name: 'P2', x: 160, y: 620, side: 'player' },
+      { id: 'n1', name: 'N1', x: 1040, y: 400, side: 'neutral' },
+      { id: 'n2', name: 'N2', x: 420, y: 180, side: 'neutral' },
+      { id: 'n3', name: 'N3', x: 1040, y: 160, side: 'neutral' },
+    ],
+    walls: [
+      { x: 588, y: 88, w: 26, h: 202 },
+      { x: 588, y: 510, w: 26, h: 186 },
+      { x: 900, y: 88, w: 26, h: 250 },
+    ],
+    fans: [
+      { x: 600, y: 400, radius: 150, angle: LEFT, force: 600 },
+      { x: 1040, y: 280, radius: 100, angle: DOWN, force: 1100 },
+    ],
+  },
+  {
+    id: 'sniper-duel',
+    name: 'Sniper Duel',
+    hint: 'Pink has a sniper behind the wind. Swap a cannon to Sniper to reach it, and heal anything close to flipping.',
+    par: 55,
+    ai: { retargetMs: 1400 },
+    cannons: [
+      { id: 'p1', name: 'P1', x: 150, y: 400, side: 'player', kind: 'sniper', aimAt: 'n1' },
+      { id: 'p2', name: 'P2', x: 210, y: 200, side: 'player', aimAt: 'n1' },
+      { id: 'p3', name: 'P3', x: 210, y: 600, side: 'player', aimAt: 'n2' },
+      { id: 'n1', name: 'N1', x: 580, y: 250, side: 'neutral' },
+      { id: 'n2', name: 'N2', x: 580, y: 570, side: 'neutral' },
+      { id: 'e1', name: 'E1', x: 1080, y: 400, side: 'enemy', kind: 'sniper', delay: 3, aimAt: 'n1' },
+      { id: 'e2', name: 'E2', x: 820, y: 200, side: 'enemy', aimAt: 'n1' },
+      { id: 'e3', name: 'E3', x: 820, y: 600, side: 'enemy', aimAt: 'n2' },
+      { id: 'e4', name: 'E4', x: 1080, y: 620, side: 'enemy', aimAt: 'e3' },
+    ],
+    walls: [
+      { x: 690, y: 370, w: 26, h: 60 },
+      { x: 940, y: 88, w: 26, h: 200 },
+      { x: 940, y: 512, w: 26, h: 184 },
+    ],
+    fans: [{ x: 952, y: 400, radius: 120, angle: LEFT, force: 650 }],
   },
 ]

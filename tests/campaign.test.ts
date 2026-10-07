@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { boardFor } from '../src/levels/board'
 import { distToWall } from '../src/sim/geometry'
 import { TUNING } from '../src/config/tuning'
+import { KIND_IDS, laneKey } from '../src/config/kinds'
 import { CAMPAIGN, SKIRMISH } from '../src/levels'
 import { MIN_LANE_DEG, lanesFromSweep, levelLanes, planPuzzle } from '../src/sim/solver'
 import { currentLevelIndex, isUnlocked, starsFor, withWin } from '../src/sim/stars'
@@ -9,9 +10,9 @@ import { BattleSim } from '../src/sim/BattleSim'
 import { BattleBot, MirrorBot, PuzzleBot, playOut } from '../src/sim/bots'
 
 describe('campaign data', () => {
-  it('has 6 to 8 levels with unique ids, names and hints', () => {
+  it('has 6 to 10 levels with unique ids, names and hints', () => {
     expect(CAMPAIGN.length).toBeGreaterThanOrEqual(6)
-    expect(CAMPAIGN.length).toBeLessThanOrEqual(8)
+    expect(CAMPAIGN.length).toBeLessThanOrEqual(10)
     const ids = new Set([...CAMPAIGN, SKIRMISH].map((l) => l.id))
     expect(ids.size).toBe(CAMPAIGN.length + 1)
     for (const level of CAMPAIGN) {
@@ -58,10 +59,13 @@ describe('every battle gives you a shot at every cannon', () => {
   for (const level of CAMPAIGN.filter((l) => l.kind !== 'puzzle')) {
     it(level.id, () => {
       const lanes = levelLanes(level)
-      // Once you hold every cannon but one, some cannon must be able to hit it.
+      // Once you hold every cannon but one, some cannon must be able to hit it
+      // (as any tower type, since you can swap types in play).
       for (const target of level.cannons) {
         const reachable = level.cannons.some(
-          (from) => from.id !== target.id && (lanes.get(from.id)?.get(target.id)?.widthDeg ?? 0) >= MIN_LANE_DEG,
+          (from) =>
+            from.id !== target.id &&
+            KIND_IDS.some((kind) => (lanes.get(laneKey(from.id, kind))?.get(target.id)?.widthDeg ?? 0) >= MIN_LANE_DEG),
         )
         expect(reachable, `${level.id}: nothing can hit ${target.id}`).toBe(true)
       }

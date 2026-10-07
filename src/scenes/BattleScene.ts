@@ -20,6 +20,9 @@ import { clipToWalls } from '../sim/geometry'
 import { starsFor } from '../sim/stars'
 import type { LevelDef, Point, Rect, Side } from '../types'
 import { drawStar, makeButton } from '../ui/button'
+import { SwapMenu } from '../ui/swapMenu'
+import { layoutScale } from '../render/resolution'
+import { kindLabel } from '../config/kinds'
 
 interface Spark {
   x: number
@@ -50,6 +53,8 @@ export interface BattleData {
 const HUD_H = 54
 const HUD_ROW = 18
 const WORLD_VIEW = { x: 0, y: HUD_H + 2, w: GAME_WIDTH, h: GAME_HEIGHT - HUD_H - 2 }
+/** Hold a press this long on one of your cannons to open its type menu (touch). */
+const LONG_PRESS_MS = 450
 
 /** Renders a BattleSim round and turns clicks into aim orders. */
 export class BattleScene extends Phaser.Scene {
@@ -79,6 +84,13 @@ export class BattleScene extends Phaser.Scene {
   private counts!: Partial<Record<Side, Phaser.GameObjects.Text>>
   private aimsText: Phaser.GameObjects.Text | null = null
   private banner: Phaser.GameObjects.Container | null = null
+  private swapMenu!: SwapMenu
+  /** Layout-space pointer position, for the swap menu. */
+  private pointerLayout: Point | null = null
+  /** A press on one of your cannons that may become a long-press. */
+  private press: { cannon: Cannon; at: number } | null = null
+  /** The current press already did something (long-press, menu pick): skip its click. */
+  private pressUsed = false
 
   constructor() {
     super('battle')
@@ -161,6 +173,9 @@ export class BattleScene extends Phaser.Scene {
     this.aimsText = null
     this.banner = null
     this.pressOnUi = false
+    this.pointerLayout = null
+    this.press = null
+    this.pressUsed = false
 
     // Two cameras: a fixed one for the HUD (1200x720 layout) and a world
     // camera under it that can zoom and pan on bigger maps.
@@ -180,6 +195,7 @@ export class BattleScene extends Phaser.Scene {
       captured: (cannon) => this.popup(cannon.x, cannon.y, 'Captured', cssHex(sideColor(cannon.side))),
       healed: (cannon, amount) => this.popup(cannon.x, cannon.y - 8, `+${amount} heal`, cssHex(sideColor(cannon.side))),
       noAims: (cannon) => this.popup(cannon.x, cannon.y, 'No aims left', theme.textMuted),
+      swapped: (cannon) => this.popup(cannon.x, cannon.y, kindLabel(cannon.kind, cannon.delay), cssHex(sideColor(cannon.side))),
       aimed: (point) => {
         this.pings.push({ x: point.x, y: point.y, life: 1, color: theme.select })
         this.hideBanner()
@@ -203,6 +219,7 @@ export class BattleScene extends Phaser.Scene {
         : makeBot(this.sim)
 
     this.uiBlock(() => this.createHud())
+    this.swapMenu = new SwapMenu(this, (obj) => this.ui(obj))
     if (this.wc.canZoomOut) this.createZoomUi()
     if (this.level.hint) this.showBanner(this.level.hint)
     else if (this.wc.canZoomOut) this.showBanner('Big map: scroll or pinch to zoom out, drag empty space or use WASD to pan.')
@@ -228,6 +245,7 @@ export class BattleScene extends Phaser.Scene {
     for (const ping of this.pings) ping.life -= dt / 420
     this.pings = this.pings.filter((ping) => ping.life > 0)
     this.drawFx(time)
+    this.updateSwapMenu(dt, time)
     for (const cannon of this.cannons) {
       cannon.hovered = cannon === this.hover
       cannon.selected = cannon === this.selected
@@ -264,6 +282,8 @@ export class BattleScene extends Phaser.Scene {
     keyboard.off('keydown-R', this.onRestartKey, this)
     keyboard.off('keydown-ESC', this.onCancelKey, this)
     keyboard.off('keydown-N', this.onNextKey, this)
+    keyboard.off('keydown-T', this.onTypeKey, this)
+    keyboard.on('keydown-T', this.onTypeKey, this)
     keyboard.on('keydown-R', this.onRestartKey, this)
     keyboard.on('keydown-ESC', this.onCancelKey, this)
     keyboard.on('keydown-N', this.onNextKey, this)
@@ -274,7 +294,53 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onCancelKey(): void {
-    this.selected = null
+    if (this.swapMenu.open) this.swapMenu.hide()
+    else this.selected = null
+  }
+
+  /** T: swap the selected cannon to the next tower type. */
+  private onTypeKey(): void {
+    const sel = this.selected
+    if (!sel || this.ended) return
+    const order = ['normal', 'sniper'] as const
+    this.sim.playerSwap(sel, order[(order.indexOf(sel.kind) + 1) % order.length])
+  }
+
+  private toLayout(pointer: Phaser.Input.Pointer): Point {
+    const k = layoutScale(this)
+    return { x: pointer.x / k, y: pointer.y / k }
+  }
+
+  /** Which of your cannons may show the type menu right now. */
+  private menuCandidate(): Cannon | null {
+    if (this.ended || this.restarting || this.wc.dragging) return null
+    const c = this.hover
+    if (!c || c.side !== 'player') return null
+    // While aiming, only the selected cannon's own menu shows, so it never covers an aim click.
+    if (this.selected && this.selected !== c) return null
+    return c
+  }
+
+  private updateSwapMenu(dt: number, time: number): void {
+    const menu = this.swapMenu
+    // Long-press on one of your cannons pins its menu (the touch way in).
+    if (this.press && !this.pressUsed && this.input.activePointer.isDown && !this.wc.dragging && time - this.press.at >= LONG_PRESS_MS) {
+      if (this.press.cannon.side === 'player') {
+        menu.show(this.press.cannon, true)
+        this.pressUsed = true
+      }
+      this.press = null
+    }
+    const lp = this.pointerLayout
+    const onMenu = !!lp && menu.contains(lp.x, lp.y)
+    menu.update(dt, this.menuCandidate(), onMenu)
+    menu.setHot(lp ? menu.pillAt(lp.x, lp.y) : null)
+    if (this.ended) menu.hide()
+    const c = menu.cannon
+    if (!c) return menu.draw(null, 0, 0)
+    const p = this.wc.toScreen(c.x, c.y)
+    const k = layoutScale(this)
+    menu.draw({ x: p.x / k, y: p.y / k }, TUNING.cannonRadius * this.wc.zoom, HUD_H + 6)
   }
 
   private onNextKey(): void {
@@ -282,9 +348,34 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onPointerDown(pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]): void {
+    this.press = null
+    this.pressUsed = false
+    // The type menu sits above the board: a press on it never reaches the board.
+    const lp = this.toLayout(pointer)
+    this.pointerLayout = lp
+    if (this.swapMenu.open && this.swapMenu.contains(lp.x, lp.y)) {
+      this.pressOnUi = true
+      const kind = this.swapMenu.pillAt(lp.x, lp.y)
+      const cannon = this.swapMenu.cannon
+      if (kind && cannon) {
+        this.sim.playerSwap(cannon, kind)
+        if (this.swapMenu.pinned) this.swapMenu.hide()
+      }
+      return
+    }
     // HUD buttons and anything above the board handle themselves.
     this.pressOnUi = (over && over.length > 0) || !this.wc.inView(pointer.x, pointer.y)
     if (this.pressOnUi) return
+    if (this.swapMenu.pinned) {
+      // First tap away from a pinned menu just closes it.
+      this.swapMenu.hide()
+      this.pressUsed = true
+    }
+    if (!this.ended) {
+      const w = this.wc.toWorld(pointer.x, pointer.y)
+      const c = this.cannonAt(w.x, w.y)
+      if (c && c.side === 'player') this.press = { cannon: c, at: this.time.now }
+    }
     // On big maps a press may turn into a pan; it only aims if it doesn't move.
     this.wc.down(pointer, this.wc.canZoomOut)
   }
@@ -295,16 +386,21 @@ export class BattleScene extends Phaser.Scene {
       this.pressOnUi = false
       return
     }
+    this.press = null
+    if (this.pressUsed) {
+      this.pressUsed = false
+      return
+    }
     if (gesture !== 'click' || this.ended || this.restarting) return
     const { x, y } = this.wc.toWorld(pointer.x, pointer.y)
-    this.onClick(x, y)
+    this.onClick(x, y, pointer.wasTouch)
   }
 
   private onWheel(pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number): void {
     this.wc.wheel(pointer, dy)
   }
 
-  private onClick(x: number, y: number): void {
+  private onClick(x: number, y: number, touch = false): void {
     const hit = this.cannonAt(x, y)
     const sel = this.selected
 
@@ -316,6 +412,11 @@ export class BattleScene extends Phaser.Scene {
       return
     }
     if (hit === sel) {
+      // Touch has no hover: tapping the selected cannon opens its type menu instead.
+      if (touch && !(this.swapMenu.cannon === sel && this.swapMenu.pinned)) {
+        this.swapMenu.show(sel, true)
+        return
+      }
       this.selected = null
       return
     }
@@ -336,6 +437,12 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
+    this.pointerLayout = this.toLayout(pointer)
+    if (this.swapMenu.open && this.swapMenu.contains(this.pointerLayout.x, this.pointerLayout.y)) {
+      this.input.setDefaultCursor(this.swapMenu.pillAt(this.pointerLayout.x, this.pointerLayout.y) ? 'pointer' : 'default')
+      this.pointer = null
+      return
+    }
     if (this.wc.move(pointer)) {
       this.hover = null
       this.pointer = null
@@ -503,7 +610,19 @@ export class BattleScene extends Phaser.Scene {
 
   private hintLine(): string {
     if (this.ended) return this.ended === 'win' ? 'You hold every cannon.' : 'Not this time.'
-    if (!this.selected) return 'Click one of your gold cannons to select it, then click where it should aim.'
+    const lp = this.pointerLayout
+    const pill = lp && this.swapMenu.open ? this.swapMenu.pillAt(lp.x, lp.y) : null
+    if (pill && this.swapMenu.cannon) {
+      const c = this.swapMenu.cannon
+      if (pill === c.kind) return `${c.name} is a ${kindLabel(c.kind, c.delay)}.`
+      return pill === 'sniper'
+        ? `Swap ${c.name} to Sniper: 2× shot speed and range, damage = delay. It reloads before its first shot.`
+        : `Swap ${c.name} to Normal: 1 damage every second. It reloads before its first shot.`
+    }
+    if (!this.selected) {
+      if (this.hover && this.hover.side === 'player') return `Click to select ${this.hover.name}, or pick a type above it (long-press on touch).`
+      return 'Click one of your gold cannons to select it, then click where it should aim.'
+    }
     const name = this.selected.name
     if (this.hover && this.hover !== this.selected) {
       if (this.hover.side === 'player' && this.hover.damaged) return `${name} → heal ${this.hover.name} (it goes back to its old aim once ${this.hover.name} is whole).`
@@ -712,6 +831,27 @@ export class BattleScene extends Phaser.Scene {
 
     for (const shot of this.sim.shots) {
       const color = sideColor(shot.side)
+      if (shot.kind === 'sniper') {
+        // Sniper round: a long, thin streak and a smaller, brighter head.
+        const { vx, vy } = shot.ball
+        const v = Math.hypot(vx, vy) || 1
+        const len = 46
+        g.lineStyle(TUNING.shotRadius * 0.9, color, 0.32)
+        g.beginPath()
+        g.moveTo(shot.ball.x - (vx / v) * len, shot.ball.y - (vy / v) * len)
+        g.lineTo(shot.ball.x, shot.ball.y)
+        g.strokePath()
+        g.lineStyle(2, 0xffffff, 0.5)
+        g.beginPath()
+        g.moveTo(shot.ball.x - (vx / v) * len * 0.5, shot.ball.y - (vy / v) * len * 0.5)
+        g.lineTo(shot.ball.x, shot.ball.y)
+        g.strokePath()
+        g.fillStyle(color, 1)
+        g.fillCircle(shot.ball.x, shot.ball.y, TUNING.shotRadius * 0.8)
+        g.fillStyle(0xffffff, 0.95)
+        g.fillCircle(shot.ball.x, shot.ball.y, 2.2)
+        continue
+      }
       g.lineStyle(TUNING.shotRadius * 1.6, color, 0.28)
       g.beginPath()
       g.moveTo(shot.prevX, shot.prevY)

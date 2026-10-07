@@ -7,7 +7,7 @@ import {
   type FanField,
   type StepResult,
 } from '../sim/ballistics'
-import type { Rect, Side } from '../types'
+import type { CannonKind, Rect, Side } from '../types'
 
 export class Shot {
   ball: Ball
@@ -16,10 +16,12 @@ export class Shot {
   readonly side: Side
   /** Capture progress this shot adds to a foe (or heals on a friend). */
   readonly damage: number
+  readonly kind: CannonKind
 
-  constructor(ball: Ball, side: Side, damage = 1) {
+  constructor(ball: Ball, side: Side, damage = 1, kind: CannonKind = 'normal') {
     this.ball = ball
     this.damage = damage
+    this.kind = kind
     this.prevX = ball.x
     this.prevY = ball.y
     this.side = side
@@ -30,7 +32,7 @@ export class Shot {
     this.prevY = this.ball.y
     const result = stepBall(this.ball, dt, walls, fans, bodies, opts)
     this.ball = result.ball
-    if (this.ball.age > TUNING.shotLifetimeMs) this.ball.alive = false
+    if (this.ball.age > (this.ball.lifeMs ?? TUNING.shotLifetimeMs)) this.ball.alive = false
     return result
   }
 }
