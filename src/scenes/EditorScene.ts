@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { GAME_HEIGHT, GAME_WIDTH, HUD_HEIGHT } from '../config/layout'
+import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import { TUNING } from '../config/tuning'
 import { cssHex, sideColor, theme } from '../config/theme'
 import { DEBUG } from '../debug'
@@ -12,6 +12,7 @@ import {
   editorWall,
   encodeShare,
   getMap,
+  getMapView,
   loadDraft,
   mapToJson,
   newMapId,
@@ -22,6 +23,7 @@ import {
   validateMap,
   withDifficulty,
   type Difficulty,
+  type MapView,
 } from '../editor/maps'
 import { Cannon } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
@@ -31,7 +33,6 @@ import { drawBoardSurface } from '../render/boardSurface'
 import { bindSceneResolution } from '../render/resolution'
 import { WorldCamera } from '../render/WorldCamera'
 import { Overlay, h } from '../ui/overlay'
-import { makeButton } from '../ui/button'
 import type { CannonDef, LevelDef, MapSize, Point, Rect, Side, WallDef } from '../types'
 
 export interface EditorData {
@@ -46,19 +47,33 @@ export interface EditorData {
 }
 
 type Tool = 'select' | 'player' | 'enemy' | 'neutral' | 'wall' | 'fan' | 'delete'
+type Popover = 'map' | 'share' | 'help'
 type ItemKind = 'cannon' | 'wall' | 'fan'
 interface ItemRef {
   kind: ItemKind
   index: number
 }
 
-const PANEL_W = 300
-const VIEW = { x: 0, y: HUD_HEIGHT + 2, w: GAME_WIDTH - PANEL_W, h: GAME_HEIGHT - HUD_HEIGHT - 2 }
+/** Toolbar + slim context bar across the top; the board gets everything below. */
+const TOOLBAR_H = 44
+const CONTEXT_H = 34
+const TOP = TOOLBAR_H + CONTEXT_H
+const VIEW = { x: 0, y: TOP, w: GAME_WIDTH, h: GAME_HEIGHT - TOP }
 const GRID = 16
 const ROTATE_STEP = Math.PI / 12 // 15 degrees
 const UNDO_LIMIT = 120
 const deg = (rad: number): number => Math.round((rad * 180) / Math.PI)
 const rad = (d: number): number => (d * Math.PI) / 180
+
+const TOOL_TIPS: Record<Tool, string> = {
+  select: 'Move: drag things, drag empty space to pan',
+  player: 'Place a gold (player) cannon',
+  enemy: 'Place an enemy cannon',
+  neutral: 'Place a neutral cannon',
+  wall: 'Place a wall',
+  fan: 'Place a fan',
+  delete: 'Delete tool',
+}
 
 const TOOLS: { id: Tool; label: string; key: string; color?: number }[] = [
   { id: 'select', label: 'Move', key: 'V' },
@@ -91,16 +106,24 @@ export class EditorScene extends Phaser.Scene {
   private wallViews: Wall[] = []
   private fanViews: Fan[] = []
   private fx!: Phaser.GameObjects.Graphics
-  private titleText!: Phaser.GameObjects.Text
-  private hintText!: Phaser.GameObjects.Text
 
   private drag: { ref: ItemRef; dx: number; dy: number; moved: boolean } | null = null
   private pressOnUi = false
+  private startView: MapView | undefined
+  private lastViewKey = ''
+  private viewSavedAt = 0
 
-  private panel!: Overlay
   private dom: {
     tools: Map<Tool, HTMLButtonElement>
     props: HTMLDivElement
+    mapName: HTMLSpanElement
+    status: HTMLSpanElement
+    zoomText: HTMLSpanElement
+    snap: HTMLButtonElement
+    undo: HTMLButtonElement
+    redo: HTMLButtonElement
+    popBtns: Map<Popover, HTMLButtonElement>
+    pops: Map<Popover, Overlay>
     name: HTMLInputElement
     mode: HTMLSelectElement
     aims: HTMLInputElement
@@ -110,17 +133,13 @@ export class EditorScene extends Phaser.Scene {
     diffRow: HTMLDivElement
     size: HTMLSelectElement
     hint: HTMLInputElement
-    snap: HTMLInputElement
-    undo: HTMLButtonElement
-    redo: HTMLButtonElement
-    status: HTMLDivElement
     issues: HTMLDivElement
     share: HTMLTextAreaElement
     file: HTMLInputElement
   } | null = null
   private propsFor = ''
-  private tab: 'selected' | 'map' | 'share' = 'selected'
-  private showTab: (id: 'selected' | 'map' | 'share') => void = () => {}
+  private openPop: Popover | null = null
+  private statusMsg: { text: string; kind: '' | 'err' | 'ok' } | null = null
   private readonly onKey = (e: KeyboardEvent): void => this.handleKey(e)
 
   constructor() {
@@ -138,15 +157,18 @@ export class EditorScene extends Phaser.Scene {
     this.drag = null
     let level: LevelDef
     let savedId: string | null = null
+    this.startView = undefined
     if (data?.mapId && getMap(data.mapId)) {
       level = getMap(data.mapId) as LevelDef
       savedId = level.id
+      this.startView = getMapView(level.id)
     } else if (data?.level) {
       level = sanitizeLevel(data.level)
       savedId = getMap(level.id) ? level.id : null
     } else if (!data?.fresh && draft) {
       level = draft.level
       savedId = draft.savedId
+      this.startView = draft.view
     } else {
       level = blankMap()
     }
@@ -167,16 +189,14 @@ export class EditorScene extends Phaser.Scene {
     bindSceneResolution(this, { camera: this.uiCam })
     this.board = boardFor(this.level)
     this.wc = new WorldCamera(this, this.board, VIEW)
-    // Small maps start fully in view; bigger ones start near, like play.
-    if ((this.level.size ?? 'small') === 'small') this.wc.fit()
-    else {
-      this.wc.zoom = Math.max(this.wc.minZoom, 0.8)
-      this.wc.apply()
-    }
+    // Back from a playtest or reopening a map: the exact last camera.
+    // Otherwise fit the whole board to the screen.
+    if (this.startView) this.setView(this.startView)
+    else this.wc.fit()
+    this.lastViewKey = this.viewKey()
 
     this.fx = this.world(this.add.graphics().setDepth(7))
-    this.buildHud()
-    this.buildPanel()
+    this.buildBar()
     this.rebuildBoard()
     this.renderAll()
     this.refreshPanel(true)
@@ -196,6 +216,17 @@ export class EditorScene extends Phaser.Scene {
 
   update(time: number, delta: number): void {
     this.wc.update(Math.min(delta, 32))
+    // Remember the camera (throttled) so a reload keeps it.
+    const key = this.viewKey()
+    if (this.dom) {
+      const pct = `${Math.round(this.wc.zoom * 100)}%`
+      if (this.dom.zoomText.textContent !== pct) this.dom.zoomText.textContent = pct
+    }
+    if (key !== this.lastViewKey && time - this.viewSavedAt > 400) {
+      this.lastViewKey = key
+      this.viewSavedAt = time
+      this.persist()
+    }
     for (const fan of this.fanViews) fan.draw(time)
     this.cannonViews.forEach((c, i) => {
       c.selected = this.sel?.kind === 'cannon' && this.sel.index === i
@@ -209,11 +240,6 @@ export class EditorScene extends Phaser.Scene {
 
   private world<T extends Phaser.GameObjects.GameObject>(obj: T): T {
     this.uiCam.ignore(obj)
-    return obj
-  }
-
-  private ui<T extends Phaser.GameObjects.GameObject>(obj: T): T {
-    this.cameras.main.ignore(obj)
     return obj
   }
 
@@ -403,6 +429,7 @@ export class EditorScene extends Phaser.Scene {
     this.pressOnUi = (over && over.length > 0) || !this.wc.inView(pointer.x, pointer.y)
     if (this.pressOnUi) return
     ;(document.activeElement as HTMLElement | null)?.blur?.()
+    this.togglePop(null)
     const p = this.worldAt(pointer)
     const hit = this.pickingAim || this.tool === 'delete' ? null : this.itemAt(p.x, p.y)
     if (hit) {
@@ -525,7 +552,22 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private persist(): void {
-    saveDraft(this.level, this.savedId)
+    saveDraft(this.level, this.savedId, this.view())
+  }
+
+  /** The current camera, as stored with the draft / saved map. */
+  view(): MapView {
+    return { zoom: this.wc.zoom, x: this.wc.center.x, y: this.wc.center.y }
+  }
+
+  private setView(v: MapView): void {
+    this.wc.zoom = v.zoom
+    this.wc.center = { x: v.x, y: v.y }
+    this.wc.apply()
+  }
+
+  private viewKey(): string {
+    return `${this.wc.zoom.toFixed(4)},${this.wc.center.x.toFixed(1)},${this.wc.center.y.toFixed(1)}`
   }
 
   private restore(json: string): void {
@@ -621,7 +663,7 @@ export class EditorScene extends Phaser.Scene {
   private select(ref: ItemRef | null): void {
     this.sel = ref
     if (!ref) this.pickingAim = false
-    else if (this.tab !== 'selected') this.showTab('selected')
+
     this.refreshPanel(false)
   }
 
@@ -698,7 +740,8 @@ export class EditorScene extends Phaser.Scene {
     const problems = validateMap(this.level)
     if (problems.length) return this.status(problems.join(' '), true)
     this.persist()
-    this.scene.start('battle', { custom: this.playLevel(), from: 'editor' })
+    // Playtest starts where the editor camera is (clamped to play's limits).
+    this.scene.start('battle', { custom: this.playLevel(), from: 'editor', view: this.view() })
   }
 
   save(asCopy = false): void {
@@ -706,7 +749,7 @@ export class EditorScene extends Phaser.Scene {
       this.level.id = newMapId()
       this.level.name = `${this.level.name} copy`.slice(0, LIMITS.name)
     }
-    const stored = saveMap(this.level)
+    const stored = saveMap(this.level, this.view())
     this.savedId = stored.id
     this.savedJson = JSON.stringify(stored)
     this.persist()
@@ -790,7 +833,8 @@ export class EditorScene extends Phaser.Scene {
     if (typing || mod) return
     const key = e.key
     if (key === 'Escape') {
-      if (this.pickingAim) {
+      if (this.openPop) this.togglePop(null)
+      else if (this.pickingAim) {
         this.pickingAim = false
         this.refreshPanel(true)
       } else this.select(null)
@@ -814,97 +858,79 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-  // ---------------------------------------------------------------- HUD (canvas)
+  // ---------------------------------------------------------------- top bar (DOM)
 
-  private buildHud(): void {
-    const band = this.ui(this.add.graphics().setDepth(9))
-    band.fillStyle(theme.hud, 1)
-    band.fillRect(0, 0, GAME_WIDTH, HUD_HEIGHT)
-    band.fillStyle(theme.boardEdge, 1)
-    band.fillRect(0, HUD_HEIGHT, GAME_WIDTH, 2)
-    this.titleText = this.ui(
-      this.add.text(28, 14, '', { fontFamily: theme.font, fontSize: '22px', fontStyle: 'bold', color: theme.text }).setDepth(10),
-    )
-    this.hintText = this.ui(
-      this.add.text(28, 44, '', { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted }).setDepth(10),
-    )
-    const link = (x: number, label: string, onClick: () => void): void => {
-      const text = this.ui(
-        this.add
-          .text(x, 26, label, { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
-          .setOrigin(1, 0.5)
-          .setDepth(10)
-          .setInteractive({ useHandCursor: true }),
-      )
-      text.on('pointerover', () => text.setColor(theme.text))
-      text.on('pointerout', () => text.setColor(theme.textMuted))
-      text.on('pointerdown', onClick)
-    }
-    link(GAME_WIDTH - 28, 'Menu', () => this.back())
-    link(GAME_WIDTH - 98, 'My maps', () => {
-      this.persist()
-      this.scene.start('maps')
-    })
-
-    const x = VIEW.w - 34
-    const y = GAME_HEIGHT - 150
-    const plus = makeButton(this, x, y, '+', () => this.wc.zoomBy(1.25), { width: 44, height: 40, primary: false, fontSize: 22 })
-    const minus = makeButton(this, x, y + 48, '−', () => this.wc.zoomBy(0.8), { width: 44, height: 40, primary: false, fontSize: 22 })
-    const fit = makeButton(this, x, y + 96, 'Fit', () => this.wc.fit(), { width: 44, height: 40, primary: false, fontSize: 13 })
-    this.ui(this.add.container(0, 0, [plus, minus, fit]).setDepth(11))
-  }
-
-  private hintLine(): string {
-    if (this.pickingAim) return 'Click a cannon or a spot on the board for the starting aim. Esc cancels.'
-    switch (this.tool) {
-      case 'select':
-        return 'Drag things to move them. Drag empty space to pan, scroll to zoom. Del removes the selection.'
-      case 'delete':
-        return 'Click anything to delete it. Ctrl+Z undoes.'
-      case 'wall':
-        return 'Click to place a wall. Q / E rotate the selected wall by 15°.'
-      case 'fan':
-        return 'Click to place a fan. Q / E turn its direction by 15°.'
-      default:
-        return `Click the board to place ${this.tool === 'player' ? 'a gold' : this.tool === 'enemy' ? 'an enemy' : 'a neutral'} cannon.`
-    }
-  }
-
-  // ---------------------------------------------------------------- panel (DOM)
-
-  private buildPanel(): void {
-    this.panel = new Overlay(this, { x: VIEW.w, y: VIEW.y, w: PANEL_W, h: VIEW.h })
-    const root = this.panel.el
+  private buildBar(): void {
+    const bar = new Overlay(this, { x: 0, y: 0, w: GAME_WIDTH, h: TOP }, 'cc-bar')
 
     const tools = new Map<Tool, HTMLButtonElement>()
-    const toolGrid = h('div.cc-grid')
+    const toolGroup = h('div.cc-group')
     for (const t of TOOLS) {
       const btn = h(
-        'button.cc-btn',
-        { title: `${t.label} (${t.key})`, onclick: () => this.setTool(t.id) },
+        'button.cc-btn.sm',
+        { title: `${TOOL_TIPS[t.id]} (${t.key})`, onclick: () => this.setTool(t.id) },
         t.color !== undefined ? dot(t.color) : null,
         t.label,
       )
       tools.set(t.id, btn)
-      toolGrid.append(btn)
+      toolGroup.append(btn)
     }
-    const del = h('button.cc-btn.danger', { title: 'Delete tool (X)', onclick: () => this.setTool('delete') }, 'Delete')
+    const del = h('button.cc-btn.sm.danger', { title: 'Delete tool: click things to remove them (X)', onclick: () => this.setTool('delete') }, 'Delete')
     tools.set('delete', del)
-    toolGrid.append(del)
+    toolGroup.append(del)
 
-    const snap = h('input', { type: 'checkbox', checked: this.snap, onchange: () => {
-      this.snap = snap.checked
+    const undo = h('button.cc-btn.sm.icon', { title: 'Undo (Ctrl+Z)', onclick: () => this.undo() }, '↶')
+    const redo = h('button.cc-btn.sm.icon', { title: 'Redo (Ctrl+Shift+Z)', onclick: () => this.redo() }, '↷')
+    const snap = h('button.cc-btn.sm', { title: `Snap to a ${GRID}px grid (G)`, onclick: () => {
+      this.snap = !this.snap
       this.refreshPanel(false)
-    } })
-    const undo = h('button.cc-btn', { title: 'Undo (Ctrl+Z)', onclick: () => this.undo() }, 'Undo')
-    const redo = h('button.cc-btn', { title: 'Redo (Ctrl+Shift+Z)', onclick: () => this.redo() }, 'Redo')
-    toolGrid.append(undo, redo)
+    } }, '▦ Snap')
 
-    const props = h('div')
+    const popBtns = new Map<Popover, HTMLButtonElement>()
+    const popBtn = (id: Popover, label: string, title: string): HTMLButtonElement => {
+      const btn = h('button.cc-btn.sm', { title, onclick: () => this.togglePop(id) }, label)
+      popBtns.set(id, btn)
+      return btn
+    }
 
+    const toolbar = h('div.cc-toolbar', {},
+      toolGroup,
+      h('div.cc-group', {}, undo, redo, snap),
+      h('div.cc-group', {},
+        popBtn('map', 'Map ▾', 'Name, mode, AI, size and hint'),
+        popBtn('share', 'Share ▾', 'Share code, import, .json files'),
+        popBtn('help', '?', 'Controls and keys'),
+      ),
+      h('div.cc-spacer'),
+      h('div.cc-group', {},
+        h('button.cc-btn.sm.primary', { title: 'Play this map now (P)', onclick: () => this.playtest() }, '▶ Playtest'),
+        h('button.cc-btn.sm', { title: 'Save to My maps', onclick: () => this.save() }, 'Save'),
+        h('button.cc-btn.sm', { title: 'All your saved maps', onclick: () => {
+          this.persist()
+          this.scene.start('maps')
+        } }, 'My maps'),
+        h('button.cc-btn.sm', { title: 'Back to the title screen', onclick: () => this.back() }, 'Menu'),
+      ),
+    )
+
+    const mapName = h('span.cc-name')
+    const props = h('div.cc-props')
+    const status = h('span.cc-status')
+    const zoomText = h('span.cc-val', { style: 'min-width:40px;text-align:center', title: 'Zoom' }, '100%')
+    const zoom = h('span.cc-field', {},
+      h('button.cc-btn.xs', { title: 'Zoom out (− or wheel)', onclick: () => this.wc.zoomBy(0.8) }, '−'),
+      zoomText,
+      h('button.cc-btn.xs', { title: 'Zoom in (+ or wheel)', onclick: () => this.wc.zoomBy(1.25) }, '+'),
+      h('button.cc-btn.xs', { title: 'Fit the whole board (0)', onclick: () => this.wc.fit() }, 'Fit'),
+    )
+    const context = h('div.cc-context', {}, mapName, h('span.cc-vsep'), props, h('div.cc-spacer'), status, h('span.cc-vsep'), zoom)
+    bar.el.append(toolbar, context)
+
+    // ---- popovers (fixed size, never scroll)
     const name = h('input.cc-in', { maxLength: LIMITS.name, value: this.level.name, oninput: () => {
       this.edit(() => (this.level.name = name.value.slice(0, LIMITS.name) || 'My map'), { merge: 'name', rebuild: false })
     } })
+    const unlimited = h('input', { type: 'checkbox' })
     const mode = h(
       'select.cc-sel',
       { onchange: () => this.edit(() => {
@@ -919,10 +945,10 @@ export class EditorScene extends Phaser.Scene {
       const n = Math.round(Number(aims.value))
       if (n >= 1 && n <= 99) this.edit(() => (this.level.aims = n), { merge: 'aims', rebuild: false })
     } })
-    const unlimited = h('input', { type: 'checkbox', onchange: () => this.edit(() => {
+    unlimited.addEventListener('change', () => this.edit(() => {
       if (unlimited.checked) delete this.level.aims
       else this.level.aims = Math.max(1, Math.round(Number(aims.value)) || 3)
-    }, { rebuild: false }) })
+    }, { rebuild: false }))
     const aimsRow = h('div.cc-row', {}, h('label', {}, 'Aims'), aims, h('label.cc-check', {}, unlimited, 'Unlimited'))
     const diff = h(
       'select.cc-sel',
@@ -933,9 +959,9 @@ export class EditorScene extends Phaser.Scene {
     const size = h(
       'select.cc-sel',
       { onchange: () => this.setSize(size.value as MapSize) },
-      ...MAP_SIZE_IDS.map((s) => {
-        const b = boardFor(s)
-        return h('option', { value: s }, `${MAP_SIZES[s].label}  ·  ${b.w}×${b.h}`)
+      ...MAP_SIZE_IDS.map((sz) => {
+        const b = boardFor(sz)
+        return h('option', { value: sz }, `${MAP_SIZES[sz].label}  ·  ${b.w}×${b.h}`)
       }),
     )
     const hint = h('input.cc-in', { maxLength: 160, placeholder: 'Optional, shown when the map starts', oninput: () => {
@@ -945,9 +971,7 @@ export class EditorScene extends Phaser.Scene {
         else delete this.level.hint
       }, { merge: 'hint', rebuild: false })
     } })
-
     const issues = h('div.cc-msg.err')
-    const status = h('div.cc-msg')
     const share = h('textarea.cc-area', { placeholder: 'Paste a share code (CC1:...) or map JSON here, then Import.', spellcheck: false })
     const file = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none', onchange: () => {
       const f = file.files?.[0]
@@ -955,94 +979,116 @@ export class EditorScene extends Phaser.Scene {
       file.value = ''
     } })
 
-    // Three tabs instead of one long scrolling panel: everything fits, nothing scrolls.
-    const mapTab = h('div', {},
+    const pops = new Map<Popover, Overlay>()
+    const pop = (id: Popover, x: number, w: number, hgt: number, ...children: (HTMLElement | null)[]): void => {
+      const o = new Overlay(this, { x, y: TOOLBAR_H + 2, w, h: hgt }, 'cc-pop')
+      o.el.append(...(children.filter(Boolean) as HTMLElement[]))
+      o.el.style.display = 'none'
+      pops.set(id, o)
+    }
+    pop('map', 470, 340, 300,
+      h('div.cc-h', {}, 'Map settings'),
       h('div.cc-row', {}, h('label', {}, 'Name'), name),
       h('div.cc-row', {}, h('label', {}, 'Mode'), mode),
       aimsRow,
       diffRow,
       h('div.cc-row', {}, h('label', {}, 'Size'), size),
       h('div.cc-row', {}, h('label', {}, 'Hint'), hint),
-      h('div.cc-row', { style: 'margin-top:10px' },
-        h('button.cc-btn', { style: 'flex:1', onclick: () => this.save(true) }, 'Save copy'),
-        h('button.cc-btn', { style: 'flex:1', onclick: () => this.replaceLevel(blankMap(this.level.size ?? 'small'), null, 'New map. Undo (Ctrl+Z) brings the old one back.') }, 'New map'),
+      issues,
+      h('div.cc-row', { style: 'margin-top:8px' },
+        h('button.cc-btn.sm', { style: 'flex:1', onclick: () => this.save(true) }, 'Save as copy'),
+        h('button.cc-btn.sm', { style: 'flex:1', onclick: () => {
+          this.togglePop(null)
+          this.replaceLevel(blankMap(this.level.size ?? 'small'), null, 'New map. Undo (Ctrl+Z) brings the old one back.')
+        } }, 'New map'),
       ),
     )
-    const shareTab = h('div', {},
+    pop('share', 540, 340, 222,
+      h('div.cc-h', {}, 'Share'),
       share,
       h('div.cc-row', {},
-        h('button.cc-btn', { style: 'flex:1', onclick: () => this.shareCode() }, 'Get code'),
-        h('button.cc-btn', { style: 'flex:1', onclick: () => this.importCode(share.value) }, 'Import'),
+        h('button.cc-btn.sm', { style: 'flex:1', onclick: () => this.shareCode() }, 'Get code'),
+        h('button.cc-btn.sm', { style: 'flex:1', onclick: () => this.importCode(share.value) }, 'Import'),
       ),
       h('div.cc-row', {},
-        h('button.cc-btn', { style: 'flex:1', onclick: () => this.download() }, 'Download .json'),
-        h('button.cc-btn', { style: 'flex:1', onclick: () => file.click() }, 'Upload .json'),
+        h('button.cc-btn.sm', { style: 'flex:1', onclick: () => this.download() }, 'Download .json'),
+        h('button.cc-btn.sm', { style: 'flex:1', onclick: () => file.click() }, 'Upload .json'),
       ),
       file,
-      h('div.cc-note', { style: 'margin-top:6px' }, 'Share codes start with CC1: and hold the whole map. Paste one here (or in My maps) to load it.'),
+      h('div.cc-note', { style: 'margin-top:4px' }, 'Codes start with CC1: and hold the whole map.'),
     )
-    const tabs = { selected: props, map: mapTab, share: shareTab }
-    const tabBtns = new Map<keyof typeof tabs, HTMLButtonElement>()
-    const tabBar = h('div.cc-grid', { style: 'margin-top:12px' })
-    for (const [id, label] of [['selected', 'Selected'], ['map', 'Map'], ['share', 'Share']] as const) {
-      const btn = h('button.cc-btn', { onclick: () => this.showTab(id) }, label)
-      tabBtns.set(id, btn)
-      tabBar.append(btn)
-    }
-    this.showTab = (id): void => {
-      this.tab = id
-      for (const [key, el] of Object.entries(tabs)) el.style.display = key === id ? '' : 'none'
-      for (const [key, btn] of tabBtns) btn.classList.toggle('on', key === id)
-    }
-    const body = h('div', { style: 'margin-top:8px' }, props, mapTab, shareTab)
-    const footer = h('div', { style: 'position:absolute;left:12px;right:12px;bottom:10px' },
-      issues,
-      h('div.cc-row', {},
-        h('button.cc-btn.primary', { style: 'flex:1', title: 'P', onclick: () => this.playtest() }, '▶ Playtest'),
-        h('button.cc-btn', { style: 'flex:1', onclick: () => this.save() }, 'Save'),
-      ),
-      status,
-      h('div.cc-note', { style: 'font-size:11px;margin-top:4px' }, 'Keys: 1-5 place · V move · X delete · Q/E rotate · G snap · P play · Ctrl+Z undo · WASD pan · +/− zoom · 0 fit'),
+    const keys: [string, string][] = [
+      ['Click / tap', 'Place with the chosen tool, or select'],
+      ['Drag', 'Move things · drag empty space to pan'],
+      ['Wheel / pinch', 'Zoom (+ / − / 0 keys, or the corner buttons)'],
+      ['WASD / arrows', 'Pan'],
+      ['1 2 3', 'Gold / enemy / neutral cannon'],
+      ['4 5', 'Wall / fan'],
+      ['V · X', 'Move tool · Delete tool'],
+      ['Del', 'Delete the selection'],
+      ['Q / E', 'Rotate wall or fan 15°'],
+      ['G · P', 'Snap · Playtest'],
+      ['Ctrl+Z / Ctrl+Y', 'Undo / redo'],
+      ['Esc', 'Close, cancel or deselect'],
+    ]
+    pop('help', 610, 380, 300,
+      h('div.cc-h', {}, 'Controls'),
+      h('div.cc-keys', {}, ...keys.flatMap(([k, v]) => [h('b', {}, k), h('span', {}, v)])),
     )
-    root.append(
-      h('div.cc-h', {}, 'Tools'),
-      toolGrid,
-      h('div.cc-row', {}, h('label.cc-check', { title: 'G' }, snap, `Snap to grid (${GRID}px)`)),
-      tabBar,
-      body,
-      footer,
-    )
-    this.showTab('selected')
-    this.dom = { tools, props, name, mode, aims, unlimited, aimsRow, diff, diffRow, size, hint, snap, undo, redo, status, issues, share, file }
+
+    this.dom = { tools, props, mapName, status, zoomText, snap, undo, redo, popBtns, pops, name, mode, aims, unlimited, aimsRow, diff, diffRow, size, hint, issues, share, file }
+  }
+
+  /** Open one popover (or close all with null). Clicking its button again closes it. */
+  private togglePop(id: Popover | null): void {
+    const d = this.dom
+    if (!d) return
+    const next = id && this.openPop !== id ? id : null
+    this.openPop = next
+    for (const [key, o] of d.pops) o.el.style.display = key === next ? '' : 'none'
+    for (const [key, btn] of d.popBtns) btn.classList.toggle('on', key === next)
   }
 
   private statusTimer: Phaser.Time.TimerEvent | null = null
 
   private status(message: string, error = false, ok = false): void {
-    if (!this.dom) return
-    const el = this.dom.status
-    el.textContent = message
-    el.className = `cc-msg${error ? ' err' : ok ? ' ok' : ''}`
+    this.statusMsg = { text: message, kind: error ? 'err' : ok ? 'ok' : '' }
     this.statusTimer?.remove()
-    this.statusTimer = this.time.delayedCall(7000, () => {
-      if (el.textContent === message) this.refreshSaveState()
+    this.statusTimer = this.time.delayedCall(error ? 8000 : 5000, () => {
+      if (this.statusMsg?.text === message) this.statusMsg = null
+      this.refreshStatus()
     })
+    this.refreshStatus()
   }
 
-  private refreshSaveState(): void {
-    if (!this.dom) return
-    const el = this.dom.status
-    el.className = 'cc-msg'
-    el.textContent = this.savedId ? (this.dirty ? 'Unsaved changes.' : 'Saved in My maps.') : 'Not saved yet (your work is kept as a draft).'
+  /** Right side of the context bar: a recent message, else problems, else save state. */
+  private refreshStatus(): void {
+    const d = this.dom
+    if (!d) return
+    const problems = validateMap(this.level)
+    let text: string
+    let kind = ''
+    if (this.statusMsg) {
+      text = this.statusMsg.text
+      kind = this.statusMsg.kind
+    } else if (problems.length) {
+      text = problems[0]
+      kind = 'err'
+    } else {
+      text = this.savedId ? (this.dirty ? 'Unsaved changes' : 'Saved') : 'Draft (not saved yet)'
+    }
+    d.status.textContent = text
+    d.status.title = text
+    d.status.className = `cc-status ${kind}`
   }
 
-  /** Sync the panel with the level. `props`: also rebuild the selection section. */
+  /** Sync the bar with the level. `props`: also rebuild the selection controls. */
   private refreshPanel(props: boolean): void {
     const d = this.dom
     if (!d) return
     const L = this.level
     for (const [id, btn] of d.tools) btn.classList.toggle('on', id === this.tool && !this.pickingAim)
-    d.snap.checked = this.snap
+    d.snap.classList.toggle('on', this.snap)
     d.undo.disabled = this.undoStack.length === 0
     d.redo.disabled = this.redoStack.length === 0
     const active = document.activeElement
@@ -1057,50 +1103,58 @@ export class EditorScene extends Phaser.Scene {
     d.size.value = L.size ?? 'small'
     if (active !== d.hint) d.hint.value = L.hint ?? ''
     d.issues.textContent = validateMap(L).join(' ')
+    const mode = L.kind === 'puzzle' ? 'Puzzle' : 'Battle'
+    d.mapName.textContent = `${L.name} · ${MAP_SIZES[L.size ?? 'small'].label} · ${mode}`
+    d.mapName.title = `${L.name} (open Map ▾ to rename)`
 
-    const key = this.sel ? `${this.sel.kind}:${this.sel.index}:${this.pickingAim}` : `none:${this.pickingAim}`
+    const key = this.sel ? `${this.sel.kind}:${this.sel.index}:${this.pickingAim}` : `none:${this.pickingAim}:${this.tool}`
     if (props || key !== this.propsFor) {
       this.propsFor = key
       d.props.replaceChildren(...this.buildProps())
     }
-    this.titleText?.setText(`Map editor  ·  ${L.name}`)
-    this.hintText?.setText(this.hintLine())
-    if (d.status.className === 'cc-msg') this.refreshSaveState()
+    this.refreshStatus()
   }
 
+  /** The slim contextual bar: controls for whatever is selected. */
   private buildProps(): HTMLElement[] {
     const ref = this.sel
     const L = this.level
-    if (!ref) {
-      return [
-        h('div.cc-note', {}, `Nothing selected. ${L.cannons.length} cannons, ${L.walls.length} walls, ${L.fans.length} fans.`),
-      ]
+    if (this.pickingAim) {
+      return [h('span.cc-note', {}, 'Click a cannon or a spot for the starting aim. Esc cancels.')]
     }
-    const remove = h('button.cc-btn.danger.wide', { onclick: () => this.deleteItem(ref) }, 'Delete (Del)')
+    if (!ref) {
+      const tip =
+        this.tool === 'select'
+          ? 'Drag to move · drag empty space to pan · scroll to zoom'
+          : this.tool === 'delete'
+            ? 'Click anything to delete it'
+            : `Click the board to place: ${TOOLS.find((t) => t.id === this.tool)?.label ?? ''}`
+      return [h('span.cc-note', {}, `${L.cannons.length} cannons · ${L.walls.length} walls · ${L.fans.length} fans  —  ${tip}`)]
+    }
+    const remove = h('button.cc-btn.xs.danger', { title: 'Delete (Del)', onclick: () => this.deleteItem(ref) }, 'Delete')
     const slider = (
       label: string,
       value: number,
       min: number,
       max: number,
       step: number,
-      unit: string,
       apply: (v: number) => void,
       merge: string,
     ): HTMLElement => {
-      const out = h('span.cc-note', { style: 'min-width:46px;text-align:right' }, `${value}${unit}`)
+      const out = h('span.cc-val', {}, String(value))
       const input = h('input.cc-range', { type: 'range', min, max, step, value, oninput: () => {
         const v = Number(input.value)
-        out.textContent = `${v}${unit}`
+        out.textContent = String(v)
         this.edit(() => apply(v), { merge, rebuild: false })
         this.refreshItem(ref)
       } })
-      return h('div.cc-row', {}, h('label', {}, label), input, out)
+      return h('span.cc-field', {}, h('label', {}, label), input, out)
     }
 
     if (ref.kind === 'cannon') {
       const c = L.cannons[ref.index]
       const side = h(
-        'select.cc-sel',
+        'select.cc-sel.xs',
         { onchange: () => this.setSide(ref.index, side.value as Side) },
         h('option', { value: 'player' }, 'Gold (yours)'),
         h('option', { value: 'enemy' }, 'Enemy'),
@@ -1108,30 +1162,24 @@ export class EditorScene extends Phaser.Scene {
       )
       side.value = c.side
       const target = c.aimAt ? L.cannons.find((o) => o.id === c.aimAt) : null
-      const aimText = target ? `Aims at ${target.name}` : c.aimPoint ? `Aims at (${c.aimPoint.x}, ${c.aimPoint.y})` : 'No starting aim'
-      const pick = h(
-        'button.cc-btn',
-        { className: `cc-btn${this.pickingAim ? ' on' : ''}`, style: 'flex:1', onclick: () => {
-          this.pickingAim = !this.pickingAim
-          this.refreshPanel(true)
-        } },
-        this.pickingAim ? 'Click the board…' : 'Set aim',
-      )
-      const clear = h('button.cc-btn', { style: 'flex:1', disabled: !c.aimAt && !c.aimPoint, onclick: () => {
-        this.edit(() => {
-          delete c.aimAt
-          delete c.aimPoint
-        })
-        this.refreshPanel(true)
-      } }, 'Clear aim')
+      const aimText = target ? `at ${target.name}` : c.aimPoint ? `at (${c.aimPoint.x}, ${c.aimPoint.y})` : 'none'
       return [
-        h('div.cc-row', {}, dot(sideColor(c.side)), h('b', {}, `Cannon ${c.name}`), h('span.cc-note', {}, `(${c.x}, ${c.y})`)),
-        h('div.cc-row', {}, h('label', {}, 'Owner'), side),
-        h('div.cc-row', {}, h('label', {}, 'Start aim'), h('span.cc-note', {}, aimText)),
-        h('div.cc-row', {}, pick, clear),
-        c.side === 'neutral' ? h('div.cc-note', {}, 'Neutral cannons never fire, so their aim only matters once captured.') : null,
+        h('span.cc-field', {}, dot(sideColor(c.side)), h('b', {}, `Cannon ${c.name}`)),
+        h('span.cc-field', {}, h('label', {}, 'Owner'), side),
+        h('span.cc-field', {}, h('label', {}, 'Start aim'), h('span.cc-val', { style: 'min-width:0' }, aimText)),
+        h('button.cc-btn.xs', { onclick: () => {
+          this.pickingAim = true
+          this.refreshPanel(true)
+        } }, 'Set aim'),
+        h('button.cc-btn.xs', { disabled: !c.aimAt && !c.aimPoint, onclick: () => {
+          this.edit(() => {
+            delete c.aimAt
+            delete c.aimPoint
+          })
+          this.refreshPanel(true)
+        } }, 'Clear'),
         remove,
-      ].filter(Boolean) as HTMLElement[]
+      ]
     }
 
     if (ref.kind === 'wall') {
@@ -1144,42 +1192,37 @@ export class EditorScene extends Phaser.Scene {
         w.x = Math.round(cx - len / 2)
         w.y = Math.round(cy - thick / 2)
       }
-      const rotRow = h(
-        'div.cc-row',
-        {},
-        h('label', {}, 'Rotation'),
-        h('button.cc-btn', { title: 'Q', onclick: () => this.rotateSelected(-1) }, '⟲ 15°'),
-        h('span.cc-note', { style: 'min-width:40px;text-align:center' }, `${deg(w.angle ?? 0)}°`),
-        h('button.cc-btn', { title: 'E', onclick: () => this.rotateSelected(1) }, '⟳ 15°'),
-      )
       return [
-        h('div.cc-row', {}, dot(theme.wall), h('b', {}, 'Wall')),
-        slider('Length', w.w, 30, Math.min(1400, this.board.w), 10, 'px', (v) => resize(v, w.h), `wl-${ref.index}`),
-        slider('Thickness', w.h, 12, 80, 2, 'px', (v) => resize(w.w, v), `wt-${ref.index}`),
-        rotRow,
+        h('span.cc-field', {}, dot(theme.wall), h('b', {}, 'Wall')),
+        slider('Length', w.w, 30, Math.min(1400, this.board.w), 10, (v) => resize(v, w.h), `wl-${ref.index}`),
+        slider('Thick', w.h, 12, 80, 2, (v) => resize(w.w, v), `wt-${ref.index}`),
+        h('span.cc-field', {},
+          h('label', {}, 'Turn'),
+          h('button.cc-btn.xs', { title: 'Q', onclick: () => this.rotateSelected(-1) }, '⟲'),
+          h('span.cc-val', { style: 'min-width:34px;text-align:center' }, `${deg(w.angle ?? 0)}°`),
+          h('button.cc-btn.xs', { title: 'E', onclick: () => this.rotateSelected(1) }, '⟳'),
+        ),
         remove,
       ]
     }
 
     const f = L.fans[ref.index]
     const dirs: [string, number][] = [['→', 0], ['↓', 90], ['←', 180], ['↑', 270]]
-    const dirRow = h(
-      'div.cc-row',
-      {},
-      h('label', {}, 'Direction'),
-      ...dirs.map(([label, d]) =>
-        h('button.cc-btn', { className: `cc-btn${Math.abs(normAngle(f.angle, Math.PI * 2) - rad(d)) < 0.01 ? ' on' : ''}`, onclick: () => {
-          this.edit(() => (f.angle = rad(d === 270 ? -90 : d)), { rebuild: false })
-          this.refreshItem(ref)
-          this.refreshPanel(true)
-        } }, label),
-      ),
-    )
     return [
-      h('div.cc-row', {}, dot(theme.fan), h('b', {}, 'Fan'), h('span.cc-note', {}, `blows ${deg(normAngle(f.angle, Math.PI * 2))}° (Q/E turn)`)),
-      dirRow,
-      slider('Strength', f.force ?? TUNING.fanForce, 100, 1200, 20, '', (v) => (f.force = v), `ff-${ref.index}`),
-      slider('Radius', f.radius, 60, 360, 10, 'px', (v) => (f.radius = v), `fr-${ref.index}`),
+      h('span.cc-field', {}, dot(theme.fan), h('b', {}, 'Fan')),
+      h('span.cc-field', {},
+        h('label', {}, 'Blows'),
+        ...dirs.map(([label, d]) =>
+          h('button.cc-btn.xs', { className: `cc-btn xs${Math.abs(normAngle(f.angle, Math.PI * 2) - rad(d)) < 0.01 ? ' on' : ''}`, onclick: () => {
+            this.edit(() => (f.angle = rad(d === 270 ? -90 : d)), { rebuild: false })
+            this.refreshItem(ref)
+            this.refreshPanel(true)
+          } }, label),
+        ),
+        h('span.cc-val', { style: 'min-width:34px;text-align:center', title: 'Q / E turn by 15°' }, `${deg(normAngle(f.angle, Math.PI * 2))}°`),
+      ),
+      slider('Strength', f.force ?? TUNING.fanForce, 100, 1200, 20, (v) => (f.force = v), `ff-${ref.index}`),
+      slider('Radius', f.radius, 60, 360, 10, (v) => (f.radius = v), `fr-${ref.index}`),
       remove,
     ]
   }

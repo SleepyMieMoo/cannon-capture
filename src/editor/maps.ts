@@ -246,6 +246,23 @@ export function decodeShare(input: string): LevelDef {
 export interface SavedMap {
   level: LevelDef
   updated: number
+  /** Last editor camera for this map. */
+  view?: MapView
+}
+
+/** A camera position: zoom (1 = near) and the world point at the centre. */
+export interface MapView {
+  zoom: number
+  x: number
+  y: number
+}
+
+export function sanitizeView(raw: unknown): MapView | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const o = raw as Record<string, unknown>
+  const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+  if (!ok(o.zoom) || !ok(o.x) || !ok(o.y)) return undefined
+  return { zoom: Math.min(4, Math.max(0.05, o.zoom)), x: o.x, y: o.y }
 }
 
 function storage(): Storage | null {
@@ -264,8 +281,11 @@ export function listMaps(): SavedMap[] {
     const out: SavedMap[] = []
     for (const m of data.maps ?? []) {
       try {
-        const o = m as { level?: unknown; updated?: unknown }
-        out.push({ level: sanitizeLevel(o.level), updated: typeof o.updated === 'number' ? o.updated : 0 })
+        const o = m as { level?: unknown; updated?: unknown; view?: unknown }
+        const entry: SavedMap = { level: sanitizeLevel(o.level), updated: typeof o.updated === 'number' ? o.updated : 0 }
+        const view = sanitizeView(o.view)
+        if (view) entry.view = view
+        out.push(entry)
       } catch {
         /* skip a broken entry */
       }
@@ -284,11 +304,20 @@ export function getMap(id: string): LevelDef | null {
   return listMaps().find((m) => m.level.id === id)?.level ?? null
 }
 
-/** Insert or replace by id. Returns the stored copy. */
-export function saveMap(level: LevelDef): LevelDef {
+export function getMapView(id: string): MapView | undefined {
+  return listMaps().find((m) => m.level.id === id)?.view
+}
+
+/** Insert or replace by id (keeping its last camera unless a new one is given). Returns the stored copy. */
+export function saveMap(level: LevelDef, view?: MapView): LevelDef {
   const clean = sanitizeLevel(level)
-  const maps = listMaps().filter((m) => m.level.id !== clean.id)
-  maps.unshift({ level: clean, updated: Date.now() })
+  const all = listMaps()
+  const keep = view ?? all.find((m) => m.level.id === clean.id)?.view
+  const maps = all.filter((m) => m.level.id !== clean.id)
+  const entry: SavedMap = { level: clean, updated: Date.now() }
+  const v = sanitizeView(keep)
+  if (v) entry.view = v
+  maps.unshift(entry)
   writeMaps(maps)
   return clean
 }
@@ -306,17 +335,21 @@ export function renameMap(id: string, name: string): void {
   writeMaps(maps)
 }
 
-/** The editor's working copy, kept across playtests and reloads. */
-export function saveDraft(level: LevelDef, savedId: string | null): void {
-  storage()?.setItem(DRAFT_KEY, JSON.stringify({ level, savedId }))
+/** The editor's working copy (and its camera), kept across playtests and reloads. */
+export function saveDraft(level: LevelDef, savedId: string | null, view?: MapView): void {
+  storage()?.setItem(DRAFT_KEY, JSON.stringify({ level, savedId, view }))
 }
 
-export function loadDraft(): { level: LevelDef; savedId: string | null } | null {
+export function loadDraft(): { level: LevelDef; savedId: string | null; view?: MapView } | null {
   const raw = storage()?.getItem(DRAFT_KEY)
   if (!raw) return null
   try {
-    const d = JSON.parse(raw) as { level: unknown; savedId?: unknown }
-    return { level: sanitizeLevel(d.level), savedId: typeof d.savedId === 'string' ? d.savedId : null }
+    const d = JSON.parse(raw) as { level: unknown; savedId?: unknown; view?: unknown }
+    return {
+      level: sanitizeLevel(d.level),
+      savedId: typeof d.savedId === 'string' ? d.savedId : null,
+      view: sanitizeView(d.view),
+    }
   } catch {
     return null
   }

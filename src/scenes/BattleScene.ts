@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
-import { GAME_HEIGHT, GAME_WIDTH, HUD_HEIGHT } from '../config/layout'
+import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
+import type { MapView } from '../editor/maps'
 import { cssHex, sideColor, theme } from '../config/theme'
 import { TUNING } from '../config/tuning'
 import { DEBUG } from '../debug'
@@ -40,16 +41,22 @@ export interface BattleData {
   custom?: LevelDef
   /** Where Back/Menu returns to for custom maps. */
   from?: 'editor' | 'maps'
+  /** Start the camera here (the editor's view when playtesting). */
+  view?: MapView
 }
 
 /** The world viewport: everything under the HUD band. */
-const WORLD_VIEW = { x: 0, y: HUD_HEIGHT + 2, w: GAME_WIDTH, h: GAME_HEIGHT - HUD_HEIGHT - 2 }
+/** Slim HUD band on top (same info as before, less height). */
+const HUD_H = 54
+const HUD_ROW = 18
+const WORLD_VIEW = { x: 0, y: HUD_H + 2, w: GAME_WIDTH, h: GAME_HEIGHT - HUD_H - 2 }
 
 /** Renders a BattleSim round and turns clicks into aim orders. */
 export class BattleScene extends Phaser.Scene {
   private level: LevelDef = SKIRMISH
   private levelIndex = -1
   private custom: LevelDef | null = null
+  private startView: MapView | undefined
   private from: BattleData['from'] = undefined
   private board: Rect = boardFor(undefined)
   private wc!: WorldCamera
@@ -80,6 +87,7 @@ export class BattleScene extends Phaser.Scene {
   init(data: BattleData): void {
     this.custom = data?.custom ?? null
     this.from = data?.from
+    this.startView = data?.view
     this.level = this.custom ?? findLevel(data?.levelId) ?? SKIRMISH
     this.levelIndex = this.custom ? -1 : campaignIndex(this.level.id)
     this.board = boardFor(this.level)
@@ -181,7 +189,12 @@ export class BattleScene extends Phaser.Scene {
     // Everything created so far is board content.
     this.children.list.forEach((obj) => this.world(obj))
     this.wc = new WorldCamera(this, this.board, WORLD_VIEW, undefined, 1)
-    this.frameOwnCannons()
+    if (this.startView && this.wc.canZoomOut) {
+      // Playtest from the editor: same zoom and centre (play never zooms past near).
+      this.wc.zoom = Math.min(1, this.startView.zoom)
+      this.wc.center = { x: this.startView.x, y: this.startView.y }
+      this.wc.apply()
+    } else this.frameOwnCannons()
     this.bot = !DEBUG.bot
       ? null
       : DEBUG.botStyle === 'mirror' && !this.sim.isPuzzle
@@ -361,7 +374,9 @@ export class BattleScene extends Phaser.Scene {
     if (this.restarting) return
     this.restarting = true
     this.input.setDefaultCursor('default')
-    this.scene.restart(this.custom ? { custom: this.custom, from: this.from } : { levelId: this.level.id })
+    // Restarting keeps the camera where you left it.
+    const view = { zoom: this.wc.zoom, x: this.wc.center.x, y: this.wc.center.y }
+    this.scene.restart(this.custom ? { custom: this.custom, from: this.from, view } : { levelId: this.level.id, view })
   }
 
   private goNext(): void {
@@ -395,9 +410,9 @@ export class BattleScene extends Phaser.Scene {
     // HUD band (fixed camera).
     const hud = this.ui(this.add.graphics().setDepth(9))
     hud.fillStyle(theme.hud, 1)
-    hud.fillRect(0, 0, GAME_WIDTH, HUD_HEIGHT)
+    hud.fillRect(0, 0, GAME_WIDTH, HUD_H)
     hud.fillStyle(theme.boardEdge, 1)
-    hud.fillRect(0, HUD_HEIGHT, GAME_WIDTH, 2)
+    hud.fillRect(0, HUD_H, GAME_WIDTH, 2)
   }
 
   private createHud(): void {
@@ -408,16 +423,16 @@ export class BattleScene extends Phaser.Scene {
           ? `${this.level.name}  ·  ${this.isPuzzle ? 'Puzzle' : 'Battle'}${this.from === 'editor' ? '  ·  Playtest' : ''}`
           : `Cannon Capture  ·  ${this.level.name}`
     this.add
-      .text(28, 14, title, {
+      .text(24, 8, title, {
         fontFamily: theme.font,
-        fontSize: '22px',
+        fontSize: '18px',
         fontStyle: 'bold',
         color: theme.text,
       })
       .setDepth(10)
 
     this.hint = this.add
-      .text(28, 44, '', { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
+      .text(24, 32, '', { fontFamily: theme.font, fontSize: '13px', color: theme.textMuted })
       .setDepth(10)
 
     const legend = this.add.graphics().setDepth(10)
@@ -430,9 +445,9 @@ export class BattleScene extends Phaser.Scene {
     this.counts = counts
     for (const group of groups) {
       legend.fillStyle(sideColor(group.side), 1)
-      legend.fillCircle(group.x, 26, 6)
+      legend.fillCircle(group.x, HUD_ROW, 6)
       counts[group.side] = this.add
-        .text(group.x + 14, 26, '0', {
+        .text(group.x + 14, HUD_ROW, '0', {
           fontFamily: theme.font,
           fontSize: '15px',
           fontStyle: 'bold',
@@ -441,20 +456,20 @@ export class BattleScene extends Phaser.Scene {
         .setOrigin(0, 0.5)
         .setDepth(10)
       this.add
-        .text(group.x + 40, 26, group.label, { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
+        .text(group.x + 40, HUD_ROW, group.label, { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
         .setOrigin(0, 0.5)
         .setDepth(10)
     }
     if (this.isPuzzle && this.level.aims !== undefined) {
       this.aimsText = this.add
-        .text(870, 26, '', { fontFamily: theme.font, fontSize: '15px', fontStyle: 'bold', color: theme.text })
+        .text(870, HUD_ROW, '', { fontFamily: theme.font, fontSize: '15px', fontStyle: 'bold', color: theme.text })
         .setOrigin(0, 0.5)
         .setDepth(10)
     }
 
     const link = (x: number, label: string, onClick: () => void): void => {
       const text = this.add
-        .text(x, 26, label, { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
+        .text(x, HUD_ROW, label, { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
         .setOrigin(1, 0.5)
         .setDepth(10)
         .setInteractive({ useHandCursor: true })

@@ -12,7 +12,7 @@ You are gold. The enemy is strawberry pink. Warm grey cannons are neutral and do
 
 1. Click one of your cannons to select it (it gets a pulsing ring).
 2. Click anywhere on the board to set that spot as its aim point, or click an enemy or neutral cannon to aim at it. Free aiming lets you lead shots, bank them off walls, or let a fan carry them.
-3. Cannons don't snap. The barrel turns toward its aim at a limited speed, and the cannon keeps firing along wherever the barrel points right now (about once a second). Big swings cost you shots: it holds fire while the barrel is far off target.
+3. Cannons don't snap. The barrel turns toward its aim at a limited speed, and a cannon only fires once it has finished turning and is lined up. After that it fires about once a second. The fire timer keeps counting while the barrel turns, so a long turn doesn't add an extra wait: the cannon fires as soon as it lines up, if its timer is ready. Big swings still cost you shots, because nothing fires mid-turn.
 4. Setting an aim deselects the cannon automatically, so a stray extra click can't re-aim it. To re-aim, select it again. Before aiming, click the selected cannon again (or press **Esc**) to cancel, or click another of your cannons to switch to it.
 
 A cannon tints toward whoever is hitting it. At eight hits it flips. Shots from the other side contest that progress. Capture every cannon to win. Lose when none are yours. A newly captured cannon swings toward the nearest foe on its own.
@@ -166,7 +166,7 @@ All gameplay numbers live in [`src/config/tuning.ts`](src/config/tuning.ts).
 | `fireIntervalMs` | 1000 | Time between shots from one cannon |
 | `captureThreshold` | 8 | Hits from one side required to flip a cannon |
 | `turnSpeedDeg` | 110 | How fast a barrel turns toward its aim (degrees per second) |
-| `holdFireAboveDeg` | 75 | A turning cannon holds fire while it is more than this far off its aim |
+| `aimToleranceDeg` | 0.5 | A cannon only fires once its barrel is within this many degrees of its aim (turn finished) |
 | `shotSpeed` | 340 | Shot speed in pixels per second |
 | `fanForce` | 540 | How hard fans accelerate a shot (px/s²) |
 | `aiRetargetMs` | 1600 | How often the enemy re-aims |

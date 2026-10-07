@@ -132,8 +132,8 @@ export class Cannon {
 
     this.cooldown -= dt
     if (this.cooldown > 0) return null
-    if (this.aimErrorDeg() > TUNING.holdFireAboveDeg) {
-      // Mid-swing: stay loaded and fire as soon as the barrel comes round.
+    if (this.aimErrorDeg() > TUNING.aimToleranceDeg) {
+      // Still turning: hold fire, stay loaded, and shoot the moment it lines up.
       this.cooldown = 0
       return null
     }
