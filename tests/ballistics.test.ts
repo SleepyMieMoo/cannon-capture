@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { circleAabb, reflect } from '../src/sim/geometry'
+import { circleAabb, clipToWalls, reflect } from '../src/sim/geometry'
 import { stepBall, type Ball, type BallisticsOpts } from '../src/sim/ballistics'
 
 const opts: BallisticsOpts = {
@@ -34,6 +34,14 @@ describe('geometry', () => {
 
   it('reverses the component of velocity into the wall', () => {
     expect(reflect(120, 40, -1, 0)).toEqual({ vx: -120, vy: 40 })
+  })
+
+  it('stops an aim line on the near side of a wall', () => {
+    const clipped = clipToWalls(0, 50, 100, 50, [{ x: 40, y: 0, w: 20, h: 100 }])
+    expect(clipped.x).toBeCloseTo(40)
+    expect(clipped.y).toBeCloseTo(50)
+    const clear = clipToWalls(0, 50, 30, 50, [{ x: 40, y: 0, w: 20, h: 100 }])
+    expect(clear).toEqual({ x: 30, y: 50 })
   })
 })
 

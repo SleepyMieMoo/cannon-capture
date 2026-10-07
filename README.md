@@ -12,9 +12,9 @@ You are gold. The enemy is coral. Grey cannons are neutral and do not fire until
 2. Click the cannon you want it to shoot.
 3. It keeps firing about once a second until you retarget it.
 
-A cannon tints toward whoever is hitting it. At five hits it flips. Shots from the other side contest that progress. Capture every cannon to win. Lose when none are yours.
+A cannon tints toward whoever is hitting it. At eight hits it flips. Shots from the other side contest that progress. Capture every cannon to win. Lose when none are yours.
 
-The dashed gold line is your aim. Faint coral lines are the enemy's. The teal ring is a fan blowing downward — shots that cross it curve. Restart from the corner, or press **R** on the end screen. **Esc** clears your selection.
+The dashed gold line is your aim. Faint coral lines are the enemy's. The teal ring is a fan blowing downward — the top enemy shot bends off its line and into the lower neutral. P1 starts aimed into the tall wall, so retarget it. Restart from the corner, or press **R** on the end screen. **Esc** clears your selection.
 
 ## Run locally
 
@@ -40,9 +40,9 @@ All gameplay numbers live in [`src/config/tuning.ts`](src/config/tuning.ts).
 | Constant | Default | What it does |
 | --- | --- | --- |
 | `fireIntervalMs` | 1000 | Time between shots from one cannon |
-| `captureThreshold` | 5 | Hits from one side required to flip a cannon |
+| `captureThreshold` | 8 | Hits from one side required to flip a cannon |
 | `shotSpeed` | 340 | Shot speed in pixels per second |
-| `fanForce` | 640 | How hard fans accelerate a shot (px/s²) |
+| `fanForce` | 540 | How hard fans accelerate a shot (px/s²) |
 | `aiRetargetMs` | 1600 | How often the enemy re-aims |
 | `aiFinishBias` | 80 | How strongly the AI finishes a cannon it is already capturing |
 

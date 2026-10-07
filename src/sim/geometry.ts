@@ -31,6 +31,51 @@ export function circleAabb(cx: number, cy: number, radius: number, box: Rect): C
   return { nx: dx / dist, ny: dy / dist, pen: radius - dist }
 }
 
+/** First point where the segment enters a wall, or the original end if it does not. */
+export function clipToWalls(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  walls: Rect[],
+): { x: number; y: number } {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  let best = 1
+  for (const wall of walls) {
+    const t = segmentEntersAabb(x1, y1, dx, dy, wall)
+    if (t !== null && t < best) best = t
+  }
+  return { x: x1 + dx * best, y: y1 + dy * best }
+}
+
+function segmentEntersAabb(ox: number, oy: number, dx: number, dy: number, box: Rect): number | null {
+  let t0 = 0
+  let t1 = 1
+  const checks: [number, number][] = [
+    [-dx, ox - box.x],
+    [dx, box.x + box.w - ox],
+    [-dy, oy - box.y],
+    [dy, box.y + box.h - oy],
+  ]
+  for (const [p, q] of checks) {
+    if (Math.abs(p) < 1e-9) {
+      if (q < 0) return null
+      continue
+    }
+    const r = q / p
+    if (p < 0) {
+      if (r > t1) return null
+      if (r > t0) t0 = r
+    } else {
+      if (r < t0) return null
+      if (r < t1) t1 = r
+    }
+  }
+  if (t0 <= 0 || t0 >= 1 || t0 >= t1) return null
+  return t0
+}
+
 export function reflect(
   vx: number,
   vy: number,

@@ -5,12 +5,15 @@
 export const TUNING = {
   /** Milliseconds between shots from the same cannon. */
   fireIntervalMs: 1000,
-  /** Stagger the opening volley so cannons do not fire on the same tick. */
-  fireStaggerMs: 140,
+  /**
+   * Phase offset between cannons so a volley is not a single tick.
+   * Applied as (index % 3) * fireStaggerMs, so neither side fires first.
+   */
+  fireStaggerMs: 90,
   /** Delay before a newly captured cannon starts shooting. */
   captureKickoffMs: 280,
   /** Hits from one side required to flip a cannon. */
-  captureThreshold: 5,
+  captureThreshold: 8,
   /** Pixels per second. */
   shotSpeed: 340,
   /** Fan boost is capped at shotSpeed * shotSpeedCap. */
@@ -25,7 +28,7 @@ export const TUNING = {
   maxBounces: 3,
   shotLifetimeMs: 4500,
   /** Default fan acceleration in pixels per second squared. */
-  fanForce: 640,
+  fanForce: 540,
   /** How often the enemy re-aims every cannon. */
   aiRetargetMs: 1600,
   /**
@@ -33,6 +36,6 @@ export const TUNING = {
    * this many pixels closer, so the AI finishes weak cannons.
    */
   aiFinishBias: 80,
-  /** Keep the current target unless a new one is clearly better. */
-  aiRetargetSlack: 48,
+  /** Keep the current target unless a new one is clearly better, in pixels. */
+  aiRetargetSlack: 200,
 } as const

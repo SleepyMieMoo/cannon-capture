@@ -9,6 +9,7 @@ import { Shot } from '../entities/Shot'
 import { Wall } from '../entities/Wall'
 import { SKIRMISH } from '../levels/skirmish'
 import type { FanField } from '../sim/ballistics'
+import { clipToWalls } from '../sim/geometry'
 import type { Side } from '../types'
 
 interface Spark {
@@ -59,7 +60,15 @@ export class BattleScene extends Phaser.Scene {
 
     SKIRMISH.cannons.forEach((def, index) => {
       this.cannons.push(
-        new Cannon(this, def.id, def.name, def.x, def.y, def.side, index * TUNING.fireStaggerMs),
+        new Cannon(
+          this,
+          def.id,
+          def.name,
+          def.x,
+          def.y,
+          def.side,
+          (index % 3) * TUNING.fireStaggerMs,
+        ),
       )
     })
     for (const def of SKIRMISH.cannons) {
@@ -371,9 +380,22 @@ export class BattleScene extends Phaser.Scene {
           : null
       const target = preview ?? (cannon.side === 'neutral' ? null : cannon.target)
       if (!target) continue
-      const alpha = preview ? 0.9 : cannon.side === 'player' ? (cannon.selected ? 0.8 : 0.38) : 0.22
+      const alpha = preview ? 0.9 : cannon.side === 'player' ? (cannon.selected ? 0.8 : 0.38) : 0.36
       const color = preview || cannon.side === 'player' ? theme.player : sideColor(cannon.side)
-      dash(g, cannon.x, cannon.y, target.x, target.y, TUNING.cannonRadius + 16, color, alpha)
+      const walls = this.walls.map((wall) => wall.rect)
+      const end = clipToWalls(cannon.x, cannon.y, target.x, target.y, walls)
+      const blocked = end.x !== target.x || end.y !== target.y
+      dash(
+        g,
+        cannon.x,
+        cannon.y,
+        end.x,
+        end.y,
+        TUNING.cannonRadius + 14,
+        blocked ? 4 : TUNING.cannonRadius + 14,
+        color,
+        alpha,
+      )
     }
 
     for (const shot of this.shots) {
@@ -475,19 +497,20 @@ function dash(
   y1: number,
   x2: number,
   y2: number,
-  inset: number,
+  startInset: number,
+  endInset: number,
   color: number,
   alpha: number,
 ): void {
   const dx = x2 - x1
   const dy = y2 - y1
   const len = Math.hypot(dx, dy)
-  if (len < inset * 2) return
+  if (len < startInset + endInset) return
   const ux = dx / len
   const uy = dy / len
   g.lineStyle(2, color, alpha)
-  let traveled = inset
-  const end = len - inset
+  let traveled = startInset
+  const end = len - endInset
   while (traveled < end) {
     const next = Math.min(traveled + 10, end)
     g.beginPath()

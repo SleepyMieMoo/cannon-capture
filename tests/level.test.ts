@@ -46,28 +46,23 @@ function trace(fromId: string, toId: string) {
 }
 
 describe('skirmish opening lanes', () => {
-  it('lets P1 hit N2 in the clear', () => {
-    const result = trace('p1', 'n2')
-    expect(result.hitId).toBe('n2')
-    expect(result.bounced).toBe(false)
+  it('lets the contested neutral be hit from both sides', () => {
+    expect(trace('p2', 'n2').hitId).toBe('n2')
+    expect(trace('p3', 'n2').hitId).toBe('n2')
+    expect(trace('e2', 'n2').hitId).toBe('n2')
+    expect(trace('e3', 'n2').hitId).toBe('n2')
   })
 
-  it('lets the side duels land', () => {
-    expect(trace('p2', 'e2').hitId).toBe('e2')
-    expect(trace('e2', 'p2').hitId).toBe('p2')
-    expect(trace('p3', 'e3').hitId).toBe('e3')
-    expect(trace('e3', 'p3').hitId).toBe('p3')
-  })
-
-  it('pushes E1’s shot downward through the fan', () => {
+  it('bends E1’s shot down through the fan onto N2', () => {
     const result = trace('e1', 'n1')
     expect(result.pushed).toBe(true)
-    expect(result.maxVy).toBeGreaterThan(120)
+    expect(result.hitId).toBe('n2')
+    expect(result.maxVy).toBeGreaterThan(200)
   })
 
-  it('blocks a straight P1 shot at E1 with the tall wall', () => {
-    const result = trace('p1', 'e1')
+  it('bounces P1 off the tall wall before it can reach N1', () => {
+    const result = trace('p1', 'n1')
     expect(result.bounced).toBe(true)
-    expect(result.hitId).not.toBe('e1')
+    expect(result.hitId).not.toBe('n1')
   })
 })
