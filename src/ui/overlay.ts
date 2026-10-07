@@ -93,14 +93,18 @@ function injectStyles(): void {
   if (injected) return
   injected = true
   const gold = cssHex(theme.player)
+  // Panels over the canvas are 97% opaque on purpose: fully opaque layers on
+  // top of the WebGL canvas made Chrome skip drawing parts of the canvas
+  // (blank strips) in testing. At 97% it looks identical.
+  const glass = (c: number): string => `rgba(${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255}, 0.97)`
   const css = `
 .cc-panel, .cc-sheet {
   position: fixed; transform-origin: 0 0; box-sizing: border-box; z-index: 5;
   font-family: ${theme.font}; font-size: 13px; color: ${theme.text};
-  background: ${cssHex(theme.panel)}; border-left: 2px solid ${cssHex(theme.boardEdge)};
+  background: ${glass(theme.panel)}; border-left: 2px solid ${cssHex(theme.boardEdge)};
   overflow: hidden; padding: 10px 12px 14px;
 }
-.cc-sheet { border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 18px; padding: 18px 22px; background: ${cssHex(theme.board)}; }
+.cc-sheet { border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 18px; padding: 18px 22px; background: ${glass(theme.board)}; }
 .cc-panel *, .cc-sheet * { box-sizing: border-box; }
 .cc-h { font-weight: bold; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: ${theme.textMuted}; margin: 12px 0 6px; }
 .cc-h:first-child { margin-top: 0; }
@@ -133,13 +137,46 @@ function injectStyles(): void {
 .cc-msg.err { color: ${cssHex(theme.enemy)}; }
 .cc-msg.ok { color: ${cssHex(theme.fan)}; }
 .cc-list { display: flex; flex-direction: column; gap: 8px; }
-.cc-item { display: flex; gap: 12px; align-items: center; background: ${cssHex(theme.panel)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 12px; padding: 8px 10px; }
+.cc-item { display: flex; gap: 12px; align-items: center; background: ${glass(theme.panel)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 12px; padding: 8px 10px; }
 .cc-item canvas { border-radius: 6px; flex: none; }
 .cc-item .meta { flex: 1; min-width: 0; }
 .cc-item .name { font-weight: bold; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cc-sep { height: 2px; background: ${cssHex(theme.boardEdge)}; margin: 12px 0 4px; border: 0; }
 .cc-check { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; color: ${theme.text}; }
 .cc-check input { accent-color: ${gold}; }
+.cc-bar {
+  position: fixed; transform-origin: 0 0; box-sizing: border-box; z-index: 5; overflow: hidden;
+  font-family: ${theme.font}; font-size: 12px; color: ${theme.text};
+  background: ${glass(theme.hud)}; border-bottom: 2px solid ${cssHex(theme.boardEdge)};
+}
+.cc-bar *, .cc-pop * { box-sizing: border-box; }
+.cc-toolbar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-bottom: 1px solid ${cssHex(theme.boardEdge)}; }
+.cc-group { display: flex; align-items: center; gap: 4px; }
+.cc-spacer { flex: 1; min-width: 4px; }
+.cc-btn.sm { min-height: 30px; padding: 3px 8px; border-radius: 8px; font-size: 12px; gap: 4px; white-space: nowrap; }
+.cc-btn.sm.icon { width: 30px; padding: 0; font-size: 16px; }
+.cc-btn.xs { min-height: 24px; padding: 1px 7px; border-radius: 7px; font-size: 12px; border-width: 1.5px; white-space: nowrap; }
+.cc-context { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; white-space: nowrap; overflow: hidden; }
+.cc-name { color: ${theme.textMuted}; max-width: 240px; overflow: hidden; text-overflow: ellipsis; flex: none; }
+.cc-vsep { width: 1px; height: 18px; background: ${cssHex(theme.boardEdge)}; flex: none; }
+.cc-props { display: flex; align-items: center; gap: 10px; flex: none; }
+.cc-field { display: inline-flex; align-items: center; gap: 5px; }
+.cc-field label { color: ${theme.textMuted}; }
+.cc-val { min-width: 30px; color: ${theme.text}; font-variant-numeric: tabular-nums; }
+.cc-props .cc-range { width: 96px; flex: none; }
+.cc-sel.xs { padding: 2px 4px; border-radius: 7px; flex: none; font-size: 12px; }
+.cc-status { color: ${theme.textMuted}; overflow: hidden; text-overflow: ellipsis; max-width: 380px; flex: 0 1 auto; min-width: 0; }
+.cc-status.err { color: ${cssHex(theme.enemy)}; }
+.cc-status.ok { color: ${cssHex(theme.fan)}; }
+.cc-pop {
+  position: fixed; transform-origin: 0 0; box-sizing: border-box; z-index: 6; overflow: hidden;
+  font-family: ${theme.font}; font-size: 13px; color: ${theme.text};
+  background: ${glass(theme.panel)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 12px;
+  padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
+.cc-keys { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; font-size: 12px; }
+.cc-keys b { color: ${gold}; white-space: nowrap; }
+.cc-keys span { color: ${theme.text}; }
 `
   document.head.appendChild(Object.assign(document.createElement('style'), { id: 'cc-ui', textContent: css }))
 }

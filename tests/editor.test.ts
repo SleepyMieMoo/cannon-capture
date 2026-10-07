@@ -5,6 +5,8 @@ import {
   decodeShare,
   deleteMap,
   editorWall,
+  getMapView,
+  sanitizeView,
   encodeShare,
   listMaps,
   loadDraft,
@@ -218,6 +220,22 @@ describe('My maps storage', () => {
     const level = blankMap('medium')
     saveDraft(level, null)
     expect(loadDraft()?.level).toEqual(sanitizeLevel(level))
+    expect(loadDraft()?.view).toBeUndefined()
+  })
+
+  it('remembers the camera with the draft and with saved maps', () => {
+    const level = { ...blankMap('huge'), id: 'cam' }
+    saveDraft(level, 'cam', { zoom: 0.42, x: 1500.25, y: 900 })
+    expect(loadDraft()?.view).toEqual({ zoom: 0.42, x: 1500.25, y: 900 })
+    saveMap(level, { zoom: 0.6, x: 700, y: 500 })
+    expect(getMapView('cam')).toEqual({ zoom: 0.6, x: 700, y: 500 })
+    // Saving again without a camera keeps the last one.
+    saveMap({ ...level, name: 'Renamed' })
+    expect(getMapView('cam')).toEqual({ zoom: 0.6, x: 700, y: 500 })
+    renameMap('cam', 'Again')
+    expect(getMapView('cam')).toEqual({ zoom: 0.6, x: 700, y: 500 })
+    expect(sanitizeView({ zoom: 'x', x: 1, y: 2 })).toBeUndefined()
+    expect(sanitizeView({ zoom: 99, x: 1, y: 2 })?.zoom).toBe(4)
   })
 })
 

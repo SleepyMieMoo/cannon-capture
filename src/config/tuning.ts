@@ -21,10 +21,11 @@ export const TUNING = {
   /** How fast a cannon's barrel turns toward its aim, in degrees per second. */
   turnSpeedDeg: 110,
   /**
-   * Cannons keep firing along the barrel while they turn, but hold fire while
-   * the barrel is more than this many degrees off their aim (a big swing).
+   * A cannon only fires once its barrel has finished turning onto its aim
+   * (within this many degrees). The fire timer keeps counting during the
+   * turn, so it shoots as soon as it is lined up and the timer is ready.
    */
-  holdFireAboveDeg: 75,
+  aimToleranceDeg: 0.5,
   shotRadius: 6,
   cannonRadius: 26,
   /** Extra pixels added to the click/touch target. */
