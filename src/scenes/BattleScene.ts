@@ -212,14 +212,15 @@ export class BattleScene extends Phaser.Scene {
       return
     }
     if (hit) {
-      this.playerAim(sel, hit)
+      // A successful aim deselects, so a stray second click can't re-aim by accident.
+      if (this.playerAim(sel, hit)) this.selected = null
       return
     }
     if (!onBoard(x, y)) {
       this.selected = null
       return
     }
-    this.playerAim(sel, clampPoint(x, y, BOARD, TUNING.shotRadius))
+    if (this.playerAim(sel, clampPoint(x, y, BOARD, TUNING.shotRadius))) this.selected = null
   }
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
@@ -371,14 +372,14 @@ export class BattleScene extends Phaser.Scene {
 
   private hintLine(): string {
     if (this.ended) return this.ended === 'win' ? 'You hold every cannon.' : 'Not this time.'
-    if (!this.selected) return 'Click one of your gold cannons to select it.'
+    if (!this.selected) return 'Click one of your gold cannons to select it, then click where it should aim.'
     const name = this.selected.name
     if (this.hover && this.hover !== this.selected) {
       if (this.hover.side === 'player') return `Click to select ${this.hover.name} instead.`
       return `${name} → ${this.hover.name}`
     }
     if (this.hover === this.selected) return `Click ${name} again to deselect.`
-    return `${name}: click anywhere to aim, or click it again to deselect.`
+    return `${name}: click anywhere to aim (it deselects after), or click it again to cancel.`
   }
 
   private showBanner(message: string): void {
