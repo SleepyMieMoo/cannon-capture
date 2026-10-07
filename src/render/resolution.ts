@@ -60,7 +60,9 @@ export function bindSceneResolution(scene: Phaser.Scene): void {
   let textResolution = 1
 
   const applyText = (obj: Phaser.GameObjects.GameObject): void => {
-    if (obj instanceof Phaser.GameObjects.Text && obj.style.resolution !== textResolution) {
+    if (obj instanceof Phaser.GameObjects.Container) {
+      obj.list.forEach(applyText)
+    } else if (obj instanceof Phaser.GameObjects.Text && obj.style.resolution !== textResolution) {
       obj.setResolution(textResolution)
     }
   }

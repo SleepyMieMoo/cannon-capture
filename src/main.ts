@@ -2,6 +2,8 @@ import Phaser from 'phaser'
 import { theme } from './config/theme'
 import { canvasSize, renderScale, watchRenderScale } from './render/resolution'
 import { BattleScene } from './scenes/BattleScene'
+import { MapScene } from './scenes/MapScene'
+import { TitleScene } from './scenes/TitleScene'
 
 const parent = document.getElementById('app')
 if (!parent) throw new Error('Missing #app mount point')
@@ -32,7 +34,7 @@ const game = new Phaser.Game({
     width,
     height,
   },
-  scene: [BattleScene],
+  scene: [TitleScene, MapScene, BattleScene],
 })
 
 watchRenderScale(game, parent)
