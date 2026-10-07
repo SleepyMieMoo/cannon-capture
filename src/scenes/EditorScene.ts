@@ -1,3 +1,4 @@
+import { KINDS, KIND_IDS, delayFor, kindLabel } from '../config/kinds'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import { TUNING } from '../config/tuning'
@@ -33,7 +34,7 @@ import { drawBoardSurface } from '../render/boardSurface'
 import { bindSceneResolution } from '../render/resolution'
 import { WorldCamera } from '../render/WorldCamera'
 import { Overlay, h } from '../ui/overlay'
-import type { CannonDef, LevelDef, MapSize, Point, Rect, Side, WallDef } from '../types'
+import type { CannonDef, CannonKind, LevelDef, MapSize, Point, Rect, Side, WallDef } from '../types'
 
 export interface EditorData {
   /** Open a saved map from My maps. */
@@ -269,7 +270,7 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private makeCannon(def: CannonDef): Cannon {
-    const view = new Cannon(this, def.id, def.name, def.x, def.y, def.side, 0)
+    const view = new Cannon(this, def.id, def.name, def.x, def.y, def.side, 0, def.kind, def.delay)
     const aim = this.startAim(def)
     if (aim) view.angle = Math.atan2(aim.y - def.y, aim.x - def.x)
     if (view.root) this.world(view.root)
@@ -849,6 +850,7 @@ export class EditorScene extends Phaser.Scene {
     } else if (key === 'v' || key === 'V') this.setTool('select')
     else if (key === 'x' || key === 'X') this.setTool('delete')
     else if (key === 'p' || key === 'P') this.playtest()
+    else if ((key === 't' || key === 'T') && this.sel?.kind === 'cannon') this.cycleKind(this.sel.index)
     else if (key === '+' || key === '=') this.wc.zoomBy(1.25)
     else if (key === '-' || key === '_') this.wc.zoomBy(0.8)
     else if (key === '0') this.wc.fit()
@@ -1027,11 +1029,12 @@ export class EditorScene extends Phaser.Scene {
       ['V · X', 'Move tool · Delete tool'],
       ['Del', 'Delete the selection'],
       ['Q / E', 'Rotate wall or fan 15°'],
+      ['T', 'Selected cannon: next type (Normal → Sniper 2s → Sniper 3s)'],
       ['G · P', 'Snap · Playtest'],
       ['Ctrl+Z / Ctrl+Y', 'Undo / redo'],
       ['Esc', 'Close, cancel or deselect'],
     ]
-    pop('help', 610, 380, 272,
+    pop('help', 610, 400, 292,
       h('div.cc-h', {}, 'Controls'),
       h('div.cc-keys', {}, ...keys.flatMap(([k, v]) => [h('b', {}, k), h('span', {}, v)])),
     )
@@ -1161,12 +1164,29 @@ export class EditorScene extends Phaser.Scene {
         h('option', { value: 'neutral' }, 'Neutral'),
       )
       side.value = c.side
+      const type = h(
+        'select.cc-sel.xs',
+        { title: 'Tower type (T)', onchange: () => this.setKind(ref.index, type.value as CannonKind) },
+        ...KIND_IDS.map((k) => h('option', { value: k }, KINDS[k].label)),
+      )
+      type.value = c.kind ?? 'normal'
+      const spec = KINDS[c.kind ?? 'normal']
+      const delay = spec.delays
+        ? h(
+            'select.cc-sel.xs',
+            { title: 'Seconds between shots = damage per hit', onchange: () => this.setKind(ref.index, c.kind ?? 'normal', Number(delay!.value)) },
+            ...spec.delays.map((d) => h('option', { value: String(d) }, `${d} s · ${d} dmg`)),
+          )
+        : null
+      if (delay) delay.value = String(delayFor(c.kind ?? 'normal', c.delay))
       const target = c.aimAt ? L.cannons.find((o) => o.id === c.aimAt) : null
       const aimText = target ? `at ${target.name}` : c.aimPoint ? `at (${c.aimPoint.x}, ${c.aimPoint.y})` : 'none'
       return [
         h('span.cc-field', {}, dot(sideColor(c.side)), h('b', {}, `Cannon ${c.name}`)),
         h('span.cc-field', {}, h('label', {}, 'Owner'), side),
-        h('span.cc-field', {}, h('label', {}, 'Start aim'), h('span.cc-val', { style: 'min-width:0' }, aimText)),
+        h('span.cc-field', {}, h('label', {}, 'Type'), type),
+        ...(delay ? [h('span.cc-field', {}, h('label', {}, 'Delay'), delay)] : []),
+        h('span.cc-field', {}, h('label', {}, 'Aim'), h('span.cc-val', { style: 'min-width:0' }, aimText)),
         h('button.cc-btn.xs', { onclick: () => {
           this.pickingAim = true
           this.refreshPanel(true)
@@ -1225,6 +1245,32 @@ export class EditorScene extends Phaser.Scene {
       slider('Radius', f.radius, 60, 360, 10, (v) => (f.radius = v), `fr-${ref.index}`),
       remove,
     ]
+  }
+
+  /** Tower type (and sniper delay) for one cannon. */
+  private setKind(index: number, kind: CannonKind, delay?: number): void {
+    const c = this.level.cannons[index]
+    const nextDelay = KINDS[kind].delays ? delayFor(kind, delay ?? c.delay) : undefined
+    if ((c.kind ?? 'normal') === kind && c.delay === nextDelay) return
+    this.edit(() => {
+      if (kind === 'normal') delete c.kind
+      else c.kind = kind
+      if (nextDelay === undefined) delete c.delay
+      else c.delay = nextDelay
+    })
+    this.refreshPanel(true)
+  }
+
+  /** T key: Normal → Sniper 2s → Sniper 3s → Normal (and any future types in order). */
+  private cycleKind(index: number): void {
+    const c = this.level.cannons[index]
+    const options: [CannonKind, number | undefined][] = KIND_IDS.flatMap((k): [CannonKind, number | undefined][] =>
+      KINDS[k].delays ? KINDS[k].delays!.map((d): [CannonKind, number | undefined] => [k, d]) : [[k, undefined]],
+    )
+    const at = options.findIndex(([k, d]) => k === (c.kind ?? 'normal') && (d === undefined || d === delayFor(k, c.delay)))
+    const [kind, delay] = options[(at + 1) % options.length]
+    this.setKind(index, kind, delay)
+    this.status(`${c.name} is now ${kindLabel(kind, delay)}.`)
   }
 
   private setSide(index: number, side: Side): void {

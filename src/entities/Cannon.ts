@@ -4,7 +4,17 @@ import { lerpColor, shade, sideColor, theme } from '../config/theme'
 import { aimAngle, aimShot, type Ball } from '../sim/ballistics'
 import { angleDelta, turnToward } from '../sim/aim'
 import { applyCaptureHit } from '../sim/capture'
-import type { Point, Side } from '../types'
+import {
+  KINDS,
+  damageFor,
+  delayFor,
+  fireMsFor,
+  maxShotSpeedFor,
+  shotLifetimeFor,
+  shotSpeedFor,
+  turnSpeedDegFor,
+} from '../config/kinds'
+import type { CannonKind, Point, Side } from '../types'
 
 export interface HitOutcome {
   flipped: boolean
@@ -26,6 +36,10 @@ export class Cannon {
   /** Display objects; absent when simulating headless (tests, level checks). */
   readonly root?: Phaser.GameObjects.Container
   side: Side
+  /** Tower type. Kept when the cannon is captured. */
+  kind: CannonKind
+  /** Sniper: seconds between shots, which is also its damage. */
+  delay: number
   /** Aim at another cannon (re-aims automatically once it becomes ours). */
   target: Cannon | null = null
   /** Or aim at a free point on the board. */
@@ -45,6 +59,13 @@ export class Cannon {
   private cooldown: number
   private hitFlash = 0
   private healFlash = 0
+  /** Swap reload: ms total and ms left, for the reload ring. */
+  private swapTotal = 0
+  private swapLeft = 0
+  /** Last delay used per type, so a 3 s sniper swapped away and back stays 3 s. */
+  private readonly delayMemory: Partial<Record<CannonKind, number>> = {}
+  /** The side's normal fire interval, as last seen in update(). */
+  private sideMs: number = TUNING.fireIntervalMs
   private muzzle = 0
   private pop = 1
 
@@ -56,12 +77,17 @@ export class Cannon {
     y: number,
     side: Side,
     staggerMs: number,
+    kind: CannonKind = 'normal',
+    delay?: number,
   ) {
     this.id = id
     this.name = name
     this.x = x
     this.y = y
     this.side = side
+    this.kind = KINDS[kind] ? kind : 'normal'
+    this.delay = delayFor(this.kind, delay)
+    this.delayMemory[this.kind] = this.delay
     this.cooldown = staggerMs
     this.angle = side === 'enemy' ? Math.PI : side === 'player' ? 0 : -Math.PI / 2
     if (scene) {
@@ -89,6 +115,45 @@ export class Cannon {
     this.endHeal()
     this.target = null
     this.aimPoint = { x: point.x, y: point.y }
+  }
+
+  /** Capture progress each of its shots adds (or heals). */
+  get damage(): number {
+    return damageFor(this.kind, this.delay)
+  }
+
+  /** Milliseconds between its shots. */
+  fireMs(sideMs: number = this.sideMs): number {
+    return fireMsFor(this.kind, this.delay, sideMs)
+  }
+
+  /** The delay this cannon would use as `kind` (its last one, or the default). */
+  rememberedDelay(kind: CannonKind): number {
+    return delayFor(kind, kind === this.kind ? this.delay : this.delayMemory[kind])
+  }
+
+  /** Still reloading after a type swap. */
+  get swapping(): boolean {
+    return this.swapLeft > 0
+  }
+
+  /**
+   * Change tower type mid-round. The cannon then reloads for its new type's
+   * full fire interval (at least TUNING.swapLockMs) before it shoots again.
+   * Returns false if nothing would change.
+   */
+  setKind(kind: CannonKind, delay?: number): boolean {
+    const nextDelay = delayFor(kind, delay ?? (kind === this.kind ? this.delay : this.delayMemory[kind]))
+    if (kind === this.kind && nextDelay === this.delay) return false
+    this.kind = kind
+    this.delay = nextDelay
+    this.delayMemory[kind] = nextDelay
+    const lock = Math.max(TUNING.swapLockMs, this.fireMs())
+    this.cooldown = lock
+    this.swapTotal = lock
+    this.swapLeft = lock
+    this.pop = Math.max(this.pop, 1.12)
+    return true
   }
 
   /** True while another side has capture progress on this cannon. */
@@ -185,6 +250,8 @@ export class Cannon {
   update(dt: number, frozen: boolean, fireMs: number = TUNING.fireIntervalMs): Ball | null {
     this.hitFlash = Math.max(0, this.hitFlash - dt / 160)
     this.healFlash = Math.max(0, this.healFlash - dt / 420)
+    this.swapLeft = Math.max(0, this.swapLeft - dt)
+    this.sideMs = fireMs
     this.muzzle = Math.max(0, this.muzzle - dt)
     this.pop = Math.max(1, this.pop - dt / 380)
     if (this.side === 'neutral') return null
@@ -193,7 +260,7 @@ export class Cannon {
 
     const aim = this.aim()
     if (aim) {
-      const step = ((TUNING.turnSpeedDeg * Math.PI) / 180) * (dt / 1000)
+      const step = ((turnSpeedDegFor(this.kind) * Math.PI) / 180) * (dt / 1000)
       this.angle = turnToward(this.angle, aimAngle(this, aim), step)
     }
     if (frozen || !aim) return null
@@ -205,11 +272,16 @@ export class Cannon {
       this.cooldown = 0
       return null
     }
-    this.cooldown = fireMs
+    this.cooldown = this.fireMs(fireMs)
     this.muzzle = 110
     // Fire along the barrel's current direction, not straight at the aim.
     const along = { x: this.x + Math.cos(this.angle) * 100, y: this.y + Math.sin(this.angle) * 100 }
-    return aimShot(this, along, TUNING.cannonRadius + 12, TUNING.shotSpeed, this.id)
+    const ball = aimShot(this, along, TUNING.cannonRadius + 12, shotSpeedFor(this.kind), this.id)
+    if (this.kind !== 'normal') {
+      ball.maxSpeed = maxShotSpeedFor(this.kind)
+      ball.lifeMs = shotLifetimeFor(this.kind)
+    }
+    return ball
   }
 
   draw(time: number): void {
@@ -233,6 +305,18 @@ export class Cannon {
     this.body.fillCircle(-6, -7, TUNING.cannonRadius * 0.42)
     this.body.lineStyle(3, 0x000000, 0.28)
     this.body.strokeCircle(0, 0, TUNING.cannonRadius)
+    if (this.kind === 'sniper') this.drawSniperBadge(this.body, color)
+
+    if (this.swapLeft > 0 && this.swapTotal > 0) {
+      // Swap reload: a light ring fills up until it can fire again.
+      const done = 1 - this.swapLeft / this.swapTotal
+      this.body.lineStyle(3, 0xffffff, 0.22)
+      this.body.strokeCircle(0, 0, TUNING.cannonRadius - 4)
+      this.body.lineStyle(3, 0xfff4d2, 0.9)
+      this.body.beginPath()
+      this.body.arc(0, 0, TUNING.cannonRadius - 4, -Math.PI / 2, -Math.PI / 2 + done * Math.PI * 2, false)
+      this.body.strokePath()
+    }
 
     if (this.captureAttacker && this.captureProgress > 0) {
       const sweep = (this.captureProgress / TUNING.captureThreshold) * Math.PI * 2
@@ -262,17 +346,48 @@ export class Cannon {
     const angle = this.facing()
     this.barrel.clear()
     this.barrel.setRotation(angle)
-    this.barrel.fillStyle(shade(color, 0.62), 1)
-    this.barrel.fillRoundedRect(TUNING.cannonRadius * 0.2, -5, TUNING.cannonRadius + 8, 10, 4)
-    this.barrel.fillStyle(shade(color, 0.4), 1)
-    this.barrel.fillCircle(TUNING.cannonRadius + 12, 0, 5)
-    if (this.muzzle > 0) {
-      this.barrel.fillStyle(0xfff4d2, Math.min(1, this.muzzle / 90))
-      this.barrel.fillCircle(TUNING.cannonRadius + 20, 0, 7)
+    const r = TUNING.cannonRadius
+    if (this.kind === 'sniper') {
+      // Long, thin barrel with a scope on top: reads as a sniper even zoomed out.
+      this.barrel.fillStyle(shade(color, 0.55), 1)
+      this.barrel.fillRoundedRect(r * 0.2, -3.5, r + 26, 7, 3)
+      this.barrel.fillStyle(shade(color, 0.38), 1)
+      this.barrel.fillRect(r + 22, -5, 6, 10)
+      this.barrel.fillStyle(shade(color, 0.3), 1)
+      this.barrel.fillRoundedRect(r * 0.35, -10, 16, 6, 3)
+      this.barrel.fillStyle(0xfff4d2, 0.9)
+      this.barrel.fillCircle(r * 0.35 + 13, -7, 2)
+      if (this.muzzle > 0) {
+        this.barrel.fillStyle(0xfff4d2, Math.min(1, this.muzzle / 90))
+        this.barrel.fillCircle(r + 34, 0, 6)
+      }
+    } else {
+      this.barrel.fillStyle(shade(color, 0.62), 1)
+      this.barrel.fillRoundedRect(r * 0.2, -5, r + 8, 10, 4)
+      this.barrel.fillStyle(shade(color, 0.4), 1)
+      this.barrel.fillCircle(r + 12, 0, 5)
+      if (this.muzzle > 0) {
+        this.barrel.fillStyle(0xfff4d2, Math.min(1, this.muzzle / 90))
+        this.barrel.fillCircle(r + 20, 0, 7)
+      }
     }
 
     this.root.setScale(this.pop)
     this.root.setDepth(this.selected ? 6 : 5)
+  }
+
+  /** Sniper marking on the body: a reticle, plus one pip per second of delay (= damage). */
+  private drawSniperBadge(g: Phaser.GameObjects.Graphics, color: number): void {
+    const r = TUNING.cannonRadius
+    const ink = shade(color, 0.35)
+    g.lineStyle(2.5, ink, 0.85)
+    g.strokeCircle(0, 0, r * 0.5)
+    g.lineBetween(-r * 0.78, 0, -r * 0.28, 0)
+    g.lineBetween(r * 0.28, 0, r * 0.78, 0)
+    g.lineBetween(0, -r * 0.78, 0, -r * 0.28)
+    g.lineBetween(0, r * 0.28, 0, r * 0.78)
+    g.fillStyle(ink, 0.95)
+    for (let i = 0; i < this.delay; i++) g.fillCircle((i - (this.delay - 1) / 2) * 7, r * 0.5 + 9, 2.2)
   }
 
   private facing(): number {

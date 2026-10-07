@@ -49,6 +49,26 @@ export const TUNING = {
    * capture progress on it (out of captureThreshold).
    */
   aiHealAtProgress: 4,
+  /**
+   * Sniper cannons. Their shots fly speedMul times as fast. Every shot lives
+   * shotLifetimeMs * lifetimeMul, so at the same lifetime a sniper shot also
+   * travels speedMul times as far. They fire every `delay` seconds (2 or 3,
+   * set per cannon) for that much damage, so their damage per second matches
+   * a normal cannon; the edge is reach, speed and punching through wind.
+   */
+  sniper: {
+    speedMul: 2,
+    lifetimeMul: 1,
+    /** Barrel turn speed relative to turnSpeedDeg. */
+    turnMul: 1,
+    defaultDelay: 2,
+    delays: [2, 3],
+  },
+  /**
+   * Swapping a cannon's type in play: it reloads for its new type's full
+   * fire interval (at least this long) before it can shoot again.
+   */
+  swapLockMs: 1000,
   /** Keep the current target unless a new one is clearly better, in pixels. */
   aiRetargetSlack: 200,
 } as const

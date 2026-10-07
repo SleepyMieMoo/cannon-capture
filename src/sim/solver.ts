@@ -1,6 +1,7 @@
 import { TUNING } from '../config/tuning'
 import { boardFor } from '../levels/board'
-import type { LevelDef } from '../types'
+import { KIND_IDS, laneKey, maxShotSpeedFor, shotLifetimeFor, shotSpeedFor } from '../config/kinds'
+import type { CannonKind, LevelDef } from '../types'
 import { Broadphase, aimShot, traceShot, type BallisticsOpts, type Body, type FanField } from './ballistics'
 
 /**
@@ -31,8 +32,16 @@ export interface Lane {
   direct: boolean
 }
 
-/** cannonId -> targetId -> best lane */
+/**
+ * laneKey(cannonId, kind) -> targetId -> best lane. Normal lanes use the bare
+ * cannon id; other tower types have their own entry (shots fly differently).
+ */
 export type LaneTable = Map<string, Map<string, Lane>>
+
+/** The lanes for a cannon as it is fitted right now. */
+export function lanesOf(table: LaneTable, cannon: { id: string; kind?: CannonKind }): Map<string, Lane> | undefined {
+  return table.get(laneKey(cannon.id, cannon.kind ?? 'normal'))
+}
 
 export function levelFans(level: LevelDef): FanField[] {
   return level.fans.map((fan) => ({
@@ -67,27 +76,28 @@ function traceCtx(level: LevelDef): TraceCtx {
   }
 }
 
-function traceWith(ctx: TraceCtx, fromId: string, angle: number): string | null {
+function traceWith(ctx: TraceCtx, fromId: string, angle: number, kind: CannonKind = 'normal'): string | null {
   const from = ctx.level.cannons.find((c) => c.id === fromId)
   if (!from) return null
   const shot = aimShot(
     from,
     { x: from.x + Math.cos(angle) * 100, y: from.y + Math.sin(angle) * 100 },
     TUNING.cannonRadius + 12,
-    TUNING.shotSpeed,
+    shotSpeedFor(kind),
     fromId,
   )
-  return traceShot(shot, ctx.level.walls, ctx.fans, ctx.bodies, ctx.opts, TUNING.shotLifetimeMs, ctx.near).hitId
+  if (kind !== 'normal') shot.maxSpeed = maxShotSpeedFor(kind)
+  return traceShot(shot, ctx.level.walls, ctx.fans, ctx.bodies, ctx.opts, shotLifetimeFor(kind), ctx.near).hitId
 }
 
-export function traceAngle(level: LevelDef, fromId: string, angle: number): string | null {
-  return traceWith(traceCtx(level), fromId, angle)
+export function traceAngle(level: LevelDef, fromId: string, angle: number, kind: CannonKind = 'normal'): string | null {
+  return traceWith(traceCtx(level), fromId, angle, kind)
 }
 
-export function sweep(level: LevelDef, fromId: string, stepDeg = 1): (string | null)[] {
+export function sweep(level: LevelDef, fromId: string, stepDeg = 1, kind: CannonKind = 'normal'): (string | null)[] {
   const ctx = traceCtx(level)
   const out: (string | null)[] = []
-  for (let deg = 0; deg < 360; deg += stepDeg) out.push(traceWith(ctx, fromId, (deg * Math.PI) / 180))
+  for (let deg = 0; deg < 360; deg += stepDeg) out.push(traceWith(ctx, fromId, (deg * Math.PI) / 180, kind))
   return out
 }
 
@@ -119,29 +129,35 @@ export function lanesFromSweep(hits: (string | null)[], stepDeg = 1): Map<string
   return best
 }
 
-function lanesFor(ctx: TraceCtx, fromId: string, hits: (string | null)[], stepDeg: number): Map<string, Lane> {
+function lanesFor(ctx: TraceCtx, fromId: string, hits: (string | null)[], stepDeg: number, kind: CannonKind): Map<string, Lane> {
   const from = ctx.level.cannons.find((c) => c.id === fromId)!
   const lanes = new Map<string, Lane>()
   for (const [targetId, lane] of lanesFromSweep(hits, stepDeg)) {
     if (targetId === fromId) continue
     const target = ctx.level.cannons.find((c) => c.id === targetId)!
     const directAngle = Math.atan2(target.y - from.y, target.x - from.x)
-    lanes.set(targetId, { targetId, ...lane, direct: traceWith(ctx, fromId, directAngle) === targetId })
+    lanes.set(targetId, { targetId, ...lane, direct: traceWith(ctx, fromId, directAngle, kind) === targetId })
   }
   return lanes
 }
 
+interface LaneJob {
+  id: string
+  kind: CannonKind
+}
+
 /**
  * Builds a level's lane table a slice at a time so big maps with many
- * cannons never stall a frame. Enemy cannons go first (the AI needs them),
- * then neutrals, then yours. Until a cannon's lanes exist, the AI simply
- * aims straight at its target.
+ * cannons never stall a frame. Every cannon gets lanes for its starting type
+ * first (enemy cannons first, since the AI needs them, then neutrals, then
+ * yours), then lanes for the other tower types it could be swapped to. Until
+ * a cannon's lanes exist, the AI simply aims straight at its target.
  */
 export class LaneBuilder {
   readonly table: LaneTable = new Map()
   private readonly ctx: TraceCtx
-  private readonly queue: string[]
-  private current: string | null = null
+  private readonly queue: LaneJob[]
+  private current: LaneJob | null = null
   private hits: (string | null)[] = []
   private readonly stepDeg: number
 
@@ -150,7 +166,10 @@ export class LaneBuilder {
     // Many cannons: a coarser sweep keeps the total cost in check.
     this.stepDeg = stepDeg ?? (level.cannons.length > 24 ? 2 : 1)
     const rank = { enemy: 0, neutral: 1, player: 2 } as const
-    this.queue = [...level.cannons].sort((a, b) => rank[a.side] - rank[b.side]).map((c) => c.id)
+    const order = [...level.cannons].sort((a, b) => rank[a.side] - rank[b.side])
+    const first = order.map((c) => ({ id: c.id, kind: c.kind ?? 'normal' }))
+    const rest = KIND_IDS.flatMap((kind) => order.filter((c) => (c.kind ?? 'normal') !== kind).map((c) => ({ id: c.id, kind })))
+    this.queue = [...first, ...rest]
   }
 
   get done(): boolean {
@@ -168,9 +187,10 @@ export class LaneBuilder {
       }
       const deg = this.hits.length * this.stepDeg
       if (deg < 360) {
-        this.hits.push(traceWith(this.ctx, this.current, (deg * Math.PI) / 180))
+        this.hits.push(traceWith(this.ctx, this.current.id, (deg * Math.PI) / 180, this.current.kind))
       } else {
-        this.table.set(this.current, lanesFor(this.ctx, this.current, this.hits, this.stepDeg))
+        const { id, kind } = this.current
+        this.table.set(laneKey(id, kind), lanesFor(this.ctx, id, this.hits, this.stepDeg, kind))
         this.current = null
       }
       if (now() - start >= budgetMs) break
@@ -195,33 +215,56 @@ export function levelLanes(level: LevelDef, stepDeg = 1): LaneTable {
 /** Minimum lane width we treat as reliably hittable. */
 export const MIN_LANE_DEG = 2
 
+export interface PuzzleStep {
+  from: string
+  to: string
+  lane: Lane
+  /** Tower type `from` must be (swapping is free in puzzles). */
+  kind: CannonKind
+}
+
 export interface PuzzlePlan {
   solved: boolean
   /** Aim orders in capture order. */
-  steps: { from: string; to: string; lane: Lane }[]
+  steps: PuzzleStep[]
 }
 
 /**
  * Greedy puzzle check: repeatedly let any player cannon that is not yet busy
  * aim at an uncaptured neutral it has a lane to. Each aim captures one neutral
  * (the shot then stops on the now-friendly cannon), so a plan uses one aim per
- * neutral.
+ * neutral. A cannon keeps its current type when that has a lane, otherwise it
+ * swaps (free) to a type that does.
  */
 export function planPuzzle(level: LevelDef, lanes: LaneTable = levelLanes(level)): PuzzlePlan {
+  const kinds = new Map(level.cannons.map((c) => [c.id, (c.kind ?? 'normal') as CannonKind]))
   const owned = new Set(level.cannons.filter((c) => c.side === 'player').map((c) => c.id))
   const neutral = new Set(level.cannons.filter((c) => c.side === 'neutral').map((c) => c.id))
-  const steps: PuzzlePlan['steps'] = []
+  const steps: PuzzleStep[] = []
+  const widest = (from: string, kind: CannonKind): Lane | null => {
+    let pick: Lane | null = null
+    for (const lane of lanes.get(laneKey(from, kind))?.values() ?? []) {
+      if (!neutral.has(lane.targetId) || lane.widthDeg < MIN_LANE_DEG) continue
+      if (!pick || lane.widthDeg > pick.widthDeg) pick = lane
+    }
+    return pick
+  }
   let progress = true
   while (neutral.size && progress) {
     progress = false
     for (const from of owned) {
-      let pick: Lane | null = null
-      for (const lane of lanes.get(from)?.values() ?? []) {
-        if (!neutral.has(lane.targetId) || lane.widthDeg < MIN_LANE_DEG) continue
-        if (!pick || lane.widthDeg > pick.widthDeg) pick = lane
+      const current = kinds.get(from)!
+      let kind = current
+      let pick = widest(from, current)
+      for (const other of KIND_IDS) {
+        if (pick) break
+        if (other === current) continue
+        pick = widest(from, other)
+        kind = other
       }
       if (!pick) continue
-      steps.push({ from, to: pick.targetId, lane: pick })
+      steps.push({ from, to: pick.targetId, lane: pick, kind })
+      kinds.set(from, kind)
       neutral.delete(pick.targetId)
       owned.add(pick.targetId)
       progress = true

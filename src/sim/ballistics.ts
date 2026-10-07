@@ -10,6 +10,10 @@ export interface Ball {
   bounces: number
   alive: boolean
   ownerId: string
+  /** Fan boost cap for this shot (snipers fly faster); defaults to opts.maxSpeed. */
+  maxSpeed?: number
+  /** How long this shot lives in ms; defaults to TUNING.shotLifetimeMs. */
+  lifeMs?: number
 }
 
 export interface FanField {
@@ -107,7 +111,7 @@ export function stepBall(
       next.vx += Math.cos(fan.angle) * fan.force * h
       next.vy += Math.sin(fan.angle) * fan.force * h
     }
-    capSpeed(next, opts.maxSpeed)
+    capSpeed(next, next.maxSpeed ?? opts.maxSpeed)
 
     next.x += next.vx * h
     next.y += next.vy * h

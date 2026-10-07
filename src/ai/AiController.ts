@@ -2,9 +2,10 @@ import { BOARD } from '../config/layout'
 import type { Rect } from '../types'
 import { TUNING } from '../config/tuning'
 import { pickAiTarget } from '../sim/targeting'
-import { MIN_LANE_DEG, type Lane, type LaneTable } from '../sim/solver'
+import { MIN_LANE_DEG, lanesOf, type Lane, type LaneTable } from '../sim/solver'
+import { KIND_IDS, laneKey } from '../config/kinds'
 import type { Cannon } from '../entities/Cannon'
-import type { Point, Side } from '../types'
+import type { CannonKind, Point, Side } from '../types'
 
 /**
  * Periodically aims every cannon of one side at the nearest weak foe it can
@@ -40,9 +41,10 @@ export class AiController {
   retarget(cannons: Cannon[]): void {
     const prey = cannons.filter((cannon) => cannon.side !== this.side)
     const busy = this.assignHealers(cannons)
+    for (const { cannon, kind } of planSwaps(this.side, cannons, this.lanes, busy)) cannon.setKind(kind)
     for (const cannon of cannons) {
       if (cannon.side !== this.side || busy.has(cannon)) continue
-      const lanes = this.lanes.get(cannon.id)
+      const lanes = lanesOf(this.lanes, cannon)
       const reachable = prey.filter((other) => (lanes?.get(other.id)?.widthDeg ?? 0) >= MIN_LANE_DEG)
       const pool = reachable.length ? reachable : prey
       const currentId = this.picks.get(cannon.id) ?? cannon.target?.id ?? null
@@ -71,13 +73,73 @@ export class AiController {
   /** Send helpers to cannons close to flipping; returns every cannon busy healing. */
   private assignHealers(cannons: Cannon[]): Set<Cannon> {
     for (const { helper, friend } of planHeals(this.side, cannons, this.lanes)) {
-      healViaLane(helper, friend, this.lanes.get(helper.id)?.get(friend.id), this.board)
+      healViaLane(helper, friend, lanesOf(this.lanes, helper)?.get(friend.id), this.board)
       this.picks.delete(helper.id)
     }
     const busy = new Set<Cannon>()
     for (const c of cannons) if (c.side === this.side && c.healing && c.healing.damaged) busy.add(c)
     return busy
   }
+}
+
+export interface SwapOrder {
+  cannon: Cannon
+  kind: CannonKind
+}
+
+/**
+ * Tower swaps, kept simple (used by the AI and the test bot):
+ * 1. A foe that none of the side's cannons can reach as they are fitted, but
+ *    one could after a swap: swap the cannon with the widest such lane.
+ * 2. A cannon that can't reach any foe as it is, but could as another type,
+ *    swaps to the type that reaches the most foes.
+ * Only uses lanes that are already built.
+ */
+export function planSwaps(side: Side, cannons: Cannon[], lanes: LaneTable, skip: Set<Cannon> = new Set()): SwapOrder[] {
+  const mine = cannons.filter((c) => c.side === side && !skip.has(c) && !c.swapping)
+  const prey = cannons.filter((c) => c.side !== side)
+  const width = (c: Cannon, kind: CannonKind, foe: Cannon): number =>
+    lanes.get(laneKey(c.id, kind))?.get(foe.id)?.widthDeg ?? 0
+  const orders: SwapOrder[] = []
+  const taken = new Set<Cannon>()
+  const fitted = cannons.filter((c) => c.side === side)
+  for (const foe of prey) {
+    if (fitted.some((c) => width(c, c.kind, foe) >= MIN_LANE_DEG)) continue
+    let best: SwapOrder | null = null
+    let bestW = 0
+    for (const c of mine) {
+      if (taken.has(c)) continue
+      for (const kind of KIND_IDS) {
+        if (kind === c.kind) continue
+        const w = width(c, kind, foe)
+        if (w >= MIN_LANE_DEG && w > bestW) {
+          best = { cannon: c, kind }
+          bestW = w
+        }
+      }
+    }
+    if (best) {
+      orders.push(best)
+      taken.add(best.cannon)
+    }
+  }
+  for (const c of mine) {
+    if (taken.has(c) || !lanes.has(laneKey(c.id, c.kind))) continue
+    const reach = (kind: CannonKind) => prey.filter((p) => width(c, kind, p) >= MIN_LANE_DEG).length
+    if (reach(c.kind) > 0) continue
+    let best = c.kind
+    let bestReach = 0
+    for (const kind of KIND_IDS) {
+      if (!lanes.has(laneKey(c.id, kind))) continue
+      const r = reach(kind)
+      if (r > bestReach) {
+        best = kind
+        bestReach = r
+      }
+    }
+    if (best !== c.kind) orders.push({ cannon: c, kind: best })
+  }
+  return orders
 }
 
 export interface HealOrder {
@@ -106,7 +168,7 @@ export function planHeals(side: Side, cannons: Cannon[], lanes: LaneTable): Heal
     let best = Infinity
     for (const c of mine) {
       if (c === friend || busy.has(c)) continue
-      if ((lanes.get(c.id)?.get(friend.id)?.widthDeg ?? 0) < MIN_LANE_DEG) continue
+      if ((lanesOf(lanes, c)?.get(friend.id)?.widthDeg ?? 0) < MIN_LANE_DEG) continue
       const prey = c.target
       if (prey && prey.side !== side && prey.captureAttacker === side && prey.captureProgress >= TUNING.captureThreshold - 2) continue
       const d = Math.hypot(c.x - friend.x, c.y - friend.y)
