@@ -15,7 +15,15 @@ You are gold. The enemy is strawberry pink. Warm grey cannons are neutral and do
 3. Cannons don't snap. The barrel turns toward its aim at a limited speed, and a cannon only fires once it has finished turning and is lined up. After that it fires about once a second. The fire timer keeps counting while the barrel turns, so a long turn doesn't add an extra wait: the cannon fires as soon as it lines up, if its timer is ready. Big swings still cost you shots, because nothing fires mid-turn.
 4. Setting an aim deselects the cannon automatically, so a stray extra click can't re-aim it. To re-aim, select it again. Before aiming, click the selected cannon again (or press **Esc**) to cancel, or click another of your cannons to switch to it.
 
-A cannon tints toward whoever is hitting it. At eight hits it flips. Shots from the other side contest that progress. Capture every cannon to win. Lose when none are yours. A newly captured cannon swings toward the nearest foe on its own.
+A cannon tints toward whoever is hitting it, and a ring around it fills in their colour. At eight hits it flips. Capture every cannon to win. Lose when none are yours. A newly captured cannon swings toward the nearest foe on its own.
+
+**Healing.** Each cannon has one capture meter, like a tug of war:
+
+- Your own shots heal your cannons. If pink is part-way through capturing one of your gold cannons, select another gold cannon and click the damaged one. Every hit takes one point of pink's progress back off, so the tint and the ring shrink and a gold ring pulses out with a "+1 heal" popup. Once it is whole, the healer goes back to whatever it was aiming at before.
+- A healthy cannon can't be overhealed: friendly shots that hit a cannon at full health just stop there and do nothing.
+- Neutrals work the same way. If pink is part-way through a neutral and you shoot it, you push their progress back first. Once their progress is gone, your hits start counting toward your own capture (and the other way round).
+- The enemy heals too. Once you are halfway through one of its cannons, it sends its nearest cannon with a clear shot to heal it.
+- Clicking a damaged gold cannon while another one is selected heals it. Clicking a healthy gold cannon still switches the selection.
 
 The enemy obeys the same turn speed. Your aim shows as a gold dashed line with a crosshair at free aim points; while a cannon is selected, a pale line previews where your next click would aim. Faint pink lines are the enemy's. The mint ring is a fan blowing downward. P1 starts aimed into the tall wall, so re-aim it. Restart from the corner, or press **R** on the end screen. Works with taps on touch screens too.
 
@@ -177,6 +185,7 @@ All gameplay numbers live in [`src/config/tuning.ts`](src/config/tuning.ts).
 | `fanForce` | 540 | How hard fans accelerate a shot (px/s²) |
 | `aiRetargetMs` | 1600 | How often the enemy re-aims |
 | `aiFinishBias` | 80 | How strongly the AI finishes a cannon it is already capturing |
+| `aiHealAtProgress` | 4 | The AI sends a healer once a foe has this much capture progress on one of its cannons |
 
 Colours live in [`src/config/theme.ts`](src/config/theme.ts), so the board can be reskinned without touching gameplay. All 11 themes are there as data; change `ACTIVE_THEME` to switch (default: Dark Choco). The level layout is data in [`src/levels/skirmish.ts`](src/levels/skirmish.ts).
 

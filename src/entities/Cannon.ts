@@ -6,6 +6,18 @@ import { angleDelta, turnToward } from '../sim/aim'
 import { applyCaptureHit } from '../sim/capture'
 import type { Point, Side } from '../types'
 
+export interface HitOutcome {
+  flipped: boolean
+  /** Capture progress removed by a friendly (healing) hit. */
+  healed: number
+}
+
+/** A saved aim, restored once a heal is finished. */
+interface SavedAim {
+  target: Cannon | null
+  aimPoint: Point | null
+}
+
 export class Cannon {
   readonly id: string
   readonly name: string
@@ -22,6 +34,9 @@ export class Cannon {
   angle: number
   captureAttacker: Side | null = null
   captureProgress = 0
+  /** A friendly cannon this one is healing (shooting to undo enemy capture progress). */
+  healing: Cannon | null = null
+  private resumeAim: SavedAim | null = null
   selected = false
   hovered = false
 
@@ -29,6 +44,7 @@ export class Cannon {
   private readonly barrel?: Phaser.GameObjects.Graphics
   private cooldown: number
   private hitFlash = 0
+  private healFlash = 0
   private muzzle = 0
   private pop = 1
 
@@ -58,18 +74,61 @@ export class Cannon {
 
   setTarget(target: Cannon | null): void {
     if (target === this) return
+    this.endHeal()
     this.target = target
     if (target) this.aimPoint = null
   }
 
   clearAim(): void {
+    this.endHeal()
     this.target = null
     this.aimPoint = null
   }
 
   setAimPoint(point: Point): void {
+    this.endHeal()
     this.target = null
     this.aimPoint = { x: point.x, y: point.y }
+  }
+
+  /** True while another side has capture progress on this cannon. */
+  get damaged(): boolean {
+    return this.captureAttacker !== null && this.captureProgress > 0
+  }
+
+  /**
+   * Shoot a damaged friendly cannon to heal it. Aims straight at it, or along
+   * `via` (a lane point) when a straight shot would miss. Once it is fully
+   * healed this cannon goes back to whatever it was aiming at before.
+   */
+  startHeal(friend: Cannon, via?: Point): void {
+    if (friend === this || friend.side !== this.side) return
+    const resume = this.healing ? this.resumeAim : { target: this.target, aimPoint: this.aimPoint }
+    if (via) this.setAimPoint(via)
+    else this.setTarget(friend)
+    this.healing = friend
+    this.resumeAim = resume
+  }
+
+  private endHeal(): void {
+    this.healing = null
+    this.resumeAim = null
+  }
+
+  /** Called every frame: finish a heal once the friend is whole (or lost). */
+  private checkHeal(): void {
+    const friend = this.healing
+    if (!friend) return
+    if (friend.side !== this.side) {
+      // It flipped anyway: keep shooting it, now as a capture.
+      this.endHeal()
+      return
+    }
+    if (friend.damaged) return
+    const resume = this.resumeAim
+    this.endHeal()
+    this.target = resume?.target && resume.target !== this ? resume.target : null
+    this.aimPoint = this.target ? null : (resume?.aimPoint ?? null)
   }
 
   /** Where this cannon wants to point, or null if it has no aim. */
@@ -91,25 +150,32 @@ export class Cannon {
     return Math.abs((angleDelta(this.angle, aimAngle(this, aim)) * 180) / Math.PI)
   }
 
-  /** Returns true when this hit flips ownership. */
-  receiveHit(attacker: Side): boolean {
-    if (attacker === this.side) return false
+  /**
+   * A shot worth `damage` from `attacker` lands. Foes add capture progress;
+   * the owner's own shots heal it off again (never past full health).
+   */
+  receiveHit(attacker: Side, damage = 1): HitOutcome {
     const result = applyCaptureHit(
       { side: this.side, attacker: this.captureAttacker, progress: this.captureProgress },
       attacker,
       TUNING.captureThreshold,
+      damage,
     )
+    const healed = attacker === this.side ? result.reduced : 0
+    if (attacker === this.side && healed === 0) return { flipped: false, healed: 0 }
     this.side = result.state.side
     this.captureAttacker = result.state.attacker
     this.captureProgress = result.state.progress
-    this.hitFlash = 1
+    if (healed > 0) this.healFlash = 1
+    else this.hitFlash = 1
     if (result.flipped) {
       this.pop = 1.24
       this.target = null
       this.aimPoint = null
+      this.endHeal()
       this.cooldown = TUNING.captureKickoffMs
     }
-    return result.flipped
+    return { flipped: result.flipped, healed }
   }
 
   /**
@@ -118,10 +184,12 @@ export class Cannon {
    */
   update(dt: number, frozen: boolean, fireMs: number = TUNING.fireIntervalMs): Ball | null {
     this.hitFlash = Math.max(0, this.hitFlash - dt / 160)
+    this.healFlash = Math.max(0, this.healFlash - dt / 420)
     this.muzzle = Math.max(0, this.muzzle - dt)
     this.pop = Math.max(1, this.pop - dt / 380)
     if (this.side === 'neutral') return null
-    if (this.target && this.target.side === this.side) this.target = null
+    this.checkHeal()
+    if (this.target && this.target.side === this.side && this.target !== this.healing) this.target = null
 
     const aim = this.aim()
     if (aim) {
@@ -174,6 +242,15 @@ export class Cannon {
       this.body.beginPath()
       this.body.arc(0, 0, TUNING.cannonRadius + 7, -Math.PI / 2, -Math.PI / 2 + sweep, false)
       this.body.strokePath()
+    }
+
+    if (this.healFlash > 0) {
+      // Heal: a ring in the owner's colour swells outward and fades.
+      const t = 1 - this.healFlash
+      this.body.lineStyle(3, sideColor(this.side), this.healFlash * 0.9)
+      this.body.strokeCircle(0, 0, TUNING.cannonRadius + 4 + t * 16)
+      this.body.lineStyle(2, 0xffffff, this.healFlash * 0.5)
+      this.body.strokeCircle(0, 0, TUNING.cannonRadius + 2 + t * 10)
     }
 
     if (this.selected || this.hovered) {

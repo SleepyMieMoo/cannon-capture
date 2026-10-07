@@ -14,9 +14,12 @@ export class Shot {
   prevX: number
   prevY: number
   readonly side: Side
+  /** Capture progress this shot adds to a foe (or heals on a friend). */
+  readonly damage: number
 
-  constructor(ball: Ball, side: Side) {
+  constructor(ball: Ball, side: Side, damage = 1) {
     this.ball = ball
+    this.damage = damage
     this.prevX = ball.x
     this.prevY = ball.y
     this.side = side
