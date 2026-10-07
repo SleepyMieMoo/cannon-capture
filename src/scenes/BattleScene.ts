@@ -10,14 +10,21 @@ import { Wall } from '../entities/Wall'
 import { SKIRMISH } from '../levels/skirmish'
 import { bindSceneResolution } from '../render/resolution'
 import type { FanField } from '../sim/ballistics'
+import { clampPoint } from '../sim/aim'
 import { clipToWalls } from '../sim/geometry'
-import type { Side } from '../types'
+import type { Point, Side } from '../types'
 
 interface Spark {
   x: number
   y: number
   life: number
   color: number
+}
+
+interface Ping {
+  x: number
+  y: number
+  life: number
 }
 
 type Outcome = 'win' | 'lose'
@@ -28,6 +35,9 @@ export class BattleScene extends Phaser.Scene {
   private walls: Wall[] = []
   private fans: Fan[] = []
   private sparks: Spark[] = []
+  private pings: Ping[] = []
+  /** Last pointer position on the board, for the aim preview (null off-board or on touch release). */
+  private pointer: Point | null = null
   private readonly ai = new AiController()
   private fx!: Phaser.GameObjects.Graphics
   private selected: Cannon | null = null
@@ -47,6 +57,8 @@ export class BattleScene extends Phaser.Scene {
     this.walls = []
     this.fans = []
     this.sparks = []
+    this.pings = []
+    this.pointer = null
     this.selected = null
     this.hover = null
     this.ended = null
@@ -74,8 +86,11 @@ export class BattleScene extends Phaser.Scene {
       )
     })
     for (const def of SKIRMISH.cannons) {
-      if (!def.aimAt) continue
-      this.byId(def.id)?.setTarget(this.byId(def.aimAt) ?? null)
+      const cannon = this.byId(def.id)
+      if (!cannon) continue
+      if (def.aimAt) cannon.setTarget(this.byId(def.aimAt) ?? null)
+      else if (def.aimPoint) cannon.setAimPoint(def.aimPoint)
+      cannon.snapToAim()
     }
 
     this.createHud()
@@ -95,7 +110,9 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.fadeSparks(dt)
-    this.drawFx()
+    for (const ping of this.pings) ping.life -= dt / 420
+    this.pings = this.pings.filter((ping) => ping.life > 0)
+    this.drawFx(time)
     for (const cannon of this.cannons) {
       cannon.hovered = cannon === this.hover
       cannon.selected = cannon === this.selected
@@ -362,42 +379,55 @@ export class BattleScene extends Phaser.Scene {
 
   private hintLine(): string {
     if (this.ended) return this.ended === 'win' ? 'You hold every cannon.' : 'You hold no cannons.'
-    if (!this.selected) return 'Click a gold cannon, then click the cannon it should shoot.'
-    if (this.hover && this.hover !== this.selected && this.hover.side !== 'player') {
-      return `${this.selected.name} → ${this.hover.name}`
+    if (!this.selected) return 'Click one of your gold cannons to select it.'
+    const name = this.selected.name
+    if (this.hover && this.hover !== this.selected) {
+      if (this.hover.side === 'player') return `Click to select ${this.hover.name} instead.`
+      return `${name} → ${this.hover.name}`
     }
-    if (this.selected.target) {
-      return `${this.selected.name} firing at ${this.selected.target.name}. Click a cannon to retarget.`
-    }
-    return `${this.selected.name} selected. Click an enemy or neutral cannon to aim.`
+    if (this.hover === this.selected) return `Click ${name} again to deselect.`
+    return `${name}: click anywhere to aim, or click it again to deselect.`
   }
 
-  private drawFx(): void {
+  private drawFx(time: number): void {
     const g = this.fx
     g.clear()
+    const walls = this.walls.map((wall) => wall.rect)
+
     for (const cannon of this.cannons) {
-      const preview =
-        cannon === this.selected && this.hover && this.hover.side !== 'player' && this.hover !== cannon
-          ? this.hover
-          : null
-      const target = preview ?? (cannon.side === 'neutral' ? null : cannon.target)
-      if (!target) continue
-      const alpha = preview ? 0.9 : cannon.side === 'player' ? (cannon.selected ? 0.8 : 0.38) : 0.36
-      const color = preview || cannon.side === 'player' ? theme.player : sideColor(cannon.side)
-      const walls = this.walls.map((wall) => wall.rect)
-      const end = clipToWalls(cannon.x, cannon.y, target.x, target.y, walls)
-      const blocked = end.x !== target.x || end.y !== target.y
-      dash(
-        g,
-        cannon.x,
-        cannon.y,
-        end.x,
-        end.y,
-        TUNING.cannonRadius + 14,
-        blocked ? 4 : TUNING.cannonRadius + 14,
-        color,
-        alpha,
-      )
+      if (cannon.side === 'neutral') continue
+      const aim = cannon.aim()
+      if (!aim) continue
+      const mine = cannon.side === 'player'
+      const color = mine ? theme.player : sideColor(cannon.side)
+      const alpha = mine ? (cannon.selected ? 0.85 : 0.4) : 0.34
+      const end = clipToWalls(cannon.x, cannon.y, aim.x, aim.y, walls)
+      const blocked = end.x !== aim.x || end.y !== aim.y
+      const endInset = cannon.target && !blocked ? TUNING.cannonRadius + 14 : 4
+      dash(g, cannon.x, cannon.y, end.x, end.y, TUNING.cannonRadius + 14, endInset, color, alpha)
+      if (!cannon.target) crosshair(g, aim.x, aim.y, mine && cannon.selected ? 11 : 8, color, mine ? alpha + 0.1 : alpha)
+    }
+
+    // Live preview from the selected cannon to wherever the pointer is.
+    const sel = this.selected
+    if (sel && !this.ended) {
+      const hover = this.hover && this.hover !== sel ? this.hover : null
+      if (hover && hover.side !== 'player') {
+        const end = clipToWalls(sel.x, sel.y, hover.x, hover.y, walls)
+        const blocked = end.x !== hover.x || end.y !== hover.y
+        dash(g, sel.x, sel.y, end.x, end.y, TUNING.cannonRadius + 14, blocked ? 4 : TUNING.cannonRadius + 14, theme.select, 0.9)
+        g.lineStyle(2, theme.select, 0.6 + 0.3 * Math.sin(time / 120))
+        g.strokeCircle(hover.x, hover.y, TUNING.cannonRadius + 9)
+      } else if (!this.hover && this.pointer) {
+        const end = clipToWalls(sel.x, sel.y, this.pointer.x, this.pointer.y, walls)
+        dash(g, sel.x, sel.y, end.x, end.y, TUNING.cannonRadius + 14, 4, theme.select, 0.55)
+        crosshair(g, this.pointer.x, this.pointer.y, 10, theme.select, 0.75)
+      }
+    }
+
+    for (const ping of this.pings) {
+      g.lineStyle(2, theme.select, ping.life)
+      g.strokeCircle(ping.x, ping.y, 8 + (1 - ping.life) * 22)
     }
 
     for (const shot of this.shots) {
@@ -439,25 +469,49 @@ export class BattleScene extends Phaser.Scene {
 
   private onPointerDown(pointer: Phaser.Input.Pointer): void {
     if (this.ended || this.restarting) return
-    const hit = this.cannonAt(pointer.worldX, pointer.worldY)
-    if (!hit) {
+    const x = pointer.worldX
+    const y = pointer.worldY
+    const hit = this.cannonAt(x, y)
+    const sel = this.selected
+
+    if (!sel) {
+      if (hit && hit.side === 'player') this.selected = hit
+      return
+    }
+    if (hit === sel) {
       this.selected = null
       return
     }
-    if (hit.side === 'player') {
+    if (hit && hit.side === 'player') {
       this.selected = hit
       return
     }
-    if (this.selected && this.selected.side === 'player') this.selected.setTarget(hit)
+    if (hit) {
+      sel.setTarget(hit)
+      this.pings.push({ x: hit.x, y: hit.y, life: 1 })
+      return
+    }
+    if (!onBoard(x, y)) {
+      this.selected = null
+      return
+    }
+    const point = clampPoint(x, y, BOARD, TUNING.shotRadius)
+    sel.setAimPoint(point)
+    this.pings.push({ ...point, life: 1 })
   }
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
     if (this.ended) {
       this.hover = null
+      this.pointer = null
       return
     }
-    this.hover = this.cannonAt(pointer.worldX, pointer.worldY)
-    this.input.setDefaultCursor(this.hover ? 'pointer' : 'default')
+    const x = pointer.worldX
+    const y = pointer.worldY
+    this.hover = this.cannonAt(x, y)
+    this.pointer = onBoard(x, y) && !pointer.wasTouch ? { x, y } : null
+    const clickable = this.hover && (this.hover.side === 'player' || this.selected)
+    this.input.setDefaultCursor(clickable ? 'pointer' : this.selected && this.pointer ? 'crosshair' : 'default')
   }
 
   private onRestartKey(): void {
@@ -491,6 +545,25 @@ export class BattleScene extends Phaser.Scene {
   private byId(id: string): Cannon | undefined {
     return this.cannons.find((cannon) => cannon.id === id)
   }
+}
+
+function onBoard(x: number, y: number): boolean {
+  return x >= BOARD.x && x <= BOARD.x + BOARD.w && y >= BOARD.y && y <= BOARD.y + BOARD.h
+}
+
+function crosshair(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, color: number, alpha: number): void {
+  g.lineStyle(2, color, Math.min(1, alpha))
+  g.strokeCircle(x, y, r)
+  g.beginPath()
+  g.moveTo(x - r - 5, y)
+  g.lineTo(x - r + 4, y)
+  g.moveTo(x + r - 4, y)
+  g.lineTo(x + r + 5, y)
+  g.moveTo(x, y - r - 5)
+  g.lineTo(x, y - r + 4)
+  g.moveTo(x, y + r - 4)
+  g.lineTo(x, y + r + 5)
+  g.strokePath()
 }
 
 function dash(
