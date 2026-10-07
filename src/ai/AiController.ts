@@ -1,4 +1,5 @@
 import { BOARD } from '../config/layout'
+import type { Rect } from '../types'
 import { TUNING } from '../config/tuning'
 import { pickAiTarget } from '../sim/targeting'
 import { MIN_LANE_DEG, type Lane, type LaneTable } from '../sim/solver'
@@ -16,10 +17,12 @@ export class AiController {
   private lanes: LaneTable = new Map()
   private retargetMs: number = TUNING.aiRetargetMs
   private readonly picks = new Map<string, string>()
+  private board: Rect = BOARD
 
   constructor(readonly side: Side = 'enemy') {}
 
-  reset(lanes: LaneTable = new Map(), retargetMs: number = TUNING.aiRetargetMs): void {
+  reset(lanes: LaneTable = new Map(), retargetMs: number = TUNING.aiRetargetMs, board: Rect = BOARD): void {
+    this.board = board
     // Keep the level's opening targets for one full retarget interval.
     this.elapsed = 0
     this.lanes = lanes
@@ -59,28 +62,29 @@ export class AiController {
       if (choice.id === currentId && cannon.aim()) continue
       const target = cannons.find((other) => other.id === choice.id)
       if (!target) continue
-      aimViaLane(cannon, target, lanes?.get(target.id))
+      aimViaLane(cannon, target, lanes?.get(target.id), this.board)
       this.picks.set(cannon.id, target.id)
     }
   }
 }
 
 /** Aim straight at the target if that lands, otherwise at a point along the lane. */
-export function aimViaLane(cannon: Cannon, target: Cannon, lane: Lane | undefined): void {
+export function aimViaLane(cannon: Cannon, target: Cannon, lane: Lane | undefined, board: Rect = BOARD): void {
   if (!lane || lane.direct) cannon.setTarget(target)
-  else cannon.setAimPoint(pointAlong(cannon, lane.angle))
+  else cannon.setAimPoint(pointAlong(cannon, lane.angle, board))
 }
 
 /** A point on the board in direction `angle` from `origin`. */
-export function pointAlong(origin: Point, angle: number, preferred = 160): Point {
+export function pointAlong(origin: Point, angle: number, board: Rect = BOARD, preferred = 160): Point {
+  const BOARD_ = board
   const dx = Math.cos(angle)
   const dy = Math.sin(angle)
   let t = preferred
   const margin = 8
-  if (dx > 1e-6) t = Math.min(t, (BOARD.x + BOARD.w - margin - origin.x) / dx)
-  if (dx < -1e-6) t = Math.min(t, (BOARD.x + margin - origin.x) / dx)
-  if (dy > 1e-6) t = Math.min(t, (BOARD.y + BOARD.h - margin - origin.y) / dy)
-  if (dy < -1e-6) t = Math.min(t, (BOARD.y + margin - origin.y) / dy)
+  if (dx > 1e-6) t = Math.min(t, (BOARD_.x + BOARD_.w - margin - origin.x) / dx)
+  if (dx < -1e-6) t = Math.min(t, (BOARD_.x + margin - origin.x) / dx)
+  if (dy > 1e-6) t = Math.min(t, (BOARD_.y + BOARD_.h - margin - origin.y) / dy)
+  if (dy < -1e-6) t = Math.min(t, (BOARD_.y + margin - origin.y) / dy)
   t = Math.max(t, 40)
   return { x: origin.x + dx * t, y: origin.y + dy * t }
 }

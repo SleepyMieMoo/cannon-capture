@@ -35,7 +35,7 @@ export class PuzzleBot implements Bot {
     if (!from || !to || from.side !== 'player') return
     const pending = this.pending.get(from.id)
     if (pending && this.sim.byId(pending)?.side !== 'player') return
-    const aim = step.lane.direct ? to : pointAlong(from, step.lane.angle)
+    const aim = step.lane.direct ? to : pointAlong(from, step.lane.angle, this.sim.board)
     if (!this.sim.playerAim(from, aim)) return
     this.pending.set(from.id, to.id)
     this.step += 1
@@ -93,7 +93,7 @@ export class BattleBot implements Bot {
         }
       }
       if (!target || (this.aims.get(m.id) === target.id && m.aim())) continue
-      aimViaLane(m, target, sim.lanes.get(m.id)?.get(target.id))
+      aimViaLane(m, target, sim.lanes.get(m.id)?.get(target.id), sim.board)
       this.aims.set(m.id, target.id)
     }
   }
@@ -104,7 +104,7 @@ export class MirrorBot implements Bot {
   private readonly ai = new AiController('player')
 
   constructor(private readonly sim: BattleSim) {
-    this.ai.reset(sim.lanes, TUNING.aiRetargetMs)
+    this.ai.reset(sim.lanes, TUNING.aiRetargetMs, sim.board)
   }
 
   update(dt: number): void {

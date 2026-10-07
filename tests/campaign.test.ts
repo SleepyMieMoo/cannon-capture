@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { BOARD } from '../src/config/layout'
+import { boardFor } from '../src/levels/board'
+import { distToWall } from '../src/sim/geometry'
 import { TUNING } from '../src/config/tuning'
 import { CAMPAIGN, SKIRMISH } from '../src/levels'
 import { MIN_LANE_DEG, lanesFromSweep, levelLanes, planPuzzle } from '../src/sim/solver'
@@ -28,15 +29,14 @@ describe('campaign data', () => {
   it('keeps every cannon on the board and off the walls', () => {
     const r = TUNING.cannonRadius
     for (const level of CAMPAIGN) {
+      const BOARD = boardFor(level)
       for (const c of level.cannons) {
         expect(c.x - r, `${level.id}/${c.id}`).toBeGreaterThanOrEqual(BOARD.x)
         expect(c.x + r, `${level.id}/${c.id}`).toBeLessThanOrEqual(BOARD.x + BOARD.w)
         expect(c.y - r, `${level.id}/${c.id}`).toBeGreaterThanOrEqual(BOARD.y)
         expect(c.y + r, `${level.id}/${c.id}`).toBeLessThanOrEqual(BOARD.y + BOARD.h)
         for (const w of level.walls) {
-          const nx = Math.max(w.x, Math.min(c.x, w.x + w.w))
-          const ny = Math.max(w.y, Math.min(c.y, w.y + w.h))
-          expect(Math.hypot(c.x - nx, c.y - ny), `${level.id}/${c.id} vs wall`).toBeGreaterThan(r)
+          expect(distToWall(c.x, c.y, w), `${level.id}/${c.id} vs wall`).toBeGreaterThan(r)
         }
       }
     }

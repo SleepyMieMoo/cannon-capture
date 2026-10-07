@@ -1,4 +1,4 @@
-import type { Rect } from '../types'
+import type { Rect, WallDef } from '../types'
 
 export interface CircleHit {
   nx: number
@@ -31,19 +31,60 @@ export function circleAabb(cx: number, cy: number, radius: number, box: Rect): C
   return { nx: dx / dist, ny: dy / dist, pen: radius - dist }
 }
 
+/** Circle versus a wall that may be rotated about its centre. Normal points out of the wall. */
+export function circleWall(cx: number, cy: number, radius: number, wall: WallDef): CircleHit | null {
+  if (!wall.angle) return circleAabb(cx, cy, radius, wall)
+  const mx = wall.x + wall.w / 2
+  const my = wall.y + wall.h / 2
+  const cos = Math.cos(wall.angle)
+  const sin = Math.sin(wall.angle)
+  // Into the wall's own frame (rotate by -angle).
+  const lx = (cx - mx) * cos + (cy - my) * sin
+  const ly = -(cx - mx) * sin + (cy - my) * cos
+  const hit = circleAabb(lx, ly, radius, { x: -wall.w / 2, y: -wall.h / 2, w: wall.w, h: wall.h })
+  if (!hit) return null
+  return { nx: hit.nx * cos - hit.ny * sin, ny: hit.nx * sin + hit.ny * cos, pen: hit.pen }
+}
+
+/** Distance from a point to the nearest edge of a (possibly rotated) wall; 0 inside. */
+export function distToWall(px: number, py: number, wall: WallDef): number {
+  const mx = wall.x + wall.w / 2
+  const my = wall.y + wall.h / 2
+  const cos = Math.cos(wall.angle ?? 0)
+  const sin = Math.sin(wall.angle ?? 0)
+  const lx = (px - mx) * cos + (py - my) * sin
+  const ly = -(px - mx) * sin + (py - my) * cos
+  const dx = Math.max(Math.abs(lx) - wall.w / 2, 0)
+  const dy = Math.max(Math.abs(ly) - wall.h / 2, 0)
+  return Math.hypot(dx, dy)
+}
+
 /** First point where the segment enters a wall, or the original end if it does not. */
 export function clipToWalls(
   x1: number,
   y1: number,
   x2: number,
   y2: number,
-  walls: Rect[],
+  walls: WallDef[],
 ): { x: number; y: number } {
   const dx = x2 - x1
   const dy = y2 - y1
   let best = 1
   for (const wall of walls) {
-    const t = segmentEntersAabb(x1, y1, dx, dy, wall)
+    let t: number | null
+    if (!wall.angle) {
+      t = segmentEntersAabb(x1, y1, dx, dy, wall)
+    } else {
+      const mx = wall.x + wall.w / 2
+      const my = wall.y + wall.h / 2
+      const cos = Math.cos(wall.angle)
+      const sin = Math.sin(wall.angle)
+      const lx = (x1 - mx) * cos + (y1 - my) * sin
+      const ly = -(x1 - mx) * sin + (y1 - my) * cos
+      const ldx = dx * cos + dy * sin
+      const ldy = -dx * sin + dy * cos
+      t = segmentEntersAabb(lx, ly, ldx, ldy, { x: -wall.w / 2, y: -wall.h / 2, w: wall.w, h: wall.h })
+    }
     if (t !== null && t < best) best = t
   }
   return { x: x1 + dx * best, y: y1 + dy * best }

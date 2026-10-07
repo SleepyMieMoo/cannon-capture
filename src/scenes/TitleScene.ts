@@ -70,11 +70,14 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5)
 
     makeButton(this, cx, 360, 'Campaign', () => this.scene.start('map'), { width: 260, height: 56, fontSize: 20 })
-    makeButton(this, cx, 432, 'Quick skirmish', () => this.scene.start('battle', { levelId: 'skirmish' }), {
-      width: 260,
+    const row = 432
+    makeButton(this, cx - 216, row, 'Quick skirmish', () => this.scene.start('battle', { levelId: 'skirmish' }), {
+      width: 200,
       height: 50,
       primary: false,
     })
+    makeButton(this, cx, row, 'Map editor', () => this.scene.start('editor'), { width: 200, height: 50, primary: false })
+    makeButton(this, cx + 216, row, 'My maps', () => this.scene.start('maps'), { width: 200, height: 50, primary: false })
 
     this.add
       .text(cx, GAME_HEIGHT - 58, 'A SleepyMie game  ·  colours from ChocoNeko', {

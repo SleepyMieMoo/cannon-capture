@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { BOARD, GAME_HEIGHT, GAME_WIDTH, HUD_HEIGHT } from '../config/layout'
+import { GAME_HEIGHT, GAME_WIDTH, HUD_HEIGHT } from '../config/layout'
 import { cssHex, sideColor, theme } from '../config/theme'
 import { TUNING } from '../config/tuning'
 import { DEBUG } from '../debug'
@@ -8,13 +8,16 @@ import { Fan } from '../entities/Fan'
 import { Wall } from '../entities/Wall'
 import { CAMPAIGN, SKIRMISH, campaignIndex, findLevel } from '../levels'
 import { recordWin } from '../progress'
+import { boardFor, insideBoard } from '../levels/board'
 import { bindSceneResolution } from '../render/resolution'
+import { WorldCamera } from '../render/WorldCamera'
+import { drawBoardSurface } from '../render/boardSurface'
 import { clampPoint } from '../sim/aim'
 import { BattleSim, type Outcome } from '../sim/BattleSim'
 import { MirrorBot, makeBot, type Bot } from '../sim/bots'
 import { clipToWalls } from '../sim/geometry'
 import { starsFor } from '../sim/stars'
-import type { LevelDef, Point, Side } from '../types'
+import type { LevelDef, Point, Rect, Side } from '../types'
 import { drawStar, makeButton } from '../ui/button'
 
 interface Spark {
@@ -33,12 +36,25 @@ interface Ping {
 
 export interface BattleData {
   levelId?: string
+  /** A custom map (from the editor or My maps) instead of a built-in level. */
+  custom?: LevelDef
+  /** Where Back/Menu returns to for custom maps. */
+  from?: 'editor' | 'maps'
 }
+
+/** The world viewport: everything under the HUD band. */
+const WORLD_VIEW = { x: 0, y: HUD_HEIGHT + 2, w: GAME_WIDTH, h: GAME_HEIGHT - HUD_HEIGHT - 2 }
 
 /** Renders a BattleSim round and turns clicks into aim orders. */
 export class BattleScene extends Phaser.Scene {
   private level: LevelDef = SKIRMISH
   private levelIndex = -1
+  private custom: LevelDef | null = null
+  private from: BattleData['from'] = undefined
+  private board: Rect = boardFor(undefined)
+  private wc!: WorldCamera
+  private uiCam!: Phaser.Cameras.Scene2D.Camera
+  private pressOnUi = false
   private sim!: BattleSim
   private bot: Bot | null = null
   private walls: Wall[] = []
@@ -62,8 +78,50 @@ export class BattleScene extends Phaser.Scene {
   }
 
   init(data: BattleData): void {
-    this.level = findLevel(data?.levelId) ?? SKIRMISH
-    this.levelIndex = campaignIndex(this.level.id)
+    this.custom = data?.custom ?? null
+    this.from = data?.from
+    this.level = this.custom ?? findLevel(data?.levelId) ?? SKIRMISH
+    this.levelIndex = this.custom ? -1 : campaignIndex(this.level.id)
+    this.board = boardFor(this.level)
+  }
+
+  /**
+   * Big maps start at the normal "near" zoom, centred on your cannons. If
+   * they are spread wider than one screen, zoom out a little to show more of
+   * them (never below 70%).
+   */
+  private frameOwnCannons(): void {
+    if (!this.wc.canZoomOut) return
+    const mine = this.level.cannons.filter((c) => c.side === 'player')
+    if (!mine.length) return
+    const pad = 90
+    const x0 = Math.min(...mine.map((c) => c.x)) - pad
+    const x1 = Math.max(...mine.map((c) => c.x)) + pad
+    const y0 = Math.min(...mine.map((c) => c.y)) - pad
+    const y1 = Math.max(...mine.map((c) => c.y)) + pad
+    this.wc.zoom = Math.max(0.7, Math.min(1, WORLD_VIEW.w / (x1 - x0), WORLD_VIEW.h / (y1 - y0)))
+    this.wc.center = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 }
+    this.wc.apply()
+  }
+
+  /** Hide from the world camera (HUD, banners, end screen). */
+  private ui<T extends Phaser.GameObjects.GameObject>(obj: T): T {
+    this.cameras.main.ignore(obj)
+    return obj
+  }
+
+  /** Run `build` and send everything it adds to the scene to the UI camera only. */
+  private uiBlock<T>(build: () => T): T {
+    const before = new Set(this.children.list)
+    const out = build()
+    for (const obj of this.children.list) if (!before.has(obj)) this.cameras.main.ignore(obj)
+    return out
+  }
+
+  /** Hide from the fixed UI camera (board content). */
+  private world<T extends Phaser.GameObjects.GameObject>(obj: T): T {
+    this.uiCam.ignore(obj)
+    return obj
   }
 
   private get cannons(): Cannon[] {
@@ -94,14 +152,21 @@ export class BattleScene extends Phaser.Scene {
     this.restarting = false
     this.aimsText = null
     this.banner = null
+    this.pressOnUi = false
 
-    bindSceneResolution(this)
+    // Two cameras: a fixed one for the HUD (1200x720 layout) and a world
+    // camera under it that can zoom and pan on bigger maps.
+    this.uiCam = this.cameras.add(0, 0, this.scale.width, this.scale.height)
+    bindSceneResolution(this, { camera: this.uiCam })
     this.drawBoard()
     this.fx = this.add.graphics().setDepth(3)
     this.level.walls.forEach((rect) => this.walls.push(new Wall(this, rect)))
     this.level.fans.forEach((def) => this.fans.push(new Fan(this, def)))
 
-    this.sim = new BattleSim(this.level, this, {
+    this.sim = new BattleSim(
+      this.level,
+      this,
+      {
       bounce: (x, y) => this.sparks.push({ x, y, life: 1, color: theme.spark }),
       hit: (x, y, side) => this.sparks.push({ x, y, life: 1, color: sideColor(side) }),
       captured: (cannon) => this.popup(cannon.x, cannon.y, 'Captured', cssHex(sideColor(cannon.side))),
@@ -110,15 +175,23 @@ export class BattleScene extends Phaser.Scene {
         this.pings.push({ x: point.x, y: point.y, life: 1, color: theme.select })
         this.hideBanner()
       },
-    })
+      },
+      DEBUG.bot ? undefined : 'progressive',
+    )
+    // Everything created so far is board content.
+    this.children.list.forEach((obj) => this.world(obj))
+    this.wc = new WorldCamera(this, this.board, WORLD_VIEW, undefined, 1)
+    this.frameOwnCannons()
     this.bot = !DEBUG.bot
       ? null
       : DEBUG.botStyle === 'mirror' && !this.sim.isPuzzle
         ? new MirrorBot(this.sim)
         : makeBot(this.sim)
 
-    this.createHud()
+    this.uiBlock(() => this.createHud())
+    if (this.wc.canZoomOut) this.createZoomUi()
     if (this.level.hint) this.showBanner(this.level.hint)
+    else if (this.wc.canZoomOut) this.showBanner('Big map: scroll or pinch to zoom out, drag empty space or use WASD to pan.')
     this.bindInput()
     this.refreshHud()
     if (DEBUG.enabled) (window as unknown as { __cc?: unknown }).__cc = { scene: this, sim: this.sim }
@@ -128,6 +201,8 @@ export class BattleScene extends Phaser.Scene {
     const dt = Math.min(delta, 32)
     for (const fan of this.fans) fan.draw(time)
 
+    this.wc.update(dt)
+    this.sim.pumpLanes(5)
     for (let i = 0; i < DEBUG.speed && !this.sim.ended; i++) {
       this.bot?.update(dt)
       this.sim.step(dt)
@@ -164,8 +239,12 @@ export class BattleScene extends Phaser.Scene {
   private bindInput(): void {
     this.input.off('pointerdown', this.onPointerDown, this)
     this.input.off('pointermove', this.onPointerMove, this)
+    this.input.off('pointerup', this.onPointerUp, this)
+    this.input.off('wheel', this.onWheel, this)
     this.input.on('pointerdown', this.onPointerDown, this)
     this.input.on('pointermove', this.onPointerMove, this)
+    this.input.on('pointerup', this.onPointerUp, this)
+    this.input.on('wheel', this.onWheel, this)
     const keyboard = this.input.keyboard
     if (!keyboard) return
     keyboard.off('keydown-R', this.onRestartKey, this)
@@ -189,10 +268,29 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onPointerDown(pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]): void {
-    if (this.ended || this.restarting) return
-    if (over && over.length) return // a HUD button handled it
-    const x = pointer.worldX
-    const y = pointer.worldY
+    // HUD buttons and anything above the board handle themselves.
+    this.pressOnUi = (over && over.length > 0) || !this.wc.inView(pointer.x, pointer.y)
+    if (this.pressOnUi) return
+    // On big maps a press may turn into a pan; it only aims if it doesn't move.
+    this.wc.down(pointer, this.wc.canZoomOut)
+  }
+
+  private onPointerUp(pointer: Phaser.Input.Pointer): void {
+    const gesture = this.wc.up(pointer)
+    if (this.pressOnUi) {
+      this.pressOnUi = false
+      return
+    }
+    if (gesture !== 'click' || this.ended || this.restarting) return
+    const { x, y } = this.wc.toWorld(pointer.x, pointer.y)
+    this.onClick(x, y)
+  }
+
+  private onWheel(pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number): void {
+    this.wc.wheel(pointer, dy)
+  }
+
+  private onClick(x: number, y: number): void {
     const hit = this.cannonAt(x, y)
     const sel = this.selected
 
@@ -216,25 +314,40 @@ export class BattleScene extends Phaser.Scene {
       if (this.playerAim(sel, hit)) this.selected = null
       return
     }
-    if (!onBoard(x, y)) {
+    if (!insideBoard(this.board, x, y)) {
       this.selected = null
       return
     }
-    if (this.playerAim(sel, clampPoint(x, y, BOARD, TUNING.shotRadius))) this.selected = null
+    if (this.playerAim(sel, clampPoint(x, y, this.board, TUNING.shotRadius))) this.selected = null
   }
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
-    if (this.ended) {
+    if (this.wc.move(pointer)) {
       this.hover = null
       this.pointer = null
+      this.input.setDefaultCursor('grabbing')
       return
     }
-    const x = pointer.worldX
-    const y = pointer.worldY
+    if (this.ended || !this.wc.inView(pointer.x, pointer.y)) {
+      this.hover = null
+      this.pointer = null
+      if (!this.ended) this.input.setDefaultCursor('default')
+      return
+    }
+    const { x, y } = this.wc.toWorld(pointer.x, pointer.y)
     this.hover = this.cannonAt(x, y)
-    this.pointer = onBoard(x, y) && !pointer.wasTouch ? { x, y } : null
+    this.pointer = insideBoard(this.board, x, y) && !pointer.wasTouch ? { x, y } : null
     const clickable = this.hover && (this.hover.side === 'player' || this.selected)
     this.input.setDefaultCursor(clickable ? 'pointer' : this.selected && this.pointer ? 'crosshair' : 'default')
+  }
+
+  private createZoomUi(): void {
+    const x = GAME_WIDTH - 58
+    const y = GAME_HEIGHT - 150
+    const plus = makeButton(this, x, y, '+', () => this.wc.zoomBy(1.25), { width: 44, height: 40, primary: false, fontSize: 22 })
+    const minus = makeButton(this, x, y + 48, '−', () => this.wc.zoomBy(0.8), { width: 44, height: 40, primary: false, fontSize: 22 })
+    const fit = makeButton(this, x, y + 96, 'Fit', () => this.wc.fit(), { width: 44, height: 40, primary: false, fontSize: 13 })
+    this.ui(this.add.container(0, 0, [plus, minus, fit]).setDepth(11))
   }
 
   // ---------------------------------------------------------------- navigation
@@ -248,7 +361,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.restarting) return
     this.restarting = true
     this.input.setDefaultCursor('default')
-    this.scene.restart({ levelId: this.level.id })
+    this.scene.restart(this.custom ? { custom: this.custom, from: this.from } : { levelId: this.level.id })
   }
 
   private goNext(): void {
@@ -258,40 +371,42 @@ export class BattleScene extends Phaser.Scene {
     this.scene.start('battle', { levelId: next.id })
   }
 
+  private backLabel(short: boolean): string {
+    if (this.custom) return this.from === 'editor' ? (short ? 'Editor' : 'Back to editor') : 'My maps'
+    return this.levelIndex >= 0 ? 'Map' : 'Menu'
+  }
+
   private goBack(): void {
     if (this.restarting) return
     this.restarting = true
     this.input.setDefaultCursor('default')
+    if (this.custom) {
+      if (this.from === 'editor') this.scene.start('editor', { resume: true })
+      else this.scene.start('maps')
+      return
+    }
     this.scene.start(this.levelIndex >= 0 ? 'map' : 'title', { focus: this.level.id })
   }
 
   // ---------------------------------------------------------------- HUD and screens
 
   private drawBoard(): void {
-    const g = this.add.graphics().setDepth(0)
-    g.fillStyle(theme.bg, 1)
-    g.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT)
-    g.fillStyle(theme.hud, 1)
-    g.fillRect(0, 0, GAME_WIDTH, HUD_HEIGHT)
-    g.fillStyle(theme.boardEdge, 1)
-    g.fillRect(0, HUD_HEIGHT, GAME_WIDTH, 2)
-    g.fillStyle(theme.board, 1)
-    g.fillRoundedRect(BOARD.x, BOARD.y, BOARD.w, BOARD.h, 18)
-    g.lineStyle(2, theme.boardEdge, 1)
-    g.strokeRoundedRect(BOARD.x, BOARD.y, BOARD.w, BOARD.h, 18)
-    g.fillStyle(theme.grid, 1)
-    for (let x = BOARD.x + 36; x < BOARD.x + BOARD.w - 16; x += 32) {
-      for (let y = BOARD.y + 28; y < BOARD.y + BOARD.h - 16; y += 32) {
-        g.fillCircle(x, y, 1.6)
-      }
-    }
+    drawBoardSurface(this, this.board)
+    // HUD band (fixed camera).
+    const hud = this.ui(this.add.graphics().setDepth(9))
+    hud.fillStyle(theme.hud, 1)
+    hud.fillRect(0, 0, GAME_WIDTH, HUD_HEIGHT)
+    hud.fillStyle(theme.boardEdge, 1)
+    hud.fillRect(0, HUD_HEIGHT, GAME_WIDTH, 2)
   }
 
   private createHud(): void {
     const title =
       this.levelIndex >= 0
         ? `${this.levelIndex + 1}. ${this.level.name}${this.isPuzzle ? '  ·  Puzzle' : ''}`
-        : `Cannon Capture  ·  ${this.level.name}`
+        : this.custom
+          ? `${this.level.name}  ·  ${this.isPuzzle ? 'Puzzle' : 'Battle'}${this.from === 'editor' ? '  ·  Playtest' : ''}`
+          : `Cannon Capture  ·  ${this.level.name}`
     this.add
       .text(28, 14, title, {
         fontFamily: theme.font,
@@ -307,10 +422,10 @@ export class BattleScene extends Phaser.Scene {
 
     const legend = this.add.graphics().setDepth(10)
     const groups: { side: Side; x: number; label: string }[] = [
-      { side: 'player', x: 620, label: 'You' },
-      { side: 'neutral', x: 730, label: 'Neutral' },
+      { side: 'player', x: 600, label: 'You' },
+      { side: 'neutral', x: 712, label: 'Neutral' },
     ]
-    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 870, label: 'Enemy' })
+    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 852, label: 'Enemy' })
     const counts: Partial<Record<Side, Phaser.GameObjects.Text>> = {}
     this.counts = counts
     for (const group of groups) {
@@ -326,7 +441,7 @@ export class BattleScene extends Phaser.Scene {
         .setOrigin(0, 0.5)
         .setDepth(10)
       this.add
-        .text(group.x + 32, 26, group.label, { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
+        .text(group.x + 40, 26, group.label, { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
         .setOrigin(0, 0.5)
         .setDepth(10)
     }
@@ -348,7 +463,7 @@ export class BattleScene extends Phaser.Scene {
       text.on('pointerdown', onClick)
     }
     link(GAME_WIDTH - 28, 'Restart', () => this.restart())
-    link(GAME_WIDTH - 112, this.levelIndex >= 0 ? 'Map' : 'Menu', () => this.goBack())
+    link(GAME_WIDTH - 112, this.backLabel(true), () => this.goBack())
   }
 
   private refreshHud(): void {
@@ -383,6 +498,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showBanner(message: string): void {
+    this.uiBlock(() => this.buildBanner(message))
+  }
+
+  private buildBanner(message: string): void {
     const text = this.add
       .text(0, 0, message, {
         fontFamily: theme.font,
@@ -400,7 +519,7 @@ export class BattleScene extends Phaser.Scene {
     g.lineStyle(2, theme.player, 0.7)
     g.strokeRoundedRect(-w / 2, -h / 2, w, h, 14)
     this.banner = this.add
-      .container(GAME_WIDTH / 2, BOARD.y + BOARD.h - h / 2 - 14, [g, text])
+      .container(GAME_WIDTH / 2, GAME_HEIGHT - 24 - h / 2 - 14, [g, text])
       .setDepth(12)
       .setAlpha(0)
     this.tweens.add({ targets: this.banner, alpha: 1, duration: 260 })
@@ -415,6 +534,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showEnd(result: Outcome): void {
+    this.uiBlock(() => this.buildEnd(result))
+  }
+
+  private buildEnd(result: Outcome): void {
     const root = this.add.container(0, 0).setDepth(20)
     const dim = this.add.graphics()
     dim.fillStyle(theme.dim, 0.64)
@@ -485,7 +608,7 @@ export class BattleScene extends Phaser.Scene {
       buttons.push(makeButton(this, cx + 112, by, secondaryLabel, secondary, { width: 200, primary: false }))
     } else {
       buttons.push(makeButton(this, cx - 112, by, 'Play again', () => this.restart(), { width: 200 }))
-      buttons.push(makeButton(this, cx + 112, by, 'Menu', () => this.goBack(), { width: 200, primary: false }))
+      buttons.push(makeButton(this, cx + 112, by, this.backLabel(false), () => this.goBack(), { width: 200, primary: false }))
     }
     buttons.forEach((b) => root.add(b))
     root.add(
@@ -509,10 +632,12 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private popup(x: number, y: number, message: string, color: string): void {
-    const text = this.add
-      .text(x, y - 40, message, { fontFamily: theme.font, fontSize: '16px', fontStyle: 'bold', color })
-      .setOrigin(0.5)
-      .setDepth(15)
+    const text = this.world(
+      this.add
+        .text(x, y - 40, message, { fontFamily: theme.font, fontSize: '16px', fontStyle: 'bold', color })
+        .setOrigin(0.5)
+        .setDepth(15),
+    )
     this.tweens.add({
       targets: text,
       y: y - 74,
@@ -605,10 +730,6 @@ export class BattleScene extends Phaser.Scene {
     }
     return best
   }
-}
-
-function onBoard(x: number, y: number): boolean {
-  return x >= BOARD.x && x <= BOARD.x + BOARD.w && y >= BOARD.y && y <= BOARD.y + BOARD.h
 }
 
 function crosshair(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, color: number, alpha: number): void {

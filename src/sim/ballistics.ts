@@ -1,5 +1,5 @@
-import type { Rect } from '../types'
-import { circleAabb, reflect } from './geometry'
+import type { Rect, WallDef } from '../types'
+import { circleWall, reflect } from './geometry'
 
 export interface Ball {
   x: number
@@ -86,7 +86,7 @@ function insideFan(ball: Ball, fan: FanField): boolean {
 export function stepBall(
   ball: Ball,
   dtMs: number,
-  walls: Rect[],
+  walls: WallDef[],
   fans: FanField[],
   bodies: Body[],
   opts: BallisticsOpts,
@@ -114,7 +114,7 @@ export function stepBall(
     next.age += h * 1000
 
     for (const wall of walls) {
-      const hit = circleAabb(next.x, next.y, opts.radius, wall)
+      const hit = circleWall(next.x, next.y, opts.radius, wall)
       if (!hit) continue
       next.x += hit.nx * (hit.pen + 0.75)
       next.y += hit.ny * (hit.pen + 0.75)
@@ -166,11 +166,12 @@ export interface TraceResult {
 
 export function traceShot(
   start: Ball,
-  walls: Rect[],
+  walls: WallDef[],
   fans: FanField[],
   bodies: Body[],
   opts: BallisticsOpts,
   maxMs = 5000,
+  near?: Broadphase,
 ): TraceResult {
   let ball = start
   let bounced = false
@@ -179,7 +180,8 @@ export function traceShot(
   let maxVy = ball.vy
 
   for (let elapsed = 0; elapsed < maxMs && ball.alive && hitId === null; elapsed += 16) {
-    const step = stepBall(ball, 16, walls, fans, bodies, opts)
+    const cell = near?.at(ball.x, ball.y)
+    const step = stepBall(ball, 16, cell ? cell.walls : walls, fans, cell ? cell.bodies : bodies, opts)
     ball = step.ball
     if (step.bounced) bounced = true
     if (step.pushed) pushed = true
@@ -188,4 +190,54 @@ export function traceShot(
   }
 
   return { hitId, bounced, pushed, maxVy, end: ball }
+}
+
+/**
+ * Uniform grid over walls and cannons, so a traced shot only tests what is
+ * near it. A ball moves under 10px per 16ms step, so each cell lists anything
+ * within a safe margin of it and the result is identical to testing everything.
+ */
+export class Broadphase {
+  private readonly cells = new Map<number, { walls: WallDef[]; bodies: Body[] }>()
+  private static readonly EMPTY = { walls: [] as WallDef[], bodies: [] as Body[] }
+  private readonly size: number
+
+  /** `reach`: the furthest a ball can travel in one step (px). */
+  constructor(walls: WallDef[], bodies: Body[], shotRadius: number, reach = 24, cellSize = 128) {
+    this.size = cellSize
+    const margin = shotRadius + reach
+    for (const wall of walls) {
+      const cos = Math.abs(Math.cos(wall.angle ?? 0))
+      const sin = Math.abs(Math.sin(wall.angle ?? 0))
+      const hx = (wall.w / 2) * cos + (wall.h / 2) * sin
+      const hy = (wall.w / 2) * sin + (wall.h / 2) * cos
+      const cx = wall.x + wall.w / 2
+      const cy = wall.y + wall.h / 2
+      this.add(cx - hx - margin, cy - hy - margin, cx + hx + margin, cy + hy + margin, (c) => c.walls.push(wall))
+    }
+    for (const body of bodies) {
+      const r = body.radius + margin
+      this.add(body.x - r, body.y - r, body.x + r, body.y + r, (c) => c.bodies.push(body))
+    }
+  }
+
+  private key(ix: number, iy: number): number {
+    return (iy + 1024) * 4096 + (ix + 1024)
+  }
+
+  private add(x0: number, y0: number, x1: number, y1: number, put: (c: { walls: WallDef[]; bodies: Body[] }) => void): void {
+    const s = this.size
+    for (let iy = Math.floor(y0 / s); iy <= Math.floor(y1 / s); iy++) {
+      for (let ix = Math.floor(x0 / s); ix <= Math.floor(x1 / s); ix++) {
+        const k = this.key(ix, iy)
+        let cell = this.cells.get(k)
+        if (!cell) this.cells.set(k, (cell = { walls: [], bodies: [] }))
+        put(cell)
+      }
+    }
+  }
+
+  at(x: number, y: number): { walls: WallDef[]; bodies: Body[] } {
+    return this.cells.get(this.key(Math.floor(x / this.size), Math.floor(y / this.size))) ?? Broadphase.EMPTY
+  }
 }

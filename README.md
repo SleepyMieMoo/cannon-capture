@@ -4,7 +4,7 @@ A small battle prototype by **SleepyMie**. Cannons sit on a board and fire on th
 
 The look uses the colour themes from ChocoNeko, SleepyMie's studio ([`css/themes.css`](https://github.com/SleepyMieMoo/choconeko-site/blob/main/css/themes.css)). Only the colours are shared, with no ChocoNeko characters or story.
 
-It's a standalone browser game with a campaign of eight levels (battles against an AI and aim-budget puzzles) and a quick skirmish. A Discord Activity build comes later.
+It's a standalone browser game with a campaign of eight levels (battles against an AI and aim-budget puzzles), a quick skirmish, and a map editor for making and sharing your own boards. A Discord Activity build comes later.
 
 ## How to play
 
@@ -47,15 +47,98 @@ Early battles go easy on you: the enemy fires a little slower (`ai.fireMs`) in l
 
 ### Adding a level
 
-1. Add a `LevelDef` to `CAMPAIGN` in [`src/levels/campaign.ts`](src/levels/campaign.ts). The board is x 24–1176, y 88–696, and cannons have a 26 px radius. Fields:
+1. Add a `LevelDef` to `CAMPAIGN` in [`src/levels/campaign.ts`](src/levels/campaign.ts), or build it in the map editor and paste its JSON (see [Map editor](#map-editor-and-my-maps)). The Small board is x 24–1176, y 88–696 (`size` makes it bigger), and cannons have a 26 px radius. Fields:
    - `id`, `name`, `hint` (one line, shown on the map card and as a banner when the level starts)
    - `kind: 'puzzle'` (otherwise it's a battle), and `aims` (the budget) for puzzles
    - `par` (seconds for battles; aims for puzzles with a budget)
    - `ai: { retargetMs, fireMs }` to tune the enemy
-   - `cannons` (`side`, optional `aimAt` cannon id or `aimPoint`), `walls` (rectangles), `fans` (`angle` in radians, `force`)
+   - `size`: `small` (default), `medium`, `large` or `huge`
+   - `cannons` (`side`, optional `aimAt` cannon id or `aimPoint`), `walls` (rectangles, optional `angle` in radians about the centre), `fans` (`angle` in radians, `force`)
 2. Add a map position for it in `NODES` in [`src/scenes/MapScene.ts`](src/scenes/MapScene.ts) (one per level, in order).
 3. Run `npm test`. It fails if a puzzle can't be solved within its budget, a battle can't be won by the autoplayer, or a cannon overlaps a wall or the board edge.
 4. Play it: `npm run dev`, then open `http://localhost:5173/?level=<id>`.
+
+## Map editor and My maps
+
+The title screen has **Map editor** and **My maps**.
+
+The editor builds a normal `LevelDef` (the same format as the campaign), so anything you make can be played, shared, or dropped into the campaign.
+
+- **Place:** pick a tool and click the board. The tools are gold, enemy and neutral cannons, walls, and fans.
+- **Move:** drag anything. A short click just selects it.
+- **Delete:** use the Delete tool, or select something and press Del.
+- **Edit the selection** in the **Selected** tab:
+  - cannons: owner and an optional starting aim. Click **Set aim**, then a cannon or a spot on the board.
+  - walls: length, thickness and rotation in 15° steps.
+  - fans: direction, strength and radius.
+- **Snap to grid** (16 px) is on by default. **Undo/Redo** cover every edit, including New map and Import.
+- **Map tab:**
+  - name
+  - mode: Battle against the AI, or Puzzle with an aim budget (or unlimited)
+  - AI difficulty for battles
+  - size
+  - an optional hint banner
+- **Playtest** jumps straight into the map. **Editor** (top right, or the end screen) brings you back to the same working copy.
+- **Validation:** a map needs at least one gold cannon. Battles also need an enemy. Puzzles need neutrals and no enemy.
+- The working copy is kept as a draft in `localStorage`, so a reload or a playtest never loses it.
+
+### Map sizes and the camera
+
+| Size | Board |
+| --- | --- |
+| Small | 1152×608 (the original board) |
+| Medium | 1728×912 (1.5×) |
+| Large | 2304×1216 (2×) |
+| Huge | 3456×1824 (3×) |
+
+Bigger maps start at the normal "near" zoom, centred on your cannons. If your cannons are spread wider than one screen, the camera starts a little further out to show more of them (never below 70%). You can then zoom out to see the whole board. The editor uses the same camera.
+
+| Action | Mouse / keys | Touch |
+| --- | --- | --- |
+| Zoom | Mouse wheel, or the + / − / Fit buttons (editor: + / − / 0 keys too) | Pinch |
+| Pan | Drag empty space, or WASD / arrow keys | Drag with one finger |
+| Aim (play) | Click your cannon, then the target. Works at any zoom. | Tap, tap |
+
+In play you can zoom out but not past the near view. The editor can also zoom in to 160% for fine placement.
+
+The enemy AI works on any size and any number of cannons. It still plans with lanes (which angles hit which cannon). On big maps those lanes are built a few milliseconds per frame, enemy cannons first, and until a cannon's lanes are ready the AI simply aims straight. Traced shots use a spatial grid, so only nearby walls and cannons are tested. On a Huge map with 23 cannons, all the lanes cost about half a second of work in total, spread over the first second or two. The frame rate matches the small board.
+
+### Editor keys
+
+| Key | Action |
+| --- | --- |
+| 1 / 2 / 3 | Place a gold / enemy / neutral cannon |
+| 4 / 5 | Place a wall / fan |
+| V | Move/select tool |
+| X | Delete tool |
+| Del / Backspace | Delete the selection |
+| Q / E | Rotate the selected wall or fan by 15° |
+| G | Toggle snap |
+| P | Playtest |
+| Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) | Undo / redo |
+| Esc | Cancel aim picking, or deselect |
+
+### My maps, share codes and files
+
+**Save** in the editor stores the map in this browser (`localStorage` key `cannon-capture:maps:v1`). From **My maps** you can:
+
+- play, edit, rename or delete any map (delete asks twice)
+- share it: copy a share code
+- download it as `.json`
+
+To bring a map in, paste a share code (or raw JSON) and press **Import code**, or use **Upload .json**. The editor's **Share** tab has the same tools.
+
+A share code is `CC1:` followed by the map's JSON in URL-safe base64, so it fits in a chat message. Imported maps are checked and cleaned first. Only known fields are kept, numbers are clamped to the board, item counts are capped (60 cannons, 160 walls, 40 fans), and broken codes are rejected with a message.
+
+### Turning a shared map into a campaign level
+
+1. Get the map's JSON: **.json** in My maps, or **Download .json** in the editor. A share code works too: `decodeShare(code)` in [`src/editor/maps.ts`](src/editor/maps.ts) returns the same object.
+2. Paste it into `CAMPAIGN` in [`src/levels/campaign.ts`](src/levels/campaign.ts) as a `LevelDef`:
+   - Give it a short unique `id` (the editor makes ids like `custom-…`).
+   - Add `par` for stars.
+   - Add a `hint` if it doesn't have one.
+   - Keep `size` if it isn't Small. Walls may carry an `angle` (radians).
+3. Add a map node for it in `NODES` in [`src/scenes/MapScene.ts`](src/scenes/MapScene.ts), then run `npm test`. The beatability checks cover it like any other level.
 
 ## Run locally
 
@@ -103,12 +186,15 @@ In the repo settings, set **Pages → Build and deployment → Source** to **Git
 
 ## Layout
 
-- `src/scenes` — Phaser scenes: `TitleScene`, `MapScene` (campaign map), and `BattleScene` (draws a round and handles clicks).
+- `src/scenes` — Phaser scenes: `TitleScene`, `MapScene` (campaign map), `BattleScene` (draws a round and handles clicks), `EditorScene` (map editor) and `MapsScene` (My maps).
+- `src/editor` — custom maps: validation, share codes, `localStorage` storage, and list thumbnails.
 - `src/sim` — the rules without any rendering: `BattleSim` (one round), capture, aiming, shot physics, the lane `solver` (which angles hit which cannon), `stars`, and the test `bots`. All covered by `npm test`.
 - `src/entities` — `Cannon`, `Shot`, `Wall`, and `Fan`.
 - `src/ai` — the enemy AI, which aims through lanes (including bank shots) and obeys the same turn speed.
-- `src/levels` — campaign and skirmish board data.
-- `src/config` — palette, layout, and tuning. `src/render` — crisp high-DPI scaling. `src/ui` — buttons and stars.
+- `src/levels` — campaign and skirmish board data, plus `board.ts`, which holds the map size presets.
+- `src/config` — palette, layout, and tuning.
+- `src/render` — crisp high-DPI scaling, the zoom/pan `WorldCamera` shared by play and the editor, and the board surface.
+- `src/ui` — buttons, stars, and the HTML panel overlay used by the editor and My maps.
 
 ## Roadmap
 

@@ -1,7 +1,7 @@
-import { BOARD } from '../config/layout'
 import { TUNING } from '../config/tuning'
+import { boardFor } from '../levels/board'
 import type { LevelDef } from '../types'
-import { aimShot, traceShot, type BallisticsOpts, type Body, type FanField } from './ballistics'
+import { Broadphase, aimShot, traceShot, type BallisticsOpts, type Body, type FanField } from './ballistics'
 
 /**
  * Lane finder: fires a test shot from a cannon at every angle (1° apart) and
@@ -10,12 +10,15 @@ import { aimShot, traceShot, type BallisticsOpts, type Body, type FanField } fro
  * Used by the enemy AI, the level-solvability tests and the debug bot.
  */
 
-export const SHOT_OPTS: BallisticsOpts = {
-  radius: TUNING.shotRadius,
-  maxSpeed: TUNING.shotSpeed * TUNING.shotSpeedCap,
-  maxBounces: TUNING.maxBounces,
-  bounds: BOARD,
-  ownerGraceMs: TUNING.ownerGraceMs,
+/** Shot physics settings for a level (its board size sets the bounds). */
+export function shotOpts(level: Pick<LevelDef, 'size'>): BallisticsOpts {
+  return {
+    radius: TUNING.shotRadius,
+    maxSpeed: TUNING.shotSpeed * TUNING.shotSpeedCap,
+    maxBounces: TUNING.maxBounces,
+    bounds: boardFor(level),
+    ownerGraceMs: TUNING.ownerGraceMs,
+  }
 }
 
 export interface Lane {
@@ -45,8 +48,27 @@ export function levelBodies(level: LevelDef): Body[] {
   return level.cannons.map((c) => ({ id: c.id, x: c.x, y: c.y, radius: TUNING.cannonRadius }))
 }
 
-export function traceAngle(level: LevelDef, fromId: string, angle: number): string | null {
-  const from = level.cannons.find((c) => c.id === fromId)
+interface TraceCtx {
+  level: LevelDef
+  fans: FanField[]
+  bodies: Body[]
+  opts: BallisticsOpts
+  near: Broadphase
+}
+
+function traceCtx(level: LevelDef): TraceCtx {
+  const bodies = levelBodies(level)
+  return {
+    level,
+    fans: levelFans(level),
+    bodies,
+    opts: shotOpts(level),
+    near: new Broadphase(level.walls, bodies, TUNING.shotRadius),
+  }
+}
+
+function traceWith(ctx: TraceCtx, fromId: string, angle: number): string | null {
+  const from = ctx.level.cannons.find((c) => c.id === fromId)
   if (!from) return null
   const shot = aimShot(
     from,
@@ -55,12 +77,17 @@ export function traceAngle(level: LevelDef, fromId: string, angle: number): stri
     TUNING.shotSpeed,
     fromId,
   )
-  return traceShot(shot, level.walls, levelFans(level), levelBodies(level), SHOT_OPTS, TUNING.shotLifetimeMs).hitId
+  return traceShot(shot, ctx.level.walls, ctx.fans, ctx.bodies, ctx.opts, TUNING.shotLifetimeMs, ctx.near).hitId
+}
+
+export function traceAngle(level: LevelDef, fromId: string, angle: number): string | null {
+  return traceWith(traceCtx(level), fromId, angle)
 }
 
 export function sweep(level: LevelDef, fromId: string, stepDeg = 1): (string | null)[] {
+  const ctx = traceCtx(level)
   const out: (string | null)[] = []
-  for (let deg = 0; deg < 360; deg += stepDeg) out.push(traceAngle(level, fromId, (deg * Math.PI) / 180))
+  for (let deg = 0; deg < 360; deg += stepDeg) out.push(traceWith(ctx, fromId, (deg * Math.PI) / 180))
   return out
 }
 
@@ -92,23 +119,77 @@ export function lanesFromSweep(hits: (string | null)[], stepDeg = 1): Map<string
   return best
 }
 
-export function levelLanes(level: LevelDef, stepDeg = 1): LaneTable {
-  const table: LaneTable = new Map()
-  for (const from of level.cannons) {
-    const lanes = new Map<string, Lane>()
-    for (const [targetId, lane] of lanesFromSweep(sweep(level, from.id, stepDeg), stepDeg)) {
-      if (targetId === from.id) continue
-      const target = level.cannons.find((c) => c.id === targetId)!
-      const directAngle = Math.atan2(target.y - from.y, target.x - from.x)
-      lanes.set(targetId, {
-        targetId,
-        ...lane,
-        direct: traceAngle(level, from.id, directAngle) === targetId,
-      })
-    }
-    table.set(from.id, lanes)
+function lanesFor(ctx: TraceCtx, fromId: string, hits: (string | null)[], stepDeg: number): Map<string, Lane> {
+  const from = ctx.level.cannons.find((c) => c.id === fromId)!
+  const lanes = new Map<string, Lane>()
+  for (const [targetId, lane] of lanesFromSweep(hits, stepDeg)) {
+    if (targetId === fromId) continue
+    const target = ctx.level.cannons.find((c) => c.id === targetId)!
+    const directAngle = Math.atan2(target.y - from.y, target.x - from.x)
+    lanes.set(targetId, { targetId, ...lane, direct: traceWith(ctx, fromId, directAngle) === targetId })
   }
-  return table
+  return lanes
+}
+
+/**
+ * Builds a level's lane table a slice at a time so big maps with many
+ * cannons never stall a frame. Enemy cannons go first (the AI needs them),
+ * then neutrals, then yours. Until a cannon's lanes exist, the AI simply
+ * aims straight at its target.
+ */
+export class LaneBuilder {
+  readonly table: LaneTable = new Map()
+  private readonly ctx: TraceCtx
+  private readonly queue: string[]
+  private current: string | null = null
+  private hits: (string | null)[] = []
+  private readonly stepDeg: number
+
+  constructor(level: LevelDef, stepDeg?: number) {
+    this.ctx = traceCtx(level)
+    // Many cannons: a coarser sweep keeps the total cost in check.
+    this.stepDeg = stepDeg ?? (level.cannons.length > 24 ? 2 : 1)
+    const rank = { enemy: 0, neutral: 1, player: 2 } as const
+    this.queue = [...level.cannons].sort((a, b) => rank[a.side] - rank[b.side]).map((c) => c.id)
+  }
+
+  get done(): boolean {
+    return this.current === null && this.queue.length === 0
+  }
+
+  /** Work for up to `budgetMs`. Returns true when everything is built. */
+  pump(budgetMs: number): boolean {
+    const start = now()
+    while (!this.done) {
+      if (this.current === null) {
+        this.current = this.queue.shift() ?? null
+        this.hits = []
+        if (this.current === null) break
+      }
+      const deg = this.hits.length * this.stepDeg
+      if (deg < 360) {
+        this.hits.push(traceWith(this.ctx, this.current, (deg * Math.PI) / 180))
+      } else {
+        this.table.set(this.current, lanesFor(this.ctx, this.current, this.hits, this.stepDeg))
+        this.current = null
+      }
+      if (now() - start >= budgetMs) break
+    }
+    return this.done
+  }
+
+  runAll(): LaneTable {
+    this.pump(Infinity)
+    return this.table
+  }
+}
+
+function now(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
+
+export function levelLanes(level: LevelDef, stepDeg = 1): LaneTable {
+  return new LaneBuilder(level, stepDeg).runAll()
 }
 
 /** Minimum lane width we treat as reliably hittable. */
