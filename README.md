@@ -2,11 +2,13 @@
 
 A small battle prototype by **SleepyMie**. Cannons sit on a board and fire on their own. Hit a cannon enough times and it flips to your colour and starts shooting for you. Walls block shots. A fan shoves them off course.
 
+The look uses the colour themes from ChocoNeko, SleepyMie's studio ([`css/themes.css`](https://github.com/SleepyMieMoo/choconeko-site/blob/main/css/themes.css)). Only the colours are shared, with no ChocoNeko characters or story.
+
 This pass is a standalone browser game: one skirmish against an AI. Puzzle levels and a Discord Activity build come later.
 
 ## How to play
 
-You are gold. The enemy is coral. Grey cannons are neutral and do not fire until someone captures them.
+You are gold. The enemy is strawberry pink. Warm grey cannons are neutral and do not fire until someone captures them.
 
 1. Click one of your cannons.
 2. Click the cannon you want it to shoot.
@@ -14,7 +16,7 @@ You are gold. The enemy is coral. Grey cannons are neutral and do not fire until
 
 A cannon tints toward whoever is hitting it. At eight hits it flips. Shots from the other side contest that progress. Capture every cannon to win. Lose when none are yours.
 
-The dashed gold line is your aim. Faint coral lines are the enemy's. The teal ring is a fan blowing downward — the top enemy shot bends off its line and into the lower neutral. P1 starts aimed into the tall wall, so retarget it. Restart from the corner, or press **R** on the end screen. **Esc** clears your selection.
+The dashed gold line is your aim. Faint pink lines are the enemy's. The mint ring is a fan blowing downward — the top enemy shot bends off its line and into the lower neutral. P1 starts aimed into the tall wall, so retarget it. Restart from the corner, or press **R** on the end screen. **Esc** clears your selection.
 
 ## Run locally
 
@@ -46,7 +48,7 @@ All gameplay numbers live in [`src/config/tuning.ts`](src/config/tuning.ts).
 | `aiRetargetMs` | 1600 | How often the enemy re-aims |
 | `aiFinishBias` | 80 | How strongly the AI finishes a cannon it is already capturing |
 
-Colours live in [`src/config/theme.ts`](src/config/theme.ts), so the board can be reskinned without touching gameplay. The level layout is data in [`src/levels/skirmish.ts`](src/levels/skirmish.ts).
+Colours live in [`src/config/theme.ts`](src/config/theme.ts), so the board can be reskinned without touching gameplay. All 11 themes are there as data; change `ACTIVE_THEME` to switch (default: Dark Choco). The level layout is data in [`src/levels/skirmish.ts`](src/levels/skirmish.ts).
 
 ## GitHub Pages
 

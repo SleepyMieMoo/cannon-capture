@@ -121,7 +121,7 @@ export class BattleScene extends Phaser.Scene {
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const shot = this.shots[i]
       const result = shot.step(dt, walls, fans, bodies)
-      if (result.bounced) this.sparks.push({ x: shot.ball.x, y: shot.ball.y, life: 1, color: 0xd5e2ef })
+      if (result.bounced) this.sparks.push({ x: shot.ball.x, y: shot.ball.y, life: 1, color: theme.spark })
       if (result.hitId && !this.ended) {
         const cannon = this.byId(result.hitId)
         this.sparks.push({ x: shot.ball.x, y: shot.ball.y, life: 1, color: sideColor(shot.side) })
@@ -180,7 +180,7 @@ export class BattleScene extends Phaser.Scene {
   private showEnd(result: Outcome): void {
     const root = this.add.container(0, 0).setDepth(20)
     const dim = this.add.graphics()
-    dim.fillStyle(0x090b10, 0.64)
+    dim.fillStyle(theme.dim, 0.64)
     dim.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT)
     root.add(dim)
 
