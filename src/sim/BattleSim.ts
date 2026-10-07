@@ -12,12 +12,16 @@ export type Outcome = 'win' | 'lose'
 
 /** Puzzle: lose once out of aims and no neutral has been hit for this long. */
 export const PUZZLE_STALL_MS = 5000
-/** Oldest shots are dropped beyond this (big maps with many cannons). */
-const MAX_SHOTS = 240
+/**
+ * Safety cap on live shots; the oldest are dropped beyond it. Sized so even
+ * 60 machine guns (each keeps about a dozen short-lived shots in the air)
+ * stay under it, so in practice no shot is ever dropped.
+ */
+export const MAX_SHOTS = 800
 
 export interface SimEvents {
   bounce?(x: number, y: number): void
-  hit?(x: number, y: number, side: Side): void
+  hit?(x: number, y: number, side: Side, kind: CannonKind): void
   /** A friendly shot took `amount` capture progress off one of its own cannons. */
   healed?(cannon: Cannon, amount: number): void
   captured?(cannon: Cannon): void
@@ -161,7 +165,7 @@ export class BattleSim {
       if (result.bounced) this.events.bounce?.(shot.ball.x, shot.ball.y)
       if (result.hitId && !this.ended) {
         const cannon = this.byId(result.hitId)
-        this.events.hit?.(shot.ball.x, shot.ball.y, shot.side)
+        this.events.hit?.(shot.ball.x, shot.ball.y, shot.side, shot.kind)
         if (cannon) {
           if (cannon.side === 'neutral') this.lastPuzzleProgress = this.clock
           const hit = cannon.receiveHit(shot.side, shot.damage)

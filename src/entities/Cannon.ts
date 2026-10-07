@@ -11,6 +11,7 @@ import {
   maxShotSpeedFor,
   shotLifetimeFor,
   shotSpeedFor,
+  spreadDegFor,
   turnSpeedDegFor,
 } from '../config/kinds'
 import type { CannonKind, Point, Side } from '../types'
@@ -62,7 +63,11 @@ export class Cannon {
   /** The side's normal fire interval, as last seen in update(). */
   private sideMs: number = TUNING.fireIntervalMs
   private muzzle = 0
+  /** Shots fired so far (machine guns alternate barrels). */
+  private shotsFired = 0
   private pop = 1
+  /** Seeded per cannon, so spread is random-looking but every run replays the same. */
+  private readonly rng: () => number
 
   constructor(
     scene: Phaser.Scene | null,
@@ -81,6 +86,7 @@ export class Cannon {
     this.side = side
     this.kind = KINDS[kind] ? kind : 'normal'
     this.cooldown = staggerMs
+    this.rng = seededRandom(id)
     this.angle = side === 'enemy' ? Math.PI : side === 'player' ? 0 : -Math.PI / 2
     if (scene) {
       this.body = scene.add.graphics()
@@ -250,16 +256,22 @@ export class Cannon {
     if (frozen || !aim) return null
 
     this.cooldown -= dt
-    if (this.cooldown > 0) return null
+    if (this.cooldown > 1e-6) return null
     if (this.aimErrorDeg() > TUNING.aimToleranceDeg) {
       // Still turning: hold fire, stay loaded, and shoot the moment it lines up.
       this.cooldown = 0
       return null
     }
-    this.cooldown = this.fireMs(fireMs)
-    this.muzzle = 110
-    // Fire along the barrel's current direction, not straight at the aim.
-    const along = { x: this.x + Math.cos(this.angle) * 100, y: this.y + Math.sin(this.angle) * 100 }
+    // Carry the overshoot (up to a frame) so the rate holds at any frame rate:
+    // a 0.2 s gun at 60 fps fires every 12 or 13 frames, 5 shots a second.
+    this.cooldown = this.fireMs(fireMs) + Math.max(this.cooldown, -dt)
+    this.muzzle = this.kind === 'machinegun' ? 70 : 110
+    this.shotsFired += 1
+    // Fire along the barrel's current direction, not straight at the aim,
+    // give or take this type's spread.
+    const spread = spreadDegFor(this.kind)
+    const dir = this.angle + (spread > 0 ? ((this.rng() * 2 - 1) * spread * Math.PI) / 180 : 0)
+    const along = { x: this.x + Math.cos(dir) * 100, y: this.y + Math.sin(dir) * 100 }
     const ball = aimShot(this, along, TUNING.cannonRadius + 12, shotSpeedFor(this.kind), this.id)
     if (this.kind !== 'normal') {
       ball.maxSpeed = maxShotSpeedFor(this.kind)
@@ -290,6 +302,7 @@ export class Cannon {
     this.body.lineStyle(3, 0x000000, 0.28)
     this.body.strokeCircle(0, 0, TUNING.cannonRadius)
     if (this.kind === 'sniper') this.drawSniperBadge(this.body, color)
+    else if (this.kind === 'machinegun') this.drawGunBadge(this.body, color)
 
     if (this.swapLeft > 0 && this.swapTotal > 0) {
       // Swap reload: a light ring fills up until it can fire again.
@@ -345,6 +358,21 @@ export class Cannon {
         this.barrel.fillStyle(0xfff4d2, Math.min(1, this.muzzle / 90))
         this.barrel.fillCircle(r + 34, 0, 6)
       }
+    } else if (this.kind === 'machinegun') {
+      // Twin short, chunky barrels on a squat housing; the flash alternates.
+      this.barrel.fillStyle(shade(color, 0.42), 1)
+      this.barrel.fillRoundedRect(r * 0.1, -10, 18, 20, 4)
+      this.barrel.fillStyle(shade(color, 0.6), 1)
+      const len = r + 4
+      this.barrel.fillRoundedRect(r * 0.3, -9, len, 7, 2.5)
+      this.barrel.fillRoundedRect(r * 0.3, 2, len, 7, 2.5)
+      this.barrel.fillStyle(shade(color, 0.32), 1)
+      this.barrel.fillRect(r * 0.3 + len - 5, -10, 5, 9)
+      this.barrel.fillRect(r * 0.3 + len - 5, 1, 5, 9)
+      if (this.muzzle > 0) {
+        this.barrel.fillStyle(0xfff4d2, Math.min(1, this.muzzle / 60))
+        this.barrel.fillCircle(r * 0.3 + len + 4, this.shotsFired % 2 ? -5.5 : 5.5, 4.5)
+      }
     } else {
       this.barrel.fillStyle(shade(color, 0.62), 1)
       this.barrel.fillRoundedRect(r * 0.2, -5, r + 8, 10, 4)
@@ -371,11 +399,32 @@ export class Cannon {
     g.lineBetween(0, -r * 0.78, 0, -r * 0.28)
     g.lineBetween(0, r * 0.28, 0, r * 0.78)
     g.fillStyle(ink, 0.95)
-    const pips = this.damage
+    const pips = Math.max(1, Math.round(this.damage))
     for (let i = 0; i < pips; i++) g.fillCircle((i - (pips - 1) / 2) * 7, r * 0.5 + 9, 2.2)
+  }
+
+  /** Machine gun marking on the body: three short ammo-belt bars. */
+  private drawGunBadge(g: Phaser.GameObjects.Graphics, color: number): void {
+    const r = TUNING.cannonRadius
+    g.fillStyle(shade(color, 0.35), 0.85)
+    for (let i = -1; i <= 1; i++) g.fillRoundedRect(i * 8 - 2.5, r * 0.28, 5, 9, 1.5)
   }
 
   private facing(): number {
     return this.angle
+  }
+}
+
+/** Small seeded PRNG (mulberry32) keyed on a string. */
+function seededRandom(key: string): () => number {
+  let h = 2166136261
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619)
+  let a = h >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }

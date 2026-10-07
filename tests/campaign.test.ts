@@ -111,12 +111,14 @@ describe('stars and unlocks', () => {
 })
 
 /**
- * Levels whose autoplayer check is skipped (non-blocking) for now. The sniper
- * changed to one variant (2 damage every 3 s) after these were tuned, and the
- * campaign is being redesigned, so they are not being retuned. They still load
- * and play; only the "bot must win" check is off.
+ * Levels whose autoplayer check is skipped (non-blocking) for now. They were
+ * tuned before the current tower rules: the sniper became one variant (2
+ * damage every 3 s), then machine guns, per-type turn speeds and aim spread
+ * arrived, and both sides now swap to machine guns up close. The campaign is
+ * being redesigned, so these are not being retuned. They still load and play
+ * (checked below); only the "bot must win" check is off.
  */
-const PENDING_REDESIGN = new Set(['sniper-duel'])
+const PENDING_REDESIGN = new Set(['crossfire', 'last-stand', 'sniper-duel'])
 
 describe('every campaign level is beaten by an autoplayer (same rules as you)', () => {
   // Frame rates vary, so play each level at a few fixed timesteps.

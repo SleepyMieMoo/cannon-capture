@@ -19,6 +19,12 @@ export interface CaptureResult {
 }
 
 /**
+ * Fractional damage (machine guns hit for 0.3) is summed on a 1/1000 grid so
+ * float error never leaves a sliver of progress behind (0.3 + 0.3 - 0.6 is 0).
+ */
+const q = (v: number): number => Math.round(v * 1000) / 1000
+
+/**
  * One hit worth `damage` from `attacker`.
  * - The owner's own shots heal: they take progress back off the meter, never below zero.
  * - The side already capturing (or anyone, on an untouched cannon) adds progress, and
@@ -32,10 +38,11 @@ export function applyCaptureHit(
   threshold: number,
   damage = 1,
 ): CaptureResult {
+  damage = q(damage)
   if (attacker === state.side) {
     if (state.attacker === null || state.progress <= 0) return { state, flipped: false, reduced: 0 }
     const reduced = Math.min(damage, state.progress)
-    const progress = state.progress - reduced
+    const progress = q(state.progress - reduced)
     return {
       flipped: false,
       reduced,
@@ -44,7 +51,7 @@ export function applyCaptureHit(
   }
 
   if (state.attacker === null || state.attacker === attacker) {
-    const progress = state.progress + damage
+    const progress = q(state.progress + damage)
     if (progress >= threshold) {
       return { flipped: true, reduced: 0, state: { side: attacker, attacker: null, progress: 0 } }
     }
@@ -53,8 +60,8 @@ export function applyCaptureHit(
 
   // Contested: push the other side back, then start our own progress with what is left.
   const reduced = Math.min(damage, state.progress)
-  const left = damage - reduced
-  const remaining = state.progress - reduced
+  const left = q(damage - reduced)
+  const remaining = q(state.progress - reduced)
   if (remaining > 0) {
     return { flipped: false, reduced, state: { side: state.side, attacker: state.attacker, progress: remaining } }
   }

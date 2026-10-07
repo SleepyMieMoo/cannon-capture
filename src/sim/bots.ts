@@ -1,5 +1,6 @@
 import { AiController, aimViaLane, healViaLane, planHeals, planSwaps, pointAlong } from '../ai/AiController'
 import { TUNING } from '../config/tuning'
+import { minLaneFor } from '../config/kinds'
 import type { Cannon } from '../entities/Cannon'
 import type { BattleSim } from './BattleSim'
 import { MIN_LANE_DEG, lanesOf, planPuzzle } from './solver'
@@ -66,7 +67,7 @@ export class BattleBot implements Bot {
     for (const { cannon, kind } of planSwaps('player', sim.cannons, sim.lanes)) sim.playerSwap(cannon, kind)
     const mine = sim.cannons.filter((c) => c.side === 'player')
     const foes = sim.cannons.filter((c) => c.side !== 'player')
-    const canHit = (m: Cannon, foe: Cannon) => (lanesOf(sim.lanes, m)?.get(foe.id)?.widthDeg ?? 0) >= MIN_LANE_DEG
+    const canHit = (m: Cannon, foe: Cannon) => (lanesOf(sim.lanes, m)?.get(foe.id)?.widthDeg ?? 0) >= minLaneFor(m.kind, MIN_LANE_DEG)
 
     let focus: Cannon | null = null
     let bestScore = -Infinity

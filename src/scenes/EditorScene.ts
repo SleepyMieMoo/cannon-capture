@@ -1029,7 +1029,7 @@ export class EditorScene extends Phaser.Scene {
       ['V · X', 'Move tool · Delete tool'],
       ['Del', 'Delete the selection'],
       ['Q / E', 'Rotate wall or fan 15°'],
-      ['T', 'Selected cannon: Normal ↔ Sniper'],
+      ['T', 'Next type for the selected cannon'],
       ['G · P', 'Snap · Playtest'],
       ['Ctrl+Z / Ctrl+Y', 'Undo / redo'],
       ['Esc', 'Close, cancel or deselect'],
