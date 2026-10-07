@@ -35,9 +35,30 @@ export interface FanDef {
   force?: number
 }
 
+export type LevelKind = 'battle' | 'puzzle'
+
 export interface LevelDef {
   id: string
   name: string
+  /** One-line hint shown on the map and in the level HUD. */
+  hint?: string
+  /**
+   * battle: beat the enemy AI. puzzle: no enemy, capture every neutral within
+   * the aim budget. Defaults to battle.
+   */
+  kind?: LevelKind
+  /** Puzzle only: how many aims you may set. Omit for unlimited. */
+  aims?: number
+  /**
+   * Three-star target. Battles: seconds to win. Puzzles with an aim budget:
+   * aims used. Two stars within 1.5x the seconds or one aim over par.
+   */
+  par?: number
+  /**
+   * Enemy AI overrides. retargetMs: how often it re-aims. fireMs: time between
+   * enemy shots (yours are always TUNING.fireIntervalMs), to ease early levels.
+   */
+  ai?: { retargetMs?: number; fireMs?: number }
   cannons: CannonDef[]
   walls: Rect[]
   fans: FanDef[]

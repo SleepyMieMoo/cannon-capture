@@ -1,4 +1,4 @@
-import Phaser from 'phaser'
+import type Phaser from 'phaser'
 import { TUNING } from '../config/tuning'
 import { lerpColor, shade, sideColor, theme } from '../config/theme'
 import { aimAngle, aimShot, type Ball } from '../sim/ballistics'
@@ -11,7 +11,8 @@ export class Cannon {
   readonly name: string
   readonly x: number
   readonly y: number
-  readonly root: Phaser.GameObjects.Container
+  /** Display objects; absent when simulating headless (tests, level checks). */
+  readonly root?: Phaser.GameObjects.Container
   side: Side
   /** Aim at another cannon (re-aims automatically once it becomes ours). */
   target: Cannon | null = null
@@ -24,15 +25,15 @@ export class Cannon {
   selected = false
   hovered = false
 
-  private readonly body: Phaser.GameObjects.Graphics
-  private readonly barrel: Phaser.GameObjects.Graphics
+  private readonly body?: Phaser.GameObjects.Graphics
+  private readonly barrel?: Phaser.GameObjects.Graphics
   private cooldown: number
   private hitFlash = 0
   private muzzle = 0
   private pop = 1
 
   constructor(
-    scene: Phaser.Scene,
+    scene: Phaser.Scene | null,
     id: string,
     name: string,
     x: number,
@@ -47,16 +48,23 @@ export class Cannon {
     this.side = side
     this.cooldown = staggerMs
     this.angle = side === 'enemy' ? Math.PI : side === 'player' ? 0 : -Math.PI / 2
-    this.body = scene.add.graphics()
-    this.barrel = scene.add.graphics()
-    this.root = scene.add.container(x, y, [this.body, this.barrel])
-    this.root.setDepth(5)
+    if (scene) {
+      this.body = scene.add.graphics()
+      this.barrel = scene.add.graphics()
+      this.root = scene.add.container(x, y, [this.body, this.barrel])
+      this.root.setDepth(5)
+    }
   }
 
   setTarget(target: Cannon | null): void {
     if (target === this) return
     this.target = target
     if (target) this.aimPoint = null
+  }
+
+  clearAim(): void {
+    this.target = null
+    this.aimPoint = null
   }
 
   setAimPoint(point: Point): void {
@@ -108,7 +116,7 @@ export class Cannon {
    * Decay flashes and, unless frozen, fire when the cooldown elapses.
    * The returned ball is a new shot in world space.
    */
-  update(dt: number, frozen: boolean): Ball | null {
+  update(dt: number, frozen: boolean, fireMs: number = TUNING.fireIntervalMs): Ball | null {
     this.hitFlash = Math.max(0, this.hitFlash - dt / 160)
     this.muzzle = Math.max(0, this.muzzle - dt)
     this.pop = Math.max(1, this.pop - dt / 380)
@@ -129,7 +137,7 @@ export class Cannon {
       this.cooldown = 0
       return null
     }
-    this.cooldown = TUNING.fireIntervalMs
+    this.cooldown = fireMs
     this.muzzle = 110
     // Fire along the barrel's current direction, not straight at the aim.
     const along = { x: this.x + Math.cos(this.angle) * 100, y: this.y + Math.sin(this.angle) * 100 }
@@ -137,6 +145,7 @@ export class Cannon {
   }
 
   draw(time: number): void {
+    if (!this.body || !this.barrel || !this.root) return
     const threatened =
       this.captureAttacker !== null
         ? lerpColor(
