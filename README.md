@@ -13,7 +13,7 @@ You are gold. The enemy is strawberry pink. Warm grey cannons are neutral and do
 1. Click one of your cannons to select it (it gets a pulsing ring).
 2. Click anywhere on the board to set that spot as its aim point, or click an enemy or neutral cannon to aim at it. Free aiming lets you lead shots, bank them off walls, or let a fan carry them.
 3. Cannons don't snap. The barrel turns toward its aim at a limited speed, and the cannon keeps firing along wherever the barrel points right now (about once a second). Big swings cost you shots: it holds fire while the barrel is far off target.
-4. Click the selected cannon again (or press **Esc**) to deselect. Click another of your cannons to switch to it.
+4. Setting an aim deselects the cannon automatically, so a stray extra click can't re-aim it. To re-aim, select it again. Before aiming, click the selected cannon again (or press **Esc**) to cancel, or click another of your cannons to switch to it.
 
 A cannon tints toward whoever is hitting it. At eight hits it flips. Shots from the other side contest that progress. Capture every cannon to win. Lose when none are yours. A newly captured cannon swings toward the nearest foe on its own.
 
