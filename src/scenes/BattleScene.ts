@@ -8,6 +8,7 @@ import { Fan } from '../entities/Fan'
 import { Shot } from '../entities/Shot'
 import { Wall } from '../entities/Wall'
 import { SKIRMISH } from '../levels/skirmish'
+import { bindSceneResolution } from '../render/resolution'
 import type { FanField } from '../sim/ballistics'
 import { clipToWalls } from '../sim/geometry'
 import type { Side } from '../types'
@@ -52,6 +53,7 @@ export class BattleScene extends Phaser.Scene {
     this.restarting = false
     this.ai.reset()
 
+    bindSceneResolution(this)
     this.drawBoard()
     this.fx = this.add.graphics().setDepth(3)
 
@@ -280,7 +282,7 @@ export class BattleScene extends Phaser.Scene {
     g.fillStyle(theme.grid, 1)
     for (let x = BOARD.x + 36; x < BOARD.x + BOARD.w - 16; x += 32) {
       for (let y = BOARD.y + 28; y < BOARD.y + BOARD.h - 16; y += 32) {
-        g.fillCircle(x, y, 1.3)
+        g.fillCircle(x, y, 1.6)
       }
     }
   }
@@ -437,7 +439,7 @@ export class BattleScene extends Phaser.Scene {
 
   private onPointerDown(pointer: Phaser.Input.Pointer): void {
     if (this.ended || this.restarting) return
-    const hit = this.cannonAt(pointer.x, pointer.y)
+    const hit = this.cannonAt(pointer.worldX, pointer.worldY)
     if (!hit) {
       this.selected = null
       return
@@ -454,7 +456,7 @@ export class BattleScene extends Phaser.Scene {
       this.hover = null
       return
     }
-    this.hover = this.cannonAt(pointer.x, pointer.y)
+    this.hover = this.cannonAt(pointer.worldX, pointer.worldY)
     this.input.setDefaultCursor(this.hover ? 'pointer' : 'default')
   }
 
