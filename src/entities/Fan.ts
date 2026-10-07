@@ -6,7 +6,7 @@ import type { FanDef } from '../types'
 
 export class Fan {
   readonly field: FanField
-  private readonly gfx: Phaser.GameObjects.Graphics
+  readonly gfx: Phaser.GameObjects.Graphics
 
   constructor(scene: Phaser.Scene, def: FanDef) {
     this.field = {
@@ -18,6 +18,10 @@ export class Fan {
     }
     this.gfx = scene.add.graphics()
     this.gfx.setDepth(2)
+  }
+
+  destroy(): void {
+    this.gfx.destroy()
   }
 
   draw(time: number): void {

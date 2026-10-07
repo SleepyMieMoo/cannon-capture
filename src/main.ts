@@ -2,6 +2,8 @@ import Phaser from 'phaser'
 import { theme } from './config/theme'
 import { canvasSize, renderScale, watchRenderScale } from './render/resolution'
 import { BattleScene } from './scenes/BattleScene'
+import { EditorScene } from './scenes/EditorScene'
+import { MapsScene } from './scenes/MapsScene'
 import { MapScene } from './scenes/MapScene'
 import { TitleScene } from './scenes/TitleScene'
 
@@ -34,7 +36,7 @@ const game = new Phaser.Game({
     width,
     height,
   },
-  scene: [TitleScene, MapScene, BattleScene],
+  scene: [TitleScene, MapScene, BattleScene, EditorScene, MapsScene],
 })
 
 watchRenderScale(game, parent)

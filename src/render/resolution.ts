@@ -52,11 +52,24 @@ export function watchRenderScale(game: Phaser.Game, parent: HTMLElement): void {
   watchDpr()
 }
 
+/** Canvas pixels per layout pixel (the 1200x720 layout fitted to the screen). */
+export function layoutScale(scene: Phaser.Scene): number {
+  return Math.min(scene.scale.width / GAME_WIDTH, scene.scale.height / GAME_HEIGHT)
+}
+
+export interface ResolutionOpts {
+  /**
+   * Camera to keep fitted to the 1200x720 layout. Defaults to the main
+   * camera; pass null when something else (WorldCamera) drives it.
+   */
+  camera?: Phaser.Cameras.Scene2D.Camera | null
+}
+
 /**
  * Keeps a scene's camera zoomed so the 1200x720 world fills the canvas, and
  * renders text at the same scale so it stays sharp. Call once in create().
  */
-export function bindSceneResolution(scene: Phaser.Scene): void {
+export function bindSceneResolution(scene: Phaser.Scene, opts: ResolutionOpts = {}): void {
   let textResolution = 1
 
   const applyText = (obj: Phaser.GameObjects.GameObject): void => {
@@ -69,11 +82,13 @@ export function bindSceneResolution(scene: Phaser.Scene): void {
 
   const apply = (): void => {
     const { width, height } = scene.scale
-    const zoom = Math.min(width / GAME_WIDTH, height / GAME_HEIGHT)
-    const cam = scene.cameras.main
-    cam.setSize(width, height)
-    cam.setZoom(zoom)
-    cam.centerOn(GAME_WIDTH / 2, GAME_HEIGHT / 2)
+    const zoom = layoutScale(scene)
+    const cam = opts.camera === undefined ? scene.cameras.main : opts.camera
+    if (cam) {
+      cam.setViewport(0, 0, width, height)
+      cam.setZoom(zoom)
+      cam.centerOn(GAME_WIDTH / 2, GAME_HEIGHT / 2)
+    }
     textResolution = Math.max(1, Math.ceil(zoom * 4) / 4)
     scene.children.list.forEach(applyText)
   }

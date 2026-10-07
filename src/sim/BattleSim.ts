@@ -3,14 +3,17 @@ import { AiController, aimViaLane } from '../ai/AiController'
 import { TUNING } from '../config/tuning'
 import { Cannon } from '../entities/Cannon'
 import { Shot } from '../entities/Shot'
-import type { LevelDef, Point, Side } from '../types'
-import type { Body } from './ballistics'
-import { levelFans, levelLanes, type LaneTable } from './solver'
+import { boardFor } from '../levels/board'
+import type { LevelDef, Point, Rect, Side } from '../types'
+import { Broadphase, type BallisticsOpts, type Body } from './ballistics'
+import { LaneBuilder, levelFans, shotOpts, type LaneTable } from './solver'
 
 export type Outcome = 'win' | 'lose'
 
 /** Puzzle: lose once out of aims and no neutral has been hit for this long. */
 export const PUZZLE_STALL_MS = 5000
+/** Oldest shots are dropped beyond this (big maps with many cannons). */
+const MAX_SHOTS = 240
 
 export interface SimEvents {
   bounce?(x: number, y: number): void
@@ -28,6 +31,9 @@ export interface SimEvents {
 export class BattleSim {
   readonly level: LevelDef
   readonly lanes: LaneTable
+  readonly board: Rect
+  private readonly opts: BallisticsOpts
+  private readonly builder: LaneBuilder | null = null
   readonly cannons: Cannon[] = []
   shots: Shot[] = []
   readonly ai = new AiController('enemy')
@@ -38,17 +44,26 @@ export class BattleSim {
   private lastPuzzleProgress = 0
   private readonly fans
   private readonly bodies: Body[]
+  private readonly near: Broadphase
 
   constructor(
     level: LevelDef,
     scene: Phaser.Scene | null = null,
     private readonly events: SimEvents = {},
-    lanes?: LaneTable,
+    lanes?: LaneTable | 'progressive',
   ) {
     this.level = level
-    this.lanes = lanes ?? levelLanes(level)
+    this.board = boardFor(level)
+    this.opts = shotOpts(level)
+    if (lanes === 'progressive') {
+      // Rendering: build lanes a few ms per frame (see pumpLanes).
+      this.builder = new LaneBuilder(level)
+      this.lanes = this.builder.table
+    } else {
+      this.lanes = lanes ?? new LaneBuilder(level, 1).runAll()
+    }
     this.fans = levelFans(level)
-    this.ai.reset(this.lanes, level.ai?.retargetMs ?? TUNING.aiRetargetMs)
+    this.ai.reset(this.lanes, level.ai?.retargetMs ?? TUNING.aiRetargetMs, this.board)
     level.cannons.forEach((def, index) => {
       this.cannons.push(new Cannon(scene, def.id, def.name, def.x, def.y, def.side, (index % 3) * TUNING.fireStaggerMs))
     })
@@ -59,6 +74,8 @@ export class BattleSim {
       cannon.snapToAim()
     }
     this.bodies = this.cannons.map((c) => ({ id: c.id, x: c.x, y: c.y, radius: TUNING.cannonRadius }))
+    // Steps are at most ~32ms at the capped shot speed (under 20px).
+    this.near = new Broadphase(level.walls, this.bodies, TUNING.shotRadius, 48)
   }
 
   get isPuzzle(): boolean {
@@ -77,6 +94,15 @@ export class BattleSim {
     let n = 0
     for (const cannon of this.cannons) if (cannon.side === side) n += 1
     return n
+  }
+
+  /** Spend up to `budgetMs` building lanes (progressive mode only). */
+  pumpLanes(budgetMs: number): void {
+    if (this.builder && !this.builder.done) this.builder.pump(budgetMs)
+  }
+
+  get lanesReady(): boolean {
+    return !this.builder || this.builder.done
   }
 
   /** Advance the round by `dt` ms. */
@@ -111,7 +137,8 @@ export class BattleSim {
 
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const shot = this.shots[i]
-      const result = shot.step(dt, this.level.walls, this.fans, this.bodies)
+      const near = this.near.at(shot.ball.x, shot.ball.y)
+      const result = shot.step(dt, near.walls, this.fans, near.bodies, this.opts)
       if (result.bounced) this.events.bounce?.(shot.ball.x, shot.ball.y)
       if (result.hitId && !this.ended) {
         const cannon = this.byId(result.hitId)
@@ -123,7 +150,7 @@ export class BattleSim {
       }
       if (!shot.ball.alive) this.shots.splice(i, 1)
     }
-    if (this.shots.length > 80) this.shots.splice(0, this.shots.length - 80)
+    if (this.shots.length > MAX_SHOTS) this.shots.splice(0, this.shots.length - MAX_SHOTS)
   }
 
   private onCaptured(cannon: Cannon): void {
@@ -134,7 +161,7 @@ export class BattleSim {
     }
     if (!cannon.aim()) {
       const foe = this.nearestFoe(cannon)
-      if (foe) aimViaLane(cannon, foe, this.lanes.get(cannon.id)?.get(foe.id))
+      if (foe) aimViaLane(cannon, foe, this.lanes.get(cannon.id)?.get(foe.id), this.board)
     }
     this.ai.retarget(this.cannons)
   }

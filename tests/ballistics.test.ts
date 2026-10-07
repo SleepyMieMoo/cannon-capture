@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { circleAabb, clipToWalls, reflect } from '../src/sim/geometry'
+import { circleAabb, circleWall, clipToWalls, distToWall, reflect } from '../src/sim/geometry'
 import { stepBall, type Ball, type BallisticsOpts } from '../src/sim/ballistics'
 
 const opts: BallisticsOpts = {
@@ -86,5 +86,28 @@ describe('stepBall', () => {
       hitId = step.hitId
     }
     expect(hitId).toBe('n1')
+  })
+})
+
+describe('rotated walls', () => {
+  const wall = { x: 100, y: 100, w: 200, h: 20, angle: Math.PI / 2 } // a vertical bar centred at (200, 110)
+
+  it('collides in the rotated frame', () => {
+    expect(circleWall(200, 30, 6, wall)).not.toBeNull() // inside the rotated span
+    expect(circleWall(120, 110, 6, wall)).toBeNull() // inside the unrotated span only
+    const hit = circleWall(214, 110, 6, wall)!
+    expect(hit.nx).toBeCloseTo(1)
+    expect(hit.ny).toBeCloseTo(0)
+  })
+
+  it('clips segments and measures distance with rotation', () => {
+    const end = clipToWalls(100, 110, 300, 110, [wall])
+    expect(end.x).toBeCloseTo(190)
+    expect(distToWall(200, 110, wall)).toBe(0)
+    expect(distToWall(230, 110, wall)).toBeCloseTo(20)
+  })
+
+  it('treats angle 0 like a plain box', () => {
+    expect(circleWall(150, 95, 6, { ...wall, angle: 0 })).toEqual(circleAabb(150, 95, 6, { x: 100, y: 100, w: 200, h: 20 }))
   })
 })

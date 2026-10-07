@@ -9,6 +9,13 @@ export interface Rect {
   h: number
 }
 
+/** A wall: a rectangle, optionally rotated by `angle` radians about its centre. */
+export interface WallDef extends Rect {
+  angle?: number
+}
+
+export type MapSize = 'small' | 'medium' | 'large' | 'huge'
+
 export interface CannonDef {
   id: string
   name: string
@@ -59,7 +66,9 @@ export interface LevelDef {
    * enemy shots (yours are always TUNING.fireIntervalMs), to ease early levels.
    */
   ai?: { retargetMs?: number; fireMs?: number }
+  /** Board size preset (custom maps). Defaults to small, the original board. */
+  size?: MapSize
   cannons: CannonDef[]
-  walls: Rect[]
+  walls: WallDef[]
   fans: FanDef[]
 }
