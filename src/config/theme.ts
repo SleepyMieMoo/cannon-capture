@@ -71,7 +71,7 @@ function buildPalette(t: ChocoTheme) {
     hud: hex(t.deep),
     board: hex(t.elevated),
     boardEdge: hex(t.border),
-    grid: hex(t.button),
+    grid: mix(t.button, t.muted, 0.2),
     text: t.text,
     textMuted: t.muted,
     ink: t.dark ? t.onAccent : t.text,

@@ -1,6 +1,6 @@
 import Phaser from 'phaser'
-import { GAME_HEIGHT, GAME_WIDTH } from './config/layout'
 import { theme } from './config/theme'
+import { canvasSize, renderScale, watchRenderScale } from './render/resolution'
 import { BattleScene } from './scenes/BattleScene'
 
 const parent = document.getElementById('app')
@@ -8,19 +8,31 @@ if (!parent) throw new Error('Missing #app mount point')
 
 document.body.style.background = theme.bgCss
 
-new Phaser.Game({
+// The canvas matches the on-screen size x devicePixelRatio (see render/resolution.ts);
+// the world is still laid out at GAME_WIDTH x GAME_HEIGHT.
+const { width, height } = canvasSize(renderScale(parent))
+
+const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent,
-  width: GAME_WIDTH,
-  height: GAME_HEIGHT,
+  width,
+  height,
   backgroundColor: theme.bg,
   banner: false,
   audio: { noAudio: true },
+  render: {
+    antialias: true,
+    antialiasGL: true,
+    pixelArt: false,
+    roundPixels: false,
+  },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: GAME_WIDTH,
-    height: GAME_HEIGHT,
+    width,
+    height,
   },
   scene: [BattleScene],
 })
+
+watchRenderScale(game, parent)
