@@ -1020,7 +1020,7 @@ export class EditorScene extends Phaser.Scene {
     const keys: [string, string][] = [
       ['Click / tap', 'Place with the chosen tool, or select'],
       ['Drag', 'Move things · drag empty space to pan'],
-      ['Wheel / pinch', 'Zoom (+ / − / 0 keys, or the corner buttons)'],
+      ['Wheel / pinch', 'Zoom (+ / − / 0 keys, or the zoom buttons)'],
       ['WASD / arrows', 'Pan'],
       ['1 2 3', 'Gold / enemy / neutral cannon'],
       ['4 5', 'Wall / fan'],
@@ -1031,7 +1031,7 @@ export class EditorScene extends Phaser.Scene {
       ['Ctrl+Z / Ctrl+Y', 'Undo / redo'],
       ['Esc', 'Close, cancel or deselect'],
     ]
-    pop('help', 610, 380, 300,
+    pop('help', 610, 380, 272,
       h('div.cc-h', {}, 'Controls'),
       h('div.cc-keys', {}, ...keys.flatMap(([k, v]) => [h('b', {}, k), h('span', {}, v)])),
     )
