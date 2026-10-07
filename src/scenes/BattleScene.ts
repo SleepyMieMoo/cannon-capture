@@ -178,6 +178,7 @@ export class BattleScene extends Phaser.Scene {
       bounce: (x, y) => this.sparks.push({ x, y, life: 1, color: theme.spark }),
       hit: (x, y, side) => this.sparks.push({ x, y, life: 1, color: sideColor(side) }),
       captured: (cannon) => this.popup(cannon.x, cannon.y, 'Captured', cssHex(sideColor(cannon.side))),
+      healed: (cannon, amount) => this.popup(cannon.x, cannon.y - 8, `+${amount} heal`, cssHex(sideColor(cannon.side))),
       noAims: (cannon) => this.popup(cannon.x, cannon.y, 'No aims left', theme.textMuted),
       aimed: (point) => {
         this.pings.push({ x: point.x, y: point.y, life: 1, color: theme.select })
@@ -318,7 +319,7 @@ export class BattleScene extends Phaser.Scene {
       this.selected = null
       return
     }
-    if (hit && hit.side === 'player') {
+    if (hit && hit.side === 'player' && !hit.damaged) {
       this.selected = hit
       return
     }
@@ -505,6 +506,7 @@ export class BattleScene extends Phaser.Scene {
     if (!this.selected) return 'Click one of your gold cannons to select it, then click where it should aim.'
     const name = this.selected.name
     if (this.hover && this.hover !== this.selected) {
+      if (this.hover.side === 'player' && this.hover.damaged) return `${name} → heal ${this.hover.name} (it goes back to its old aim once ${this.hover.name} is whole).`
       if (this.hover.side === 'player') return `Click to select ${this.hover.name} instead.`
       return `${name} → ${this.hover.name}`
     }
@@ -690,7 +692,7 @@ export class BattleScene extends Phaser.Scene {
     const sel = this.selected
     if (sel && !this.ended) {
       const hover = this.hover && this.hover !== sel ? this.hover : null
-      if (hover && hover.side !== 'player') {
+      if (hover && (hover.side !== 'player' || hover.damaged)) {
         const end = clipToWalls(sel.x, sel.y, hover.x, hover.y, walls)
         const blocked = end.x !== hover.x || end.y !== hover.y
         dash(g, sel.x, sel.y, end.x, end.y, TUNING.cannonRadius + 14, blocked ? 4 : TUNING.cannonRadius + 14, theme.select, 0.9)

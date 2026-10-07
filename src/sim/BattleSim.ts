@@ -18,6 +18,8 @@ const MAX_SHOTS = 240
 export interface SimEvents {
   bounce?(x: number, y: number): void
   hit?(x: number, y: number, side: Side): void
+  /** A friendly shot took `amount` capture progress off one of its own cannons. */
+  healed?(cannon: Cannon, amount: number): void
   captured?(cannon: Cannon): void
   noAims?(cannon: Cannon): void
   aimed?(point: Point): void
@@ -121,7 +123,8 @@ export class BattleSim {
       this.events.noAims?.(cannon)
       return false
     }
-    if (aim instanceof Cannon) cannon.setTarget(aim)
+    if (aim instanceof Cannon && aim.side === cannon.side) cannon.startHeal(aim)
+    else if (aim instanceof Cannon) cannon.setTarget(aim)
     else cannon.setAimPoint(aim)
     if (this.level.aims !== undefined) this.aimsUsed += 1
     this.events.aimed?.({ x: aim.x, y: aim.y })
@@ -143,9 +146,11 @@ export class BattleSim {
       if (result.hitId && !this.ended) {
         const cannon = this.byId(result.hitId)
         this.events.hit?.(shot.ball.x, shot.ball.y, shot.side)
-        if (cannon && cannon.side !== shot.side) {
+        if (cannon) {
           if (cannon.side === 'neutral') this.lastPuzzleProgress = this.clock
-          if (cannon.receiveHit(shot.side)) this.onCaptured(cannon)
+          const hit = cannon.receiveHit(shot.side, shot.damage)
+          if (hit.healed > 0) this.events.healed?.(cannon, hit.healed)
+          if (hit.flipped) this.onCaptured(cannon)
         }
       }
       if (!shot.ball.alive) this.shots.splice(i, 1)
@@ -157,7 +162,7 @@ export class BattleSim {
     this.events.captured?.(cannon)
     if (this.isPuzzle) return // puzzles: every aim is yours to spend, nothing auto-aims
     for (const other of this.cannons) {
-      if (other.target && other.target.side === other.side) other.setTarget(this.nearestFoe(other))
+      if (other.target && other.target.side === other.side && other.target !== other.healing) other.setTarget(this.nearestFoe(other))
     }
     if (!cannon.aim()) {
       const foe = this.nearestFoe(cannon)

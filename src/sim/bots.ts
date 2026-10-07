@@ -1,4 +1,4 @@
-import { AiController, aimViaLane, pointAlong } from '../ai/AiController'
+import { AiController, aimViaLane, healViaLane, planHeals, pointAlong } from '../ai/AiController'
 import { TUNING } from '../config/tuning'
 import type { Cannon } from '../entities/Cannon'
 import type { BattleSim } from './BattleSim'
@@ -79,7 +79,14 @@ export class BattleBot implements Bot {
     }
     this.focus = focus
 
+    // Heal a cannon that is close to flipping, the way a player would.
+    for (const { helper, friend } of planHeals('player', sim.cannons, sim.lanes)) {
+      healViaLane(helper, friend, sim.lanes.get(helper.id)?.get(friend.id), sim.board)
+      this.aims.delete(helper.id)
+    }
+
     for (const m of mine) {
+      if (m.healing && m.healing.side === 'player' && m.healing.damaged) continue
       let target = focus && canHit(m, focus) ? focus : null
       if (!target) {
         let best = Infinity

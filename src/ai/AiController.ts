@@ -39,8 +39,9 @@ export class AiController {
 
   retarget(cannons: Cannon[]): void {
     const prey = cannons.filter((cannon) => cannon.side !== this.side)
+    const busy = this.assignHealers(cannons)
     for (const cannon of cannons) {
-      if (cannon.side !== this.side) continue
+      if (cannon.side !== this.side || busy.has(cannon)) continue
       const lanes = this.lanes.get(cannon.id)
       const reachable = prey.filter((other) => (lanes?.get(other.id)?.widthDeg ?? 0) >= MIN_LANE_DEG)
       const pool = reachable.length ? reachable : prey
@@ -66,6 +67,65 @@ export class AiController {
       this.picks.set(cannon.id, target.id)
     }
   }
+
+  /** Send helpers to cannons close to flipping; returns every cannon busy healing. */
+  private assignHealers(cannons: Cannon[]): Set<Cannon> {
+    for (const { helper, friend } of planHeals(this.side, cannons, this.lanes)) {
+      healViaLane(helper, friend, this.lanes.get(helper.id)?.get(friend.id), this.board)
+      this.picks.delete(helper.id)
+    }
+    const busy = new Set<Cannon>()
+    for (const c of cannons) if (c.side === this.side && c.healing && c.healing.damaged) busy.add(c)
+    return busy
+  }
+}
+
+export interface HealOrder {
+  helper: Cannon
+  friend: Cannon
+}
+
+/**
+ * Healing: each own cannon that is close to flipping (at least
+ * TUNING.aiHealAtProgress of the meter gone) gets one helper, the nearest
+ * other own cannon with a clear lane to it. Helpers that are about to finish
+ * their own capture are left alone. Returns every cannon now busy healing.
+ */
+export function planHeals(side: Side, cannons: Cannon[], lanes: LaneTable): HealOrder[] {
+  const mine = cannons.filter((c) => c.side === side)
+  if (mine.length < 2) return []
+  const busy = new Set<Cannon>()
+  const orders: HealOrder[] = []
+  for (const c of mine) if (c.healing && c.healing.side === side && c.healing.damaged) busy.add(c)
+  const hurt = mine
+    .filter((c) => c.damaged && c.captureProgress >= TUNING.aiHealAtProgress)
+    .sort((a, b) => b.captureProgress - a.captureProgress)
+  for (const friend of hurt) {
+    if (mine.some((c) => c.healing === friend)) continue
+    let helper: Cannon | null = null
+    let best = Infinity
+    for (const c of mine) {
+      if (c === friend || busy.has(c)) continue
+      if ((lanes.get(c.id)?.get(friend.id)?.widthDeg ?? 0) < MIN_LANE_DEG) continue
+      const prey = c.target
+      if (prey && prey.side !== side && prey.captureAttacker === side && prey.captureProgress >= TUNING.captureThreshold - 2) continue
+      const d = Math.hypot(c.x - friend.x, c.y - friend.y)
+      if (d < best) {
+        best = d
+        helper = c
+      }
+    }
+    if (!helper) continue
+    busy.add(helper)
+    orders.push({ helper, friend })
+  }
+  return orders
+}
+
+/** Start a heal along the helper's lane (straight if that lands). */
+export function healViaLane(helper: Cannon, friend: Cannon, lane: Lane | undefined, board: Rect = BOARD): void {
+  if (!lane || lane.direct) helper.startHeal(friend)
+  else helper.startHeal(friend, pointAlong(helper, lane.angle, board))
 }
 
 /** Aim straight at the target if that lands, otherwise at a point along the lane. */

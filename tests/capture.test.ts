@@ -28,8 +28,39 @@ describe('applyCaptureHit', () => {
     expect(started.state.progress).toBe(1)
   })
 
-  it('ignores shots from the current owner', () => {
+  it('does nothing when the owner shoots a fully healthy cannon (no overheal)', () => {
     const owned: CaptureState = { side: 'player', attacker: null, progress: 0 }
-    expect(applyCaptureHit(owned, 'player', 5)).toEqual({ state: owned, flipped: false })
+    expect(applyCaptureHit(owned, 'player', 5)).toEqual({ state: owned, flipped: false, reduced: 0 })
+    expect(applyCaptureHit(owned, 'player', 5, 3)).toEqual({ state: owned, flipped: false, reduced: 0 })
+  })
+
+  it("heals: the owner's shots take the enemy's progress back off", () => {
+    const hurt: CaptureState = { side: 'player', attacker: 'enemy', progress: 4 }
+    const once = applyCaptureHit(hurt, 'player', 8)
+    expect(once).toEqual({ flipped: false, reduced: 1, state: { side: 'player', attacker: 'enemy', progress: 3 } })
+    // A big heal stops at full health instead of going past it.
+    const big = applyCaptureHit({ ...hurt, progress: 2 }, 'player', 8, 3)
+    expect(big).toEqual({ flipped: false, reduced: 2, state: { side: 'player', attacker: null, progress: 0 } })
+  })
+
+  it('heal damage scales with the shot (a 2-damage heal removes 2)', () => {
+    const hurt: CaptureState = { side: 'enemy', attacker: 'player', progress: 6 }
+    expect(applyCaptureHit(hurt, 'enemy', 8, 2).state.progress).toBe(4)
+    expect(applyCaptureHit(hurt, 'enemy', 8, 3).state.progress).toBe(3)
+  })
+
+  it('pushes back a rival on a neutral, and leftover damage starts your own progress', () => {
+    const theirs: CaptureState = { side: 'neutral', attacker: 'enemy', progress: 1 }
+    const pushed = applyCaptureHit(theirs, 'player', 8, 3)
+    expect(pushed).toEqual({ flipped: false, reduced: 1, state: { side: 'neutral', attacker: 'player', progress: 2 } })
+    const partial = applyCaptureHit({ ...theirs, progress: 5 }, 'player', 8, 2)
+    expect(partial.state).toEqual({ side: 'neutral', attacker: 'enemy', progress: 3 })
+  })
+
+  it('bigger hits capture sooner', () => {
+    let state = fresh
+    for (let i = 0; i < 3; i++) state = applyCaptureHit(state, 'player', 8, 2).state
+    expect(state.progress).toBe(6)
+    expect(applyCaptureHit(state, 'player', 8, 2).flipped).toBe(true)
   })
 })

@@ -44,6 +44,11 @@ export const TUNING = {
    * this many pixels closer, so the AI finishes weak cannons.
    */
   aiFinishBias: 80,
+  /**
+   * The AI sends one helper to heal its own cannon once a foe has this much
+   * capture progress on it (out of captureThreshold).
+   */
+  aiHealAtProgress: 4,
   /** Keep the current target unless a new one is clearly better, in pixels. */
   aiRetargetSlack: 200,
 } as const
