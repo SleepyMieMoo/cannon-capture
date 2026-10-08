@@ -190,15 +190,15 @@ describe('music settings', () => {
   it('default to about half the sound effects’ volume, on, on the title song', () => {
     expect(MUSIC_DEFAULT_VOLUME).toBeGreaterThanOrEqual(SFX.defaultVolume * 0.4)
     expect(MUSIC_DEFAULT_VOLUME).toBeLessThanOrEqual(SFX.defaultVolume * 0.6)
-    expect(MUSIC_DEFAULTS).toEqual({ volume: MUSIC_DEFAULT_VOLUME, on: true, track: DEFAULT_TRACK })
+    expect(MUSIC_DEFAULTS).toEqual({ volume: MUSIC_DEFAULT_VOLUME, on: true, track: DEFAULT_TRACK, keepHidden: true })
     expect(TRACKS.find((t) => t.theme)?.id).toBe(DEFAULT_TRACK)
     expect(loadMusicSettings({ getItem: () => null, setItem: () => {} })).toEqual({ ...MUSIC_DEFAULTS })
   })
 
   it('saves and loads the song, the volume and play/pause, and ignores broken values', () => {
     const store = new MemoryStore()
-    saveMusicSettings({ volume: 0.2, on: false, track: 'singularity' }, store)
-    expect(loadMusicSettings(store)).toEqual({ volume: 0.2, on: false, track: 'singularity' })
+    saveMusicSettings({ volume: 0.2, on: false, track: 'singularity', keepHidden: false }, store)
+    expect(loadMusicSettings(store)).toEqual({ volume: 0.2, on: false, track: 'singularity', keepHidden: false })
     store.setItem(MUSIC_KEY, JSON.stringify({ volume: 7, on: 'yes', track: 'no-such-song' }))
     expect(loadMusicSettings(store)).toEqual({ ...MUSIC_DEFAULTS, volume: 1 })
     store.setItem(MUSIC_KEY, JSON.stringify({ volume: 'loud' }))
@@ -287,8 +287,21 @@ describe('MusicPlayer', () => {
     expect(r.events.listening).toBe(false)
   })
 
-  it('pauses while the tab is hidden and resumes when it is back', async () => {
+  it('keeps playing while the tab is hidden, by default', async () => {
     const r = rig()
+    r.player.boot()
+    await flush()
+    r.ctx.tick(10)
+    r.doc.hide()
+    expect(r.ctx.state).toBe('running')
+    r.ctx.tick(30)
+    expect(r.player.position()).toBeCloseTo(40, 5)
+    r.doc.show()
+    expect(r.ctx.state).toBe('running')
+  })
+
+  it('with "keep playing" off it pauses while hidden and resumes when back', async () => {
+    const r = rig({ keepHidden: false })
     r.player.boot()
     await flush()
     r.ctx.tick(10)
@@ -300,6 +313,19 @@ describe('MusicPlayer', () => {
     expect(r.ctx.state).toBe('running')
     expect(r.player.position()).toBeCloseTo(10, 5)
     expect(r.player.settings.on).toBe(true)
+  })
+
+  it('switching "keep playing" while hidden takes effect at once, and is saved', async () => {
+    const r = rig()
+    r.player.boot()
+    await flush()
+    r.doc.hide()
+    r.player.setKeepHidden(false)
+    expect(r.ctx.state).toBe('suspended')
+    expect(loadMusicSettings(r.store).keepHidden).toBe(false)
+    r.player.setKeepHidden(true)
+    await flush()
+    expect(r.ctx.state).toBe('running')
   })
 
   it('switches songs live and wraps around, keeping the place after a pause', async () => {
@@ -329,7 +355,7 @@ describe('MusicPlayer', () => {
     await flush()
     r.player.setDefault('singularity')
     r.player.setVolume(0.1)
-    expect(loadMusicSettings(r.store)).toEqual({ volume: 0.1, on: true, track: 'singularity' })
+    expect(loadMusicSettings(r.store)).toEqual({ volume: 0.1, on: true, track: 'singularity', keepHidden: true })
     expect(r.player.current).toBe('fartysoup')
     r.player.reload()
     expect(r.player.settings.track).toBe('singularity')

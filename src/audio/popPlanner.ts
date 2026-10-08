@@ -39,13 +39,15 @@ interface Voice {
   volume: number
 }
 
-export type SkipReason = 'source' | 'kind' | 'voices' | 'silent'
+export type SkipReason = 'source' | 'kind' | 'voices' | 'silent' | 'burst'
 
 /** Pure voice logic (no Phaser): loudness, pitch, voice cap and rate limits. */
 export class PopPlanner {
   private readonly active: Voice[] = []
   private readonly lastBySource = new Map<string, number>()
   private readonly lastByKind = new Map<PopKind, number>()
+  /** When recent pops started (burst cap), overall and per kind. */
+  private readonly recent: { kind: PopKind; at: number }[] = []
   private nextId = 1
   readonly stats = { played: {} as Partial<Record<PopKind, number>>, skipped: {} as Partial<Record<SkipReason, number>>, stolen: 0 }
 
@@ -92,6 +94,7 @@ export class PopPlanner {
       const last = this.lastBySource.get(req.source)
       if (last !== undefined && req.now - last < cfg.sourceGapMs) return this.skip('source')
     }
+    if (this.burstFull(req.kind, req.now)) return this.skip('burst')
     const lastKind = this.lastByKind.get(req.kind)
     if (lastKind !== undefined && req.now - lastKind < cfg.kindGapMs[req.kind]) return this.skip('kind')
     const volume = this.gain(req) / (1 + cfg.crowd * this.active.length)
@@ -112,10 +115,29 @@ export class PopPlanner {
     this.active.push({ id, end: req.now + length, volume })
     if (req.source !== undefined) this.lastBySource.set(req.source, req.now)
     this.lastByKind.set(req.kind, req.now)
+    this.recent.push({ kind: req.kind, at: req.now })
     this.stats.played[req.kind] = (this.stats.played[req.kind] ?? 0) + 1
     const v = req.view
     const pan = v.w > 0 ? Math.max(-1, Math.min(1, (req.x - (v.x + v.w / 2)) / (v.w / 2))) * cfg.pan : 0
     return { id, kind: req.kind, volume, rate: spec.rate, detune, pan, steal }
+  }
+
+  /** Forget every voice and limit (after coming back to the tab, or stopping everything). */
+  reset(): void {
+    this.active.length = 0
+    this.recent.length = 0
+    this.lastBySource.clear()
+    this.lastByKind.clear()
+  }
+
+  /** Too many pops of this kind, or overall, in the last burst window? */
+  private burstFull(kind: PopKind, now: number): boolean {
+    const b = this.cfg.burst
+    while (this.recent.length && (now - this.recent[0].at >= b.windowMs || this.recent[0].at > now)) this.recent.shift()
+    if (this.recent.length >= b.total) return true
+    let same = 0
+    for (const r of this.recent) if (r.kind === kind) same++
+    return same >= b.perKind
   }
 
   /** A pop stopped early (or was stolen). */

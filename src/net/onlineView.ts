@@ -1,6 +1,6 @@
 import { PVP_RULES } from '../config/pvpRules'
 import type { Side } from '../types'
-import type { RoomInfo } from './online'
+import type { MatchResult, RoomInfo } from './online'
 import type { SnapExtra } from './snapshot'
 
 /**
@@ -92,6 +92,28 @@ export function opponentLine(x: SnapExtra | undefined, me: 0 | 1 | null, info: R
 }
 
 export type ViewOutcome = 'win' | 'lose' | 'draw'
+
+/**
+ * The match result the room keeps (seat that won), as this view's outcome.
+ * `viewSide` is the side drawn as "player" here: yours, or gold for someone
+ * watching. The server keeps this result after the match; the final snapshot
+ * can be missing (the connection dropped while the tab was hidden and came
+ * back after the server had put the match away), so the end screen must not
+ * depend on the snapshot alone.
+ */
+export function outcomeFromResult(result: MatchResult | null | undefined, sides: readonly [Side, Side] | undefined, viewSide: Side): ViewOutcome | null {
+  if (!result) return null
+  if (result.winner === null) return 'draw'
+  const side = sides?.[result.winner]
+  if (!side) return null
+  return side === viewSide ? 'win' : 'lose'
+}
+
+/** Cannons per side at the end, from the room's result (seat order), in this view's terms. */
+export function cannonsFromResult(result: MatchResult, sides: readonly [Side, Side], viewSide: Side): { mine: number; theirs: number } {
+  const mineSeat = sides[0] === viewSide ? 0 : 1
+  return { mine: result.cannons[mineSeat] ?? 0, theirs: result.cannons[1 - mineSeat] ?? 0 }
+}
 
 /** End screen texts. `outcome` is from this screen's view (watchers see gold's). */
 export function endTexts(outcome: ViewOutcome, me: 0 | 1 | null, info: RoomInfo | null, why: SnapExtra['why'], cannons: { mine: number; theirs: number }): { headline: string; detail: string } {

@@ -34,6 +34,39 @@ describe('sound config', () => {
   })
 })
 
+describe('burst cap', () => {
+  it('a frame full of shots (a big delta, a catch-up) plays only a few pops', () => {
+    const p = new PopPlanner(SFX, mid)
+    let played = 0
+    // 40 snipers and 20 captures in the very same frame (snipers and captures have no kind gap).
+    for (let i = 0; i < 40; i++) if (p.plan(req({ kind: 'sniper', source: 's' + i, now: 1000 }))) played++
+    for (let i = 0; i < 20; i++) if (p.plan(req({ kind: 'capture', source: undefined, now: 1000 }))) played++
+    expect(played).toBeLessThanOrEqual(SFX.burst.total)
+    let snipers = 0
+    for (let i = 0; i < 10; i++) if (p.plan(req({ kind: 'sniper', source: 'x' + i, now: 1001 }))) snipers++
+    expect(snipers).toBe(0)
+    expect(p.stats.skipped.burst).toBeGreaterThan(50)
+  })
+
+  it('at most perKind of one kind per window, and it frees up after the window', () => {
+    const p = new PopPlanner(SFX, mid)
+    const at = (now: number, i: number) => p.plan(req({ kind: 'sniper', source: 'k' + i + ':' + now, now }))
+    let n = 0
+    for (let i = 0; i < 10; i++) if (at(0, i)) n++
+    expect(n).toBe(SFX.burst.perKind)
+    expect(at(SFX.burst.windowMs + 1, 0)).not.toBeNull()
+  })
+
+  it('reset forgets voices and limits', () => {
+    const p = new PopPlanner(SFX, mid)
+    for (let i = 0; i < 10; i++) p.plan(req({ kind: 'sniper', source: 'r' + i, now: 0 }))
+    expect(p.playing(1)).toBeGreaterThan(0)
+    p.reset()
+    expect(p.playing(1)).toBe(0)
+    expect(p.plan(req({ kind: 'sniper', source: 'r0', now: 1 }))).not.toBeNull()
+  })
+})
+
 describe('PopPlanner', () => {
   it('plays a pop at the configured volume and rate, detuned within ±jitter', () => {
     const p = new PopPlanner(SFX, mid)
@@ -70,7 +103,8 @@ describe('PopPlanner', () => {
   })
 
   it('caps simultaneous pops; a clearly louder pop takes the quietest voice', () => {
-    const p = new PopPlanner(SFX, mid)
+    // The burst cap off here, to reach the voice cap.
+    const p = new PopPlanner({ ...SFX, burst: { windowMs: 250, perKind: 99, total: 99 } }, mid)
     // Pink snipers all at once (no kind gap for snipers).
     for (let i = 0; i < SFX.maxVoices; i++) expect(p.plan(req({ kind: 'sniper', source: 'e' + i, side: 'enemy', now: 0 }))).not.toBeNull()
     const t = 10

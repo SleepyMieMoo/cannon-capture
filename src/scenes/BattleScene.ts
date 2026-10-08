@@ -50,7 +50,11 @@ import type { OnlineRoom, OnlineStart } from '../net/onlineClient'
 import { looksClash } from '../config/looks'
 import { NameTags } from '../render/nameTags'
 import { GLOW, SideGlow, glowColours, glowEdges } from '../render/sideGlow'
-import { clock, endTexts, nameOnSide, tagNames, netLine, opponentLine, pauseCheck, pauseLabel, rematchLine, sideIndex } from '../net/onlineView'
+import { cannonsFromResult, clock, endTexts, nameOnSide, outcomeFromResult, tagNames, netLine, opponentLine, pauseCheck, pauseLabel, rematchLine, sideIndex } from '../net/onlineView'
+import { CatchUp } from '../sim/catchUp'
+import { ResultGate } from './resultGate'
+import { loadTabPrefs, type TabPrefs } from '../menu/tabPrefs'
+import type { Side } from '../types'
 import { PVP_RULES } from '../config/pvpRules'
 
 interface Spark {
@@ -106,6 +110,8 @@ const NO_HOLD = { paused: false, ended: null, pause: () => false, resume: () => 
 /** The world viewport: everything under the HUD band. */
 /** Slim HUD band on top (same info as before, less height). */
 const HUD_H = 54
+/** Catch-up time per frame after a hidden tab (ms of work, not game time). */
+const CATCH_UP_FRAME_MS = 12
 /** How long "Go!" shows after the countdown (ms). */
 const GO_MS = 850
 const WORLD_VIEW = { x: 0, y: HUD_H + 2, w: GAME_WIDTH, h: GAME_HEIGHT - HUD_H - 2 }
@@ -182,7 +188,30 @@ export class BattleScene extends Phaser.Scene {
   /** Online: this player's side index (0 gold, 1 pink), null when watching. */
   private me: 0 | 1 | null = null
   private sawPlaying = false
+  /** Online: the room has said "playing" for this match at least once (its later result is this match's). */
+  private playingSeen = false
+  /** Online: the outcome from the room's saved result, when no final snapshot came (see onRoomChange). */
+  private roomOutcome: Outcome | null = null
+  /** Online: the side this screen plays (or gold, watching), in the server's terms. */
+  private serverSide: Side = 'player'
+  /** The result panel (vs AI and online), null until the round ends. */
   private endRoot: Phaser.GameObjects.Container | null = null
+  /** Stars for a campaign win, worked out once when the round ends. */
+  private endStars = 0
+  /** Makes sure the result panel is up whenever the round is over (see resultGate.ts). */
+  private resultGate!: ResultGate
+  /** Settings → When tabbed out (read when the round starts). */
+  private tabPrefs: TabPrefs = { pauseVsAi: true }
+  /** "Pause vs AI when tabbed out" off: missed time to play back, silently. */
+  private readonly catchUp = new CatchUp()
+  /** performance.now() when the tab went away (null: here), and up to when the missed time is counted. */
+  private awayAt: number | null = null
+  private creditedAt = 0
+  /** Catching up: no sounds, sparks or popups (the board just shows where things got to). */
+  private quiet = false
+  /** Show "Caught up" once the time away has been played back. */
+  private caughtUpNote = false
+  private watchdog = 0
   /** The online clock's shown second (-1: not yet) and when the ping line is next rebuilt (it changes slowly). */
   private clockShown = -1
   private netAt = 0
@@ -344,7 +373,20 @@ export class BattleScene extends Phaser.Scene {
     this.online = null
     this.me = null
     this.sawPlaying = false
+    this.playingSeen = false
+    this.roomOutcome = null
+    this.serverSide = 'player'
     this.endRoot = null
+    this.endStars = 0
+    this.tabPrefs = loadTabPrefs()
+    this.catchUp.clear()
+    this.awayAt = null
+    this.caughtUpNote = false
+    this.quiet = false
+    this.resultGate = new ResultGate(
+      () => this.buildResult(),
+      () => !!this.endRoot && this.endRoot.active,
+    )
     this.clockShown = -1
     this.netAt = 0
     this.tags = null
@@ -379,6 +421,11 @@ export class BattleScene extends Phaser.Scene {
         this.pings.push({ x: point.x, y: point.y, life: 1, color: theme.select })
         this.hideBanner()
       },
+    }
+    // While catching up after a hidden tab, none of these play: the board just shows the result.
+    for (const k of Object.keys(events) as (keyof SimEvents)[]) {
+      const fn = events[k] as ((...a: unknown[]) => void) | undefined
+      if (fn) (events as Record<string, unknown>)[k] = (...a: unknown[]) => { if (!this.quiet) fn(...a) }
     }
     this.simEvents = events
     if (pvp?.role === 'host') {
@@ -451,10 +498,29 @@ export class BattleScene extends Phaser.Scene {
         .setDepth(19)
         .setVisible(false),
     )
-    // Leaving the tab (or the window) pauses the round, so nothing happens behind your back.
+    // Leaving the tab (or the window) pauses the round against the AI, so nothing happens
+    // behind your back (Settings → "Pause vs AI when tabbed out"). Coming back checks the
+    // round's end, drops sounds that were due while away, and catches up if it kept going.
     this.game.events.on(Phaser.Core.Events.BLUR, this.onLoseFocus, this)
     this.game.events.on(Phaser.Core.Events.HIDDEN, this.onLoseFocus, this)
+    this.game.events.on(Phaser.Core.Events.HIDDEN, this.onAway, this)
+    this.game.events.on(Phaser.Core.Events.VISIBLE, this.onBack, this)
+    this.game.events.on(Phaser.Core.Events.FOCUS, this.onRefocus, this)
+    window.addEventListener('pagehide', this.onPageHide)
+    window.addEventListener('pageshow', this.onPageShow)
+    document.addEventListener('visibilitychange', this.onVisibility)
+    // The safety net: a light timer that runs even when no frames are drawn (a hidden tab).
+    window.clearInterval(this.watchdog)
+    this.watchdog = window.setInterval(() => this.watch(), 500)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.clearInterval(this.watchdog)
+      this.watchdog = 0
+      this.game.events.off(Phaser.Core.Events.HIDDEN, this.onAway, this)
+      this.game.events.off(Phaser.Core.Events.VISIBLE, this.onBack, this)
+      this.game.events.off(Phaser.Core.Events.FOCUS, this.onRefocus, this)
+      window.removeEventListener('pagehide', this.onPageHide)
+      window.removeEventListener('pageshow', this.onPageShow)
+      document.removeEventListener('visibilitychange', this.onVisibility)
       // Stop listening (Back / Main menu say goodbye first; a restart keeps the connection).
       this.host?.close(false)
       this.client?.close(false)
@@ -507,6 +573,11 @@ export class BattleScene extends Phaser.Scene {
     if (this.client) {
       // Second player: show the host's round a moment behind its newest snapshot.
       this.client.update(this.sim, this.simEvents, delta)
+      this.applyRoomOutcome()
+    } else if (this.catchUp.active) {
+      // Back from a hidden tab with "Pause vs AI when tabbed out" off: play back the missed time.
+      this.runCatchUp(CATCH_UP_FRAME_MS)
+      this.steps.reset()
     } else {
       const running = !this.sim.ended && !this.sim.paused && (!this.host || this.host.joined)
       const n = running ? this.steps.take(delta) * DEBUG.speed : (this.steps.reset(), 0)
@@ -520,7 +591,7 @@ export class BattleScene extends Phaser.Scene {
     if (timing) this.recordPerf(performance.now() - t0)
     else this.lookBase = null
     if (this.selected && this.selected.side !== 'player') this.selected = null
-    if (this.sim.ended && !this.shownEnd) this.finish()
+    this.ensureEnd()
 
     this.fadeSparks(dt)
     this.flushHeals(dt)
@@ -643,14 +714,158 @@ export class BattleScene extends Phaser.Scene {
     this.sim.aiMs = 0
   }
 
-  private finish(): void {
-    this.shownEnd = true
-    this.selected = null
-    this.hover = null
+  /**
+   * The round is over (the game logic says so: sim.ended): do the once-per-
+   * round things, then make sure the result panel is up. Called every frame,
+   * on coming back to the tab, and by the watchdog; cheap when nothing to do.
+   */
+  private ensureEnd(): void {
+    if (this.restarting) return
+    this.applyRoomOutcome()
+    const result = this.sim.ended
+    if (!result) return
+    if (!this.shownEnd) {
+      this.shownEnd = true
+      this.selected = null
+      this.hover = null
+      this.hideBanner()
+      this.hud?.closeConfirm()
+      this.syncButtons()
+      // Progress is saved once, whatever happens to the panel.
+      if (result === 'win' && this.levelIndex >= 0 && !this.online) {
+        this.endStars = starsFor(this.level, { seconds: Math.round(this.sim.clock / 1000), aimsUsed: this.sim.aimsUsed })
+        recordWin(this.level.id, this.endStars)
+      }
+    }
+    this.resultGate.check(result, this.restarting)
+  }
+
+  /** Build (or rebuild) the result panel for the round's outcome. */
+  private buildResult(): void {
+    const result = this.sim.ended!
+    this.endRoot?.destroy()
+    this.endRoot = null
+    this.endRoot = this.uiBlock(() => (this.online ? this.buildOnlineEnd(result) : this.buildEnd(result)))
+    if (DEBUG.enabled) {
+      const w = window as unknown as { __ccPanels?: number }
+      w.__ccPanels = (w.__ccPanels ?? 0) + 1
+    }
+  }
+
+  /** Online: a result the room keeps stands in for a final snapshot that never came. */
+  private applyRoomOutcome(): void {
+    if (this.online && !this.sim.ended && this.roomOutcome) this.sim.ended = this.roomOutcome
+  }
+
+  // ---------------------------------------------------------------- tabbed out
+
+  private readonly onVisibility = (): void => {
+    if (document.hidden) this.onAway()
+    else this.onBack()
+  }
+
+  private readonly onPageHide = (): void => this.onAway()
+  private readonly onPageShow = (): void => this.onBack()
+
+  /** The tab went away (hidden, or the page put in the back/forward cache). */
+  private onAway(): void {
+    if (this.awayAt !== null) return
+    this.awayAt = performance.now()
+    this.creditedAt = this.awayAt
+    // Nothing keeps sounding into a hidden tab, and nothing new starts (Sfx.audible).
+    this.sfx.stopAll()
+  }
+
+  /** The tab is back: show where the round is, never a burst of what was missed. */
+  private onBack(): void {
+    if (this.awayAt === null) return this.onRefocus()
+    const awayMs = performance.now() - this.awayAt
+    this.awayAt = null
+    // Say so once the round has been played up to now (most of it already was, while hidden).
+    this.caughtUpNote = this.keepsGoing && awayMs >= 1000 && !this.sim.ended && !this.sim.paused
+    this.sfx.dropPending()
+    // Online and the PvP test: jump to the newest picture, drop the events missed.
+    this.client?.resync()
+    this.creditAway()
+    if (!this.catchUp.active) this.noteCaughtUp()
+    this.ensureEnd()
+  }
+
+  private noteCaughtUp(): void {
+    if (!this.caughtUpNote) return
+    this.caughtUpNote = false
+    if (this.sim.ended || document.hidden) return
     this.hideBanner()
-    this.hud?.closeConfirm()
-    this.syncButtons()
-    this.showEnd(this.sim.ended!)
+    this.showBanner('Caught up: the round kept going while you were away.')
+    const shown = this.banner
+    this.time.delayedCall(3500, () => {
+      if (this.banner === shown) this.hideBanner()
+    })
+  }
+
+  /** The window has focus again (alt-tab back, a click into the Discord frame). */
+  private onRefocus(): void {
+    // Phaser resumes the audio here; anything left waiting on the paused clock goes, not plays.
+    this.sfx.dropPending()
+    this.ensureEnd()
+  }
+
+  /** "Pause vs AI when tabbed out" off: the round keeps going while away. */
+  private get keepsGoing(): boolean {
+    return !this.pvp && !this.tabPrefs.pauseVsAi
+  }
+
+  /** Count the time away (up to now) as missed time to play back. */
+  private creditAway(): void {
+    const now = performance.now()
+    const ms = now - this.creditedAt
+    this.creditedAt = now
+    if (this.keepsGoing && !this.sim.ended && !this.sim.paused && !this.restarting) this.catchUp.add(ms)
+  }
+
+  /** Play back missed time in fixed steps, silently, within `budgetMs` of work. */
+  private runCatchUp(budgetMs: number): void {
+    if (!this.catchUp.active) return
+    this.quiet = true
+    this.sfx.silent = true
+    try {
+      this.catchUp.run(() => {
+        if (this.sim.ended || this.sim.paused) return false
+        this.bot?.update(SIM_STEP_MS)
+        this.sim.step(SIM_STEP_MS)
+        return !this.sim.ended && !this.sim.paused
+      }, () => performance.now(), budgetMs)
+    } finally {
+      this.quiet = false
+      this.sfx.silent = false
+    }
+    // No late "3, 2, 1, Go!" for a countdown that ran out while away.
+    if (this.sim.countdown <= 0) {
+      this.countShown = 0
+      this.goLeft = 0
+    }
+    if (!this.catchUp.active && !document.hidden) this.noteCaughtUp()
+  }
+
+  /**
+   * Every 500 ms, frames or not: while hidden, keep a running round going
+   * (vs AI with pausing off) and keep the online picture current, so a round
+   * that ends meanwhile has its panel ready on return; and show the panel if
+   * the round is over and none is up.
+   */
+  private watch(): void {
+    if (!this.scene.isActive() || this.restarting) return
+    if (typeof document !== 'undefined' && document.hidden) {
+      if (this.client) {
+        // Nothing missed is replayed (sounds, sparks): just the newest picture, and the end.
+        this.client.resync()
+        this.client.update(this.sim, {}, 0)
+      } else if (this.keepsGoing && this.awayAt !== null) {
+        this.creditAway()
+        this.runCatchUp(8)
+      }
+    }
+    this.ensureEnd()
   }
 
   private playerAim(cannon: Cannon, aim: Cannon | Point): boolean {
@@ -853,6 +1068,7 @@ export class BattleScene extends Phaser.Scene {
   private bindOnline(room: OnlineRoom, start: OnlineStart): void {
     this.online = room
     this.me = start.spectate ? null : sideIndex(start.side)
+    this.serverSide = start.spectate ? 'player' : start.side
     this.pausesOff = start.pauses === false
     room.entered = start.match
     const off = room.onChange(() => this.onRoomChange())
@@ -864,12 +1080,22 @@ export class BattleScene extends Phaser.Scene {
     const room = this.online
     if (!room || this.restarting) return
     const info = room.info
-    if (info?.phase === 'playing') this.sawPlaying = true
-    else if (this.sawPlaying && !this.sim.ended) {
+    if (info?.phase === 'playing') {
+      this.sawPlaying = true
+      this.playingSeen = true
+    }
+    // The match is over and the room says how. Usually the final snapshot says so too, but
+    // after a hidden tab whose connection dropped, the server may have put the match away
+    // before the reconnect: then the room's result is the only word, and it is enough.
+    if (info?.phase === 'ended' && info.result && this.playingSeen && !this.roomOutcome) {
+      this.roomOutcome = outcomeFromResult(info.result, info.sides, this.serverSide)
+      this.ensureEnd()
+    }
+    if (info?.phase !== 'playing' && this.sawPlaying && !this.sim.ended && !this.roomOutcome) {
       // The room says the match is over but no final picture came: give it a moment, then call it interrupted.
       this.sawPlaying = false
       this.time.delayedCall(2500, () => {
-        if (this.restarting || this.sim.ended || this.client?.latest?.winner != null || room.info?.phase === 'playing') return
+        if (this.restarting || this.sim.ended || this.roomOutcome || this.client?.latest?.winner != null || room.info?.phase === 'playing') return
         this.showBanner('The match was interrupted (the server restarted). Back to the room…')
         this.time.delayedCall(3000, () => this.go(LOBBY))
       })
@@ -1077,8 +1303,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onLoseFocus(): void {
-    // Player vs player: the other player is still playing.
-    if (this.pvp) return
+    // Player vs player: the other player is still playing. Pausing off: the round keeps going.
+    if (this.pvp || !this.tabPrefs.pauseVsAi) return
     if (!this.sim.paused && !this.ended && !this.restarting) this.togglePause()
   }
 
@@ -1717,13 +1943,9 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.add({ targets: banner, alpha: 0, duration: 300, onComplete: () => banner.destroy() })
   }
 
-  private showEnd(result: Outcome): void {
-    if (this.online) {
-      this.endRoot?.destroy()
-      this.endRoot = this.uiBlock(() => this.buildOnlineEnd(result))
-      return
-    }
-    this.uiBlock(() => this.buildEnd(result))
+  /** Online: draw the end screen again (rematch votes, names). */
+  private showEnd(_result: Outcome): void {
+    if (this.online && this.endRoot) this.buildResult()
   }
 
   /** Cannons held: this screen's gold ("mine") and pink. */
@@ -1756,7 +1978,11 @@ export class BattleScene extends Phaser.Scene {
     panel.lineStyle(3, stroke, 1)
     panel.strokeRoundedRect(cx - 280, top, 560, ph, 18)
     root.add(panel)
-    const { headline, detail } = endTexts(result, this.me, info, this.client?.latest?.x?.why, this.tally())
+    // The final snapshot's reason and count, or the room's when that snapshot never came.
+    const fromRoom = this.client?.latest?.winner == null && info?.result ? info.result : null
+    const why = this.client?.latest?.x?.why ?? info?.result?.why
+    const cannons = fromRoom && info ? cannonsFromResult(fromRoom, info.sides, this.serverSide) : this.tally()
+    const { headline, detail } = endTexts(result, this.me, info, why, cannons)
     const text = (y: number, s: string, size: number, bold = false, color: string = theme.textMuted) =>
       root.add(this.add.text(cx, y, s, { fontFamily: theme.font, fontSize: `${size}px`, fontStyle: bold ? 'bold' : 'normal', color, align: 'center', wordWrap: { width: 520 } }).setOrigin(0.5))
     text(top + 48, headline, 30, true, theme.text)
@@ -1780,7 +2006,7 @@ export class BattleScene extends Phaser.Scene {
     return root
   }
 
-  private buildEnd(result: Outcome): void {
+  private buildEnd(result: Outcome): Phaser.GameObjects.Container {
     const root = this.add.container(0, 0).setDepth(20)
     const dim = this.add.graphics()
     dim.fillStyle(theme.dim, 0.64)
@@ -1790,11 +2016,7 @@ export class BattleScene extends Phaser.Scene {
     const campaign = this.levelIndex >= 0
     const next = this.nextLevel()
     const seconds = Math.round(this.sim.clock / 1000)
-    let stars = 0
-    if (result === 'win' && campaign) {
-      stars = starsFor(this.level, { seconds, aimsUsed: this.sim.aimsUsed })
-      recordWin(this.level.id, stars)
-    }
+    const stars = result === 'win' && campaign ? this.endStars : 0
 
     const cx = GAME_WIDTH / 2
     const cy = GAME_HEIGHT / 2 + 10
@@ -1875,6 +2097,7 @@ export class BattleScene extends Phaser.Scene {
         stars,
       }
     }
+    return root
   }
 
   /**

@@ -326,6 +326,21 @@ export class PvpClient {
     if (n > 0) for (const ev of this.events.splice(0, n)) if (Number(ev[0]) >= stale) replayEvent(ev, view, handlers, this.flip)
   }
 
+  /**
+   * Back from a hidden tab: drop every event still waiting (they happened
+   * while nobody was looking; the snapshot already shows their result) and
+   * jump the picture to the newest snapshot instead of easing toward it.
+   */
+  resync(): void {
+    this.events.length = 0
+    this.renderTick = -1
+  }
+
+  /** Events waiting for the picture to reach them (tests). */
+  get pending(): number {
+    return this.events.length
+  }
+
   close(sayBye: boolean): void {
     if (sayBye) this.transport.send({ t: 'bye' } satisfies ClientMsg)
     this.off()

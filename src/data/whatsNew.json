@@ -4,6 +4,8 @@
     {
       "date": "2026-10-08",
       "entries": [
+        { "kind": "fix", "title": "Version 0.2.1: switching away is safe", "text": "Coming back to the tab no longer sets off a burst of sounds, and the You win / You lose panel always shows, even if the round ended while you were away." },
+        { "kind": "new", "title": "When tabbed out settings", "text": "Two new switches in Settings: keep the music playing while you’re in another tab (on by default), and choose whether a round against the AI pauses or keeps going while you’re away." },
         { "kind": "new", "title": "Version 0.2.0: the jukebox", "text": "Music! Three songs by Reganati play from the menu straight into your battles and loop. Open the Jukebox (top left) to switch songs, star the one the game starts with, and set the music volume, apart from sound effects." },
         { "kind": "change", "title": "A tidier main menu", "text": "Profile moved to the top-right corner and the Jukebox sits top left, so the middle of the menu is lighter. Music is also in Settings and in the Menu during a battle." },
         { "kind": "new", "title": "Profile, Credits and What’s new", "text": "Your online name, skin, colour and difficulty live together in Profile, with a button to reset them. Credits has its own page. Tap the version under the menu to see this list, and use Copy debug info when you report a bug." },
