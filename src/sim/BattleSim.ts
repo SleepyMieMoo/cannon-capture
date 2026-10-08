@@ -37,6 +37,8 @@ export interface SimEvents {
   /** A broken barrier came back. */
   shieldBack?(shield: Cannon): void
   aimed?(point: Point): void
+  /** A cannon fired a shot (sound effects). */
+  fired?(cannon: Cannon, shot: Shot): void
 }
 
 /**
@@ -335,7 +337,11 @@ export class BattleSim {
     shields.length = 0
     for (const cannon of this.cannons) {
       const spawned = cannon.update(dt, false, TUNING.fireIntervalMs)
-      if (spawned) this.shots.push(new Shot(spawned, cannon.side, cannon.damage, cannon.kind))
+      if (spawned) {
+        const shot = new Shot(spawned, cannon.side, cannon.damage, cannon.kind)
+        this.shots.push(shot)
+        this.events.fired?.(cannon, shot)
+      }
       if (cannon.shieldReturned) {
         cannon.shieldReturned = false
         this.events.shieldBack?.(cannon)

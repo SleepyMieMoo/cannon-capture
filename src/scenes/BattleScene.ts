@@ -4,6 +4,7 @@ import type { MapView } from '../editor/maps'
 import { cssHex, sideColor, theme } from '../config/theme'
 import { TUNING } from '../config/tuning'
 import { DEBUG } from '../debug'
+import { Sfx, preloadSfx } from '../audio/Sfx'
 import { Cannon } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
 import { Wall } from '../entities/Wall'
@@ -81,6 +82,10 @@ export class BattleScene extends Phaser.Scene {
   private uiCam!: Phaser.Cameras.Scene2D.Camera
   private pressOnUi = false
   private sim!: BattleSim
+  /** Sound effects (shots, captures, barrier breaks). */
+  sfx!: Sfx
+  /** Dragging the Settings volume slider. */
+  private volumeDrag = false
   private bot: Bot | null = null
   private walls: Wall[] = []
   private fans: Fan[] = []
@@ -181,6 +186,10 @@ export class BattleScene extends Phaser.Scene {
     return this.sim.aimsLeft
   }
 
+  preload(): void {
+    preloadSfx(this)
+  }
+
   create(): void {
     this.walls = []
     this.fans = []
@@ -208,19 +217,28 @@ export class BattleScene extends Phaser.Scene {
     this.level.walls.forEach((rect) => this.walls.push(new Wall(this, rect)))
     this.level.fans.forEach((def) => this.fans.push(new Fan(this, def)))
 
+    this.volumeDrag = false
+    this.sfx = new Sfx(this, () => ({ rect: this.wc.visibleRect(), zoom: this.wc.zoom }))
     this.sim = new BattleSim(
       this.level,
       this,
       {
+        fired: (cannon) => this.sfx.shot(cannon),
       bounce: (x, y) => this.sparks.push({ x, y, life: 1, color: theme.spark }),
       hit: (x, y, side, kind) => this.sparks.push({ x, y, life: 1, color: sideColor(side), size: kind === 'machinegun' ? 0.45 : 1 }),
       blocked: (x, y, shield, _side, kind) => {
         this.sparks.push({ x, y, life: 1, color: sideColor(shield.side), size: kind === 'machinegun' ? 0.5 : 1.1 })
         this.sparks.push({ x, y, life: 0.7, color: 0xffffff, size: kind === 'machinegun' ? 0.3 : 0.6 })
       },
-      shieldBroken: (shield) => this.popup(shield.x, shield.y - 8, 'Shield down', cssHex(sideColor(shield.side))),
+      shieldBroken: (shield) => {
+        this.popup(shield.x, shield.y - 8, 'Shield down', cssHex(sideColor(shield.side)))
+        this.sfx.shieldBroken(shield)
+      },
       shieldBack: (shield) => this.popup(shield.x, shield.y - 8, 'Shield up', cssHex(sideColor(shield.side))),
-      captured: (cannon) => this.popup(cannon.x, cannon.y, 'Captured', cssHex(sideColor(cannon.side))),
+      captured: (cannon) => {
+        this.popup(cannon.x, cannon.y, 'Captured', cssHex(sideColor(cannon.side)))
+        this.sfx.captured(cannon)
+      },
       healed: (cannon, amount) => this.tallyHeal(cannon, amount),
       noAims: (cannon) => this.popup(cannon.x, cannon.y, 'No aims left', theme.textMuted),
       swapped: (cannon) => this.popup(cannon.x, cannon.y, kindLabel(cannon.kind), cssHex(sideColor(cannon.side))),
@@ -277,7 +295,7 @@ export class BattleScene extends Phaser.Scene {
     else if (this.wc.canZoomOut) this.showBanner('Big map: scroll or pinch to zoom out, drag empty space or use WASD to pan.')
     this.bindInput()
     this.refreshHud()
-    if (DEBUG.enabled) (window as unknown as { __cc?: unknown }).__cc = { scene: this, sim: this.sim }
+    if (DEBUG.enabled) (window as unknown as { __cc?: unknown }).__cc = { scene: this, sim: this.sim, sfx: this.sfx }
   }
 
   update(time: number, delta: number): void {
@@ -303,7 +321,13 @@ export class BattleScene extends Phaser.Scene {
     if (this.ended) this.settings.hide()
     const lp = this.pointerLayout
     this.settings.setHot(lp ? this.settings.hitAt(lp.x, lp.y) : null)
-    this.settings.draw({ autoTarget: this.sim.autoTarget, puzzle: this.sim.isPuzzle })
+    this.settings.draw({
+      autoTarget: this.sim.autoTarget,
+      puzzle: this.sim.isPuzzle,
+      volume: this.sfx.settings.volume,
+      muted: this.sfx.settings.muted,
+      audio: this.sfx.available,
+    })
     for (const cannon of this.cannons) {
       cannon.hovered = cannon === this.hover
       cannon.selected = cannon === this.selected
@@ -349,6 +373,8 @@ export class BattleScene extends Phaser.Scene {
     keyboard.addCapture('SPACE')
     keyboard.on('keydown-T', this.onTypeKey, this)
     keyboard.on('keydown-M', this.onAutoKey, this)
+    keyboard.off('keydown-N', this.onMuteKey, this)
+    keyboard.on('keydown-N', this.onMuteKey, this)
     keyboard.on('keydown-R', this.onRestartKey, this)
     keyboard.on('keydown-ESC', this.onCancelKey, this)
     keyboard.on('keydown-N', this.onNextKey, this)
@@ -359,6 +385,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /** M: flip auto-target for the cannon under the pointer (or the selected one). */
+  private onMuteKey(): void {
+    this.sfx.toggleMute()
+  }
+
   private onAutoKey(): void {
     const c = this.hover && this.hover.side === 'player' ? this.hover : this.selected
     if (c) this.toggleCannonAuto(c)
@@ -466,7 +496,11 @@ export class BattleScene extends Phaser.Scene {
       if (hit) {
         this.pressOnUi = true
         if (hit === 'auto') this.toggleGlobalAuto()
-        else if (hit === 'close') this.settings.hide()
+        else if (hit === 'mute') this.sfx.toggleMute()
+        else if (hit === 'volume') {
+          this.volumeDrag = true
+          this.sfx.setVolume(this.settings.volumeAt(lp.x))
+        } else if (hit === 'close') this.settings.hide()
         return
       }
       // A press elsewhere (but not on the HUD's Settings link) closes it, and does nothing else.
@@ -506,6 +540,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onPointerUp(pointer: Phaser.Input.Pointer): void {
+    this.volumeDrag = false
     const gesture = this.wc.up(pointer)
     if (this.pressOnUi) {
       this.pressOnUi = false
@@ -563,9 +598,16 @@ export class BattleScene extends Phaser.Scene {
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
     this.pointerLayout = this.toLayout(pointer)
+    if (this.volumeDrag) {
+      if (pointer.isDown && this.settings.open) {
+        this.sfx.setVolume(this.settings.volumeAt(this.pointerLayout.x))
+        return
+      }
+      this.volumeDrag = false
+    }
     if (this.settings.open && this.settings.contains(this.pointerLayout.x, this.pointerLayout.y)) {
       const hit = this.settings.hitAt(this.pointerLayout.x, this.pointerLayout.y)
-      this.input.setDefaultCursor(hit === 'auto' || hit === 'close' ? 'pointer' : 'default')
+      this.input.setDefaultCursor(hit === 'auto' || hit === 'close' || hit === 'mute' || hit === 'volume' ? 'pointer' : 'default')
       this.hover = null
       this.pointer = null
       return

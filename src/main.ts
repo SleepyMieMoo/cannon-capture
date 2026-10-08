@@ -23,7 +23,8 @@ const game = new Phaser.Game({
   height,
   backgroundColor: theme.bg,
   banner: false,
-  audio: { noAudio: true },
+  // Web Audio for the sound effects (src/audio); browsers unlock it on the first click, tap or key.
+  audio: { disableWebAudio: false },
   render: {
     antialias: true,
     antialiasGL: true,
