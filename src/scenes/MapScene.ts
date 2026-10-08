@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import { theme } from '../config/theme'
+import { BRAND } from '../config/brand'
 import { CAMPAIGN } from '../levels'
 import { loadProgress } from '../progress'
 import { bindSceneResolution } from '../render/resolution'
@@ -121,7 +122,7 @@ export class MapScene extends Phaser.Scene {
     g.fillStyle(theme.grid, 1)
     for (let x = 60; x < GAME_WIDTH - 40; x += 32) for (let y = 116; y < 680; y += 32) g.fillCircle(x, y, 1.6)
 
-    this.add.text(28, 14, 'Campaign', { fontFamily: theme.font, fontSize: '22px', fontStyle: 'bold', color: theme.text })
+    this.add.text(28, 14, BRAND.levelsLabel, { fontFamily: theme.font, fontSize: '22px', fontStyle: 'bold', color: theme.text })
     this.add.text(28, 44, 'Beat a level to unlock the next. Progress saves in this browser.', {
       fontFamily: theme.font,
       fontSize: '14px',
@@ -139,7 +140,7 @@ export class MapScene extends Phaser.Scene {
       })
       .setOrigin(0, 0.5)
     const back = this.add
-      .text(GAME_WIDTH - 28, 36, 'Menu', { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
+      .text(GAME_WIDTH - 28, 36, '‹ Back', { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
       .setOrigin(1, 0.5)
       .setInteractive({ useHandCursor: true })
     back.on('pointerover', () => back.setColor(theme.text))

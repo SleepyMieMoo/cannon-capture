@@ -12,6 +12,34 @@ export function preloadSfx(scene: Phaser.Scene): void {
   scene.load.audio(SFX.key, [...SFX.files])
 }
 
+/**
+ * Set the game's master volume from the saved settings (mute = volume 0).
+ * The gain is set from "now" with older automation dropped, so the newest
+ * value always wins (Phaser schedules its own volume/mute changes at time 0,
+ * which can leave an older value in effect).
+ */
+export function applyAudioSettings(sm: Phaser.Sound.BaseSoundManager, s: AudioSettings): void {
+  const v = s.muted ? 0 : s.volume
+  if (sm instanceof Phaser.Sound.WebAudioSoundManager) {
+    const gain = sm.masterVolumeNode.gain
+    gain.cancelScheduledValues(0)
+    gain.setValueAtTime(v, sm.context.currentTime)
+    const mute = sm.masterMuteNode.gain
+    mute.cancelScheduledValues(0)
+    mute.setValueAtTime(1, sm.context.currentTime)
+  } else {
+    sm.volume = v
+    sm.mute = false
+  }
+}
+
+/** Play one Normal pop at the current settings (the Settings screen's preview). */
+export function previewPop(scene: Phaser.Scene): void {
+  const sm = scene.sound
+  if (sm instanceof Phaser.Sound.NoAudioSoundManager || sm.locked || !scene.cache.audio.exists(SFX.key)) return
+  sm.play(SFX.key, { volume: SFX.shot.normal.volume, rate: SFX.shot.normal.rate })
+}
+
 /** What happened to the last few requests (debug, see window.__cc.sfx). */
 export interface SfxLogEntry extends Partial<PopPlan> {
   kind: PopKind
@@ -84,22 +112,7 @@ export class Sfx {
   }
 
   private apply(): void {
-    const sm = this.scene.sound
-    const v = this.effectiveVolume
-    if (sm instanceof Phaser.Sound.WebAudioSoundManager) {
-      // Mute is just volume 0 here. Set the gain from "now" and drop older
-      // automation, so the newest value always wins (Phaser schedules its own
-      // volume/mute changes at time 0, which can leave an older value in effect).
-      const gain = sm.masterVolumeNode.gain
-      gain.cancelScheduledValues(0)
-      gain.setValueAtTime(v, sm.context.currentTime)
-      const mute = sm.masterMuteNode.gain
-      mute.cancelScheduledValues(0)
-      mute.setValueAtTime(1, sm.context.currentTime)
-    } else {
-      sm.volume = v
-      sm.mute = false
-    }
+    applyAudioSettings(this.scene.sound, this.settings)
   }
 
   private pop(kind: PopKind, c: Cannon, source?: string): void {

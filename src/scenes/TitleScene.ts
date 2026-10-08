@@ -1,19 +1,34 @@
 import Phaser from 'phaser'
-import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
-import { shade, theme } from '../config/theme'
+import { applyAudioSettings, preloadSfx, previewPop } from '../audio/Sfx'
+import { loadAudioSettings, saveAudioSettings, type AudioSettings } from '../audio/audioSettings'
+import { BRAND } from '../config/brand'
 import { DEBUG } from '../debug'
 import { findLevel } from '../levels'
+import { MainMenu } from '../menu/mainMenu'
+import type { MenuScreen } from '../menu/routes'
 import { bindSceneResolution } from '../render/resolution'
-import { makeButton } from '../ui/button'
 
 let launchedFromUrl = false
 
+export interface TitleData {
+  /** Open this menu screen (coming back from a battle started from it). */
+  screen?: MenuScreen
+}
+
+/** Title screen and main menu: the HTML menu (menu/mainMenu.ts) over a background battle (TitleBgScene). */
 export class TitleScene extends Phaser.Scene {
+  menu: MainMenu | null = null
+  private leaving = false
+
   constructor() {
     super('title')
   }
 
-  create(): void {
+  preload(): void {
+    preloadSfx(this)
+  }
+
+  create(data: TitleData): void {
     // ?level=<id> jumps straight into a level once per page load.
     if (!launchedFromUrl && DEBUG.level && findLevel(DEBUG.level)) {
       launchedFromUrl = true
@@ -21,72 +36,42 @@ export class TitleScene extends Phaser.Scene {
       return
     }
     launchedFromUrl = true
-
+    this.leaving = false
+    document.title = BRAND.title
     bindSceneResolution(this)
-    const cx = GAME_WIDTH / 2
-    const g = this.add.graphics()
-    g.fillStyle(theme.bg, 1)
-    g.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT)
-    g.fillStyle(theme.board, 1)
-    g.fillRoundedRect(24, 24, GAME_WIDTH - 48, GAME_HEIGHT - 48, 22)
-    g.lineStyle(2, theme.boardEdge, 1)
-    g.strokeRoundedRect(24, 24, GAME_WIDTH - 48, GAME_HEIGHT - 48, 22)
-    g.fillStyle(theme.grid, 1)
-    for (let x = 60; x < GAME_WIDTH - 40; x += 32) for (let y = 56; y < GAME_HEIGHT - 40; y += 32) g.fillCircle(x, y, 1.6)
+    applyAudioSettings(this.sound, loadAudioSettings())
+    if (!this.scene.isActive('titlebg')) this.scene.launch('titlebg')
+    this.scene.sendToBack('titlebg')
 
-    // Two duelling cannons as a little logo scene.
-    const duel = this.add.graphics()
-    const drawCannon = (x: number, y: number, color: number, angle: number): void => {
-      duel.fillStyle(0x000000, 0.28)
-      duel.fillEllipse(x, y + 18, 56, 13)
-      duel.fillStyle(shade(color, 0.62), 1)
-      const bx = Math.cos(angle)
-      const by = Math.sin(angle)
-      duel.lineStyle(12, shade(color, 0.62), 1)
-      duel.lineBetween(x + bx * 8, y + by * 8, x + bx * 44, y + by * 44)
-      duel.fillStyle(color, 1)
-      duel.fillCircle(x, y, 30)
-      duel.fillStyle(0xffffff, 0.2)
-      duel.fillCircle(x - 7, y - 8, 12)
+    const go = (key: string, payload?: object): void => {
+      if (this.leaving) return
+      this.leaving = true
+      this.scene.start(key, payload)
     }
-    drawCannon(300, 560, theme.player, -0.12)
-    drawCannon(900, 560, theme.enemy, Math.PI + 0.12)
-    for (let x = 352; x < 848; x += 22) {
-      const t = (x - 300) / 600
-      duel.fillStyle(x < 600 ? theme.player : theme.enemy, 0.5)
-      duel.fillRect(x, 553 - Math.sin(t * Math.PI) * 26, 12, 3)
-    }
-
-    this.add
-      .text(cx, 190, 'Cannon Capture', {
-        fontFamily: theme.font,
-        fontSize: '64px',
-        fontStyle: 'bold',
-        color: theme.text,
-      })
-      .setOrigin(0.5)
-    this.add
-      .text(cx, 252, 'Aim. Fire. Flip the board.', { fontFamily: theme.font, fontSize: '20px', color: theme.textMuted })
-      .setOrigin(0.5)
-
-    makeButton(this, cx, 360, 'Campaign', () => this.scene.start('map'), { width: 260, height: 56, fontSize: 20 })
-    const row = 432
-    makeButton(this, cx - 216, row, 'Quick skirmish', () => this.scene.start('battle', { levelId: 'skirmish' }), {
-      width: 200,
-      height: 50,
-      primary: false,
+    this.menu = new MainMenu(
+      {
+        playVsAi: (level) => go('battle', { custom: level, from: 'menu' }),
+        playPuzzle: (p) => go('battle', p.custom ? { custom: p.level, from: 'puzzles' } : { levelId: p.id, from: 'puzzles' }),
+        levels: () => go('map'),
+        editor: () => go('editor'),
+        myMaps: () => go('maps'),
+        getAudio: () => loadAudioSettings(),
+        setAudio: (s: AudioSettings) => {
+          saveAudioSettings(s)
+          applyAudioSettings(this.sound, s)
+        },
+        previewSound: () => previewPop(this),
+      },
+      data?.screen ?? 'home',
+    )
+    // Phaser keeps a scene's last start data when it is started again without
+    // any (Back from Levels or My maps): clear it so those land on the home screen.
+    this.sys.settings.data = {}
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.menu?.destroy()
+      this.menu = null
+      this.scene.stop('titlebg')
     })
-    makeButton(this, cx, row, 'Map editor', () => this.scene.start('editor'), { width: 200, height: 50, primary: false })
-    makeButton(this, cx + 216, row, 'My maps', () => this.scene.start('maps'), { width: 200, height: 50, primary: false })
-
-    this.add
-      .text(cx, GAME_HEIGHT - 58, 'A SleepyMie game  ·  colours from ChocoNeko', {
-        fontFamily: theme.font,
-        fontSize: '13px',
-        color: theme.textMuted,
-      })
-      .setOrigin(0.5)
-
-    this.input.keyboard?.once('keydown-ENTER', () => this.scene.start('map'))
+    if (DEBUG.enabled) (window as unknown as { __menu?: unknown }).__menu = this
   }
 }
