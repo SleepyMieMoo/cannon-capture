@@ -35,7 +35,7 @@ import { Fan } from '../entities/Fan'
 import { Glass } from '../entities/Glass'
 import { Pillar } from '../entities/Pillar'
 import { Wall } from '../entities/Wall'
-import { GLASS, PILLAR_OVALS, PILLAR_SIZES, ROCK, VOID_COLOURS } from '../config/obstacles'
+import { BRICK, GLASS, PILLAR_OVALS, PILLAR_SIZES, ROCK, VOID_COLOURS } from '../config/obstacles'
 import { pillarReach } from '../sim/geometry'
 import { MAP_SIZES, MAP_SIZE_IDS, boardFor, insideBoard } from '../levels/board'
 import { EXAMPLE_MAPS } from '../levels/examples'
@@ -1163,7 +1163,7 @@ export class EditorScene extends Phaser.Scene {
       ['Wheel / pinch', 'Zoom (+ / − / 0 keys, or the zoom buttons)'],
       ['WASD / arrows', 'Pan'],
       ['1 2 3', 'Your / enemy / neutral cannon'],
-      ['4 5', 'Wall / fan'],
+      ['4 5', 'Wall (Type: breakable for brick) / fan'],
       ['6 7 8', 'Void wall / round pillar / one-way glass'],
       ['V · X', 'Move tool · Delete tool'],
       ['Del', 'Delete the selection'],
@@ -1353,22 +1353,35 @@ export class EditorScene extends Phaser.Scene {
         w.y = Math.round(cy - thick / 2)
       }
       const isVoid = w.kind === 'void'
+      const isBrick = w.kind === 'breakable'
       const wallType = h(
         'select.cc-sel.xs',
-        { title: 'A void wall swallows shots instead of bouncing them.', onchange: () => {
+        { title: 'Void swallows shots. Breakable bounces them until it has taken its HP in damage (any side\'s shots), then breaks for good.', onchange: () => {
           this.edit(() => {
-            if (wallType.value === 'void') w.kind = 'void'
+            if (wallType.value === 'void' || wallType.value === 'breakable') w.kind = wallType.value
             else delete w.kind
+            if (w.kind !== 'breakable') delete w.hp
           })
+          this.refreshItem(ref)
           this.refreshPanel(true)
         } },
         h('option', { value: 'wall' }, 'Wall (bounces)'),
         h('option', { value: 'void' }, 'Void (absorbs)'),
+        h('option', { value: 'breakable' }, 'Breakable'),
       )
-      wallType.value = isVoid ? 'void' : 'wall'
+      wallType.value = isVoid ? 'void' : isBrick ? 'breakable' : 'wall'
+      const hp = isBrick
+        ? [
+            slider('HP', w.hp ?? TUNING.breakable.hp, 1, TUNING.breakable.maxHp, 1, (v) => {
+              if (v === TUNING.breakable.hp) delete w.hp
+              else w.hp = v
+            }, `whp-${ref.index}`),
+          ]
+        : []
       return [
-        h('span.cc-field', {}, dot(isVoid ? VOID_COLOURS.rim : theme.wall), h('b', {}, isVoid ? 'Void wall' : 'Wall')),
+        h('span.cc-field', {}, dot(isVoid ? VOID_COLOURS.rim : isBrick ? BRICK.base : theme.wall), h('b', { title: isBrick ? 'Normal shot 1 damage, sniper 2, machine gun 0.3' : '' }, isVoid ? 'Void wall' : isBrick ? 'Breakable' : 'Wall')),
         h('span.cc-field', {}, h('label', {}, 'Type'), wallType),
+        ...hp,
         slider('Length', w.w, 30, Math.min(1400, this.board.w), 10, (v) => resize(v, w.h), `wl-${ref.index}`),
         slider('Thick', w.h, 12, 80, 2, (v) => resize(w.w, v), `wt-${ref.index}`),
         h('span.cc-field', {},

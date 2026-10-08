@@ -268,7 +268,21 @@ export class LaneBuilder {
 
   /** Work for up to `budgetMs`. Returns true when everything is built. */
   pump(budgetMs: number): boolean {
+    return this.work(budgetMs, Infinity)
+  }
+
+  /**
+   * Work for up to `traces` test shots, whatever the clock says, so the
+   * result never depends on the machine (the authoritative sim rebuilds
+   * lanes this way after a wall breaks). Returns true when built.
+   */
+  pumpTraces(traces: number): boolean {
+    return this.work(Infinity, traces)
+  }
+
+  private work(budgetMs: number, traces: number): boolean {
     const start = now()
+    let left = traces
     while (!this.done) {
       if (this.current === null) {
         this.current = this.queue.shift() ?? null
@@ -283,7 +297,7 @@ export class LaneBuilder {
         this.table.set(laneKey(id, kind), lanesFor(this.ctx, id, this.hits, this.stepDeg, kind))
         this.current = null
       }
-      if (now() - start >= budgetMs) break
+      if (--left <= 0 || (budgetMs !== Infinity && now() - start >= budgetMs)) break
     }
     return this.done
   }

@@ -4,6 +4,7 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Breakable walls", "text": "Brick walls that bounce shots but wear down with every hit, from either side. They crack, then crumble for good, opening a new lane; the AI shoots them down when they hide its targets. In the editor, set a wall's Type to Breakable and pick its HP." },
         { "kind": "new", "title": "Oval rock pillars", "text": "Pillars are now drawn as rocks, so they never look like a cannon, and they can be ovals. In the editor, pick a preset (Small, Medium, Large, Oval, Long), set the width and height, and turn ovals with Q/E. Shots bounce off the true curve." },
         { "kind": "new", "title": "Version 0.4.0: new obstacles", "text": "Three new things to aim around: void walls that swallow shots, round pillars that bounce them off their curve, and one-way glass. The AI knows them too: it banks off pillars and glass and never wastes shots into the void." },
         { "kind": "new", "title": "Void walls", "text": "Dark purple walls with a slow swirl. Any shot that touches one vanishes in a puff, with no bounce, so they close off a lane completely." },

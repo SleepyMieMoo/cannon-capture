@@ -112,6 +112,11 @@ export class Sfx {
     this.pop('shieldBreak', c, c.id + ':shield')
   }
 
+  /** A breakable wall broke (the barrier-break sound, from where the wall stood). */
+  wallBroken(x: number, y: number, index: number): void {
+    this.pop('shieldBreak', { side: 'neutral', x, y } as Cannon, `wall:${index}`)
+  }
+
   /**
    * Can a pop be heard right now? Not while the tab is hidden, not while the
    * browser has the audio paused (Phaser suspends it when the window loses

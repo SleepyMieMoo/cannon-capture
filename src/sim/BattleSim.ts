@@ -6,7 +6,7 @@ import { TUNING } from '../config/tuning'
 import { Cannon } from '../entities/Cannon'
 import { Shot } from '../entities/Shot'
 import { boardFor } from '../levels/board'
-import type { AiLevel, CannonKind, LevelDef, Point, Rect, Side } from '../types'
+import type { AiLevel, CannonKind, LevelDef, Point, Rect, Side, WallDef } from '../types'
 import { Broadphase, type BallisticsOpts, type Barrier, type Body, type Surface } from './ballistics'
 import { LaneBuilder, lanesOf, levelFans, shotOpts, type LaneTable } from './solver'
 
@@ -46,6 +46,10 @@ export interface SimEvents {
   aimed?(point: Point): void
   /** A cannon fired a shot (sound effects). */
   fired?(cannon: Cannon, shot: Shot): void
+  /** A shot hit breakable wall `index` (into level.walls) at (x, y); see BattleSim.wallHp. */
+  wallHit?(index: number, x: number, y: number): void
+  /** That breakable wall broke for good. */
+  wallBroken?(index: number): void
 }
 
 /**
@@ -58,7 +62,19 @@ export class BattleSim {
   readonly lanes: LaneTable
   readonly board: Rect
   private readonly opts: BallisticsOpts
-  private readonly builder: LaneBuilder | null = null
+  private builder: LaneBuilder | null = null
+  /**
+   * Hit points left per wall (same order as level.walls): breakable walls
+   * only (NaN for the others); 0 = broken for good.
+   */
+  wallHp: number[] = []
+  /** The walls still standing (what shots, lanes and aim lines see). */
+  intactWalls: WallDef[] = []
+  /** Lanes being rebuilt after a wall broke (swapped in whole once done). */
+  private relanes: LaneBuilder | null = null
+  /** A scene pumps lane building each frame on a time budget; otherwise (server, tests) steps pump a fixed number of traces. */
+  private framePumped = false
+  private wallIndex = new Map<WallDef, number>()
   readonly cannons: Cannon[] = []
   shots: Shot[] = []
   /** Pink's AI. */
@@ -74,7 +90,7 @@ export class BattleSim {
   private lastPuzzleProgress = 0
   private readonly fans
   private readonly bodies: Body[]
-  private readonly near: Broadphase
+  private near: Broadphase
   /**
    * Sides played by people (orders come in through playerAim / playerSwap /
    * the auto-target toggles, or applyOrder in sim/orders.ts). Gold only,
@@ -136,6 +152,7 @@ export class BattleSim {
     this.opts = shotOpts(level)
     if (lanes === 'progressive') {
       // Rendering: build lanes a few ms per frame (see pumpLanes).
+      this.framePumped = true
       this.builder = new LaneBuilder(level)
       this.lanes = this.builder.table
     } else {
@@ -159,8 +176,91 @@ export class BattleSim {
       cannon.snapToAim()
     }
     this.bodies = this.cannons.map((c) => ({ id: c.id, x: c.x, y: c.y, radius: TUNING.cannonRadius }))
+    this.wallHp = level.walls.map((w) => (w.kind === 'breakable' ? Math.max(0, w.hp ?? TUNING.breakable.hp) : NaN))
+    this.wallIndex = new Map(level.walls.map((w, i) => [w, i]))
+    this.intactWalls = level.walls.filter((_, i) => !(this.wallHp[i] <= 0))
+    this.near = this.grid()
+  }
+
+  /** The collision grid for the walls still standing. */
+  private grid(): Broadphase {
     // Steps are at most ~32ms at the capped shot speed (under 20px).
-    this.near = new Broadphase(level.walls, this.bodies, TUNING.shotRadius, 48, 128, level.pillars ?? [], level.glass ?? [])
+    return new Broadphase(this.intactWalls, this.bodies, TUNING.shotRadius, 48, 128, this.level.pillars ?? [], this.level.glass ?? [])
+  }
+
+  /** Breakable wall `index` has this fraction of its hit points left (1 = untouched, 0 = broken; 1 for other walls). */
+  wallHealth(index: number): number {
+    const hp = this.wallHp[index]
+    if (!(hp >= 0)) return 1
+    const full = Math.max(1e-9, this.level.walls[index].hp ?? TUNING.breakable.hp)
+    return Math.max(0, Math.min(1, hp / full))
+  }
+
+  /** A shot wore breakable wall `index` down by `damage`. */
+  private damageWall(index: number, damage: number, x: number, y: number): void {
+    if (!(this.wallHp[index] > 0)) return
+    this.wallHp[index] = Math.max(0, this.wallHp[index] - damage)
+    this.events.wallHit?.(index, x, y)
+    if (this.wallHp[index] > 1e-6) return
+    this.wallHp[index] = 0
+    this.events.wallBroken?.(index)
+    this.wallsChanged()
+  }
+
+  /** Walls broke: the grid drops them and (in a real round) the AI's lanes are rebuilt without them. */
+  private wallsChanged(): void {
+    this.intactWalls = this.level.walls.filter((_, i) => !(this.wallHp[i] <= 0))
+    this.near = this.grid()
+    // Look-ahead copies and network views keep the lanes they have.
+    if (this.aiOff) return
+    this.builder = null
+    const level = { ...this.level, walls: this.intactWalls }
+    this.relanes = new LaneBuilder(level, level.cannons.length > 24 ? 2 : 1)
+  }
+
+  /**
+   * Network views: the host's / server's wall hit points (breakable walls in
+   * level order). Returns true when a wall broke since the last call.
+   */
+  applyWallHp(hps: readonly number[]): boolean {
+    let k = 0
+    let broke = false
+    for (let i = 0; i < this.wallHp.length; i++) {
+      if (!(this.level.walls[i].kind === 'breakable')) continue
+      const hp = hps[k++]
+      if (hp === undefined) break
+      if (hp <= 0 && this.wallHp[i] > 0) broke = true
+      this.wallHp[i] = hp
+    }
+    if (broke) {
+      this.intactWalls = this.level.walls.filter((_, i) => !(this.wallHp[i] <= 0))
+      this.near = this.grid()
+    }
+    return broke
+  }
+
+  /** Breakable walls' hit points in level order (for snapshots); empty when the map has none. */
+  breakableHp(): number[] {
+    const out: number[] = []
+    this.wallHp.forEach((hp, i) => {
+      if (this.level.walls[i].kind === 'breakable') out.push(hp)
+    })
+    return out
+  }
+
+  /** Rebuild lanes after a wall broke, a fixed number of traces per step (no scene pumping it). */
+  private pumpRelanes(): void {
+    if (this.relanes && this.relanes.pumpTraces(TUNING.breakable.relaneTraces)) this.swapRelanes()
+  }
+
+  /** The rebuilt lanes are whole: swap them in and let the AIs see them. */
+  private swapRelanes(): void {
+    if (!this.relanes) return
+    const table = this.relanes.table
+    this.relanes = null
+    this.lanes.clear()
+    for (const [k, v] of table) this.lanes.set(k, v)
+    for (const ai of this.ais) ai.lanesChanged(this.cannons)
   }
 
   /**
@@ -269,6 +369,10 @@ export class BattleSim {
       fans: this.fans,
       bodies: this.bodies,
       near: this.near,
+      wallHp: [...this.wallHp],
+      intactWalls: this.intactWalls,
+      relanes: null,
+      wallIndex: this.wallIndex,
       upShields: [],
       events: {},
     })
@@ -379,6 +483,8 @@ export class BattleSim {
   /** Spend up to `budgetMs` building lanes (progressive mode only). */
   pumpLanes(budgetMs: number): void {
     if (this.builder && !this.builder.done) this.builder.pump(budgetMs)
+    // Lanes after a wall broke: a smaller slice, mid-round.
+    if (this.relanes && this.relanes.pump(Math.min(budgetMs, TUNING.breakable.relaneMs))) this.swapRelanes()
   }
 
   get lanesReady(): boolean {
@@ -397,6 +503,7 @@ export class BattleSim {
         this.aiMs += performance.now() - t0
       } else for (const ai of this.ais) ai.update(dt, this.cannons)
     }
+    if (this.relanes && !this.framePumped) this.pumpRelanes()
     this.stepShots(dt, counting)
     if (counting) {
       this.countdown -= dt
@@ -515,6 +622,10 @@ export class BattleSim {
       const result = shot.step(dt, near.walls, this.fans, near.bodies, this.opts, barriers.length ? this.barriersFor(shot, shields, barriers, dt) : undefined, near.pillars, near.glass)
       if (result.bounced) this.events.bounce?.(shot.ball.x, shot.ball.y, result.surface ?? 'wall')
       if (result.absorbed) this.events.absorbed?.(shot.ball.x, shot.ball.y, shot.side, shot.kind)
+      if (result.wall && !this.ended && !frozen) {
+        const index = this.wallIndex.get(result.wall)
+        if (index !== undefined) this.damageWall(index, shot.damage, shot.ball.x, shot.ball.y)
+      }
       if (result.blockedBy && !this.ended) {
         const shield = this.byId(result.blockedBy)!
         this.events.blocked?.(shot.ball.x, shot.ball.y, shield, shot.side, shot.kind)

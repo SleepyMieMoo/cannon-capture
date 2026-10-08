@@ -49,6 +49,8 @@ export interface Snap {
   cd?: number
   /** Online matches: the server's match state. */
   x?: SnapExtra
+  /** Breakable walls' hit points, in level order (left out on maps without any). */
+  w?: number[]
 }
 
 /** Online match state, by side index (0 gold, 1 pink). */
@@ -68,7 +70,7 @@ export interface SnapExtra {
   why?: 'wipe' | 'time' | 'empty' | 'surrender'
 }
 
-const EV = { fired: 1, bounce: 2, hit: 3, blocked: 4, shieldBroken: 5, shieldBack: 6, captured: 7, healed: 8, swapped: 9, absorbed: 10 } as const
+const EV = { fired: 1, bounce: 2, hit: 3, blocked: 4, shieldBroken: 5, shieldBack: 6, captured: 7, healed: 8, swapped: 9, absorbed: 10, wallHit: 11, wallBroken: 12 } as const
 /** Bounce rows carry what was hit as a 5th field (older builds leave it out: a wall). */
 const SURFACES: readonly Surface[] = ['wall', 'pillar', 'glass']
 
@@ -100,6 +102,8 @@ export class EventLog {
       captured: (c) => (push([t(), EV.captured, i(c), sideNo(c.side)]), events.captured?.(c)),
       healed: (c, amount) => (push([t(), EV.healed, i(c), r3(amount)]), events.healed?.(c, amount)),
       swapped: (c) => (push([t(), EV.swapped, i(c), kindNo(c.kind)]), events.swapped?.(c)),
+      wallHit: (index, x, y) => (push([t(), EV.wallHit, index, r1(x), r1(y)]), events.wallHit?.(index, x, y)),
+      wallBroken: (index) => (push([t(), EV.wallBroken, index]), events.wallBroken?.(index)),
     }
   }
 
@@ -146,6 +150,7 @@ export function encodeSnap(sim: BattleSim, tick: number, forSide: Side, events: 
     const point = o.aim && !(o.aim instanceof Cannon) ? o.aim : null
     return [ix(o.cannon.id), aimCannon, point ? r1(point.x) : -1, point ? r1(point.y) : -1, kindNo(o.kind), o.aim ? 1 : 0]
   })
+  const walls = sim.breakableHp().map(r3)
   return {
     v: 1,
     tick,
@@ -159,6 +164,7 @@ export function encodeSnap(sim: BattleSim, tick: number, forSide: Side, events: 
     ev: events,
     ...(sim.countdown > 0 ? { cd: Math.round(sim.countdown) } : {}),
     ...(extra ? { x: extra } : {}),
+    ...(walls.length ? { w: walls } : {}),
   }
 }
 
@@ -217,6 +223,7 @@ export function applySnap(view: BattleSim, a: Snap, b: Snap, t: number, latest: 
   const map = sideMapper(flip)
   const cannons = view.cannons
   const byId = (id: string) => view.byId(id)
+  if (latest.w) view.applyWallHp(latest.w)
   for (let i = 0; i < cannons.length; i++) {
     const ra = a.c[i]
     const rb = b.c[i]
@@ -353,6 +360,12 @@ export function replayEvent(row: EventRow, view: BattleSim, events: SimEvents, f
       }
       break
     }
+    case EV.wallHit:
+      events.wallHit?.(n(2), n(3), n(4))
+      break
+    case EV.wallBroken:
+      events.wallBroken?.(n(2))
+      break
   }
 }
 

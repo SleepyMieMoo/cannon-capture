@@ -22,7 +22,7 @@ import { Sfx, preloadSfx } from '../audio/Sfx'
 import { Cannon, haloR, setRingScale } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
 import { Glass } from '../entities/Glass'
-import { VOID_COLOURS } from '../config/obstacles'
+import { BRICK, VOID_COLOURS } from '../config/obstacles'
 import { Pillar } from '../entities/Pillar'
 import { Wall } from '../entities/Wall'
 import { CAMPAIGN, SKIRMISH, campaignIndex, findLevel } from '../levels'
@@ -440,6 +440,17 @@ export class BattleScene extends Phaser.Scene {
         this.vfx?.shieldBroken(shield)
       },
       shieldBack: (shield) => this.popup(shield.x, shield.y - 8, 'Shield up', cssHex(sideColor(shield.side))),
+      wallHit: (_index, x, y) => (this.plainSparks ? this.sparks.push({ x, y, life: 0.8, color: BRICK.light, size: 0.7 }) : this.vfx?.wallHit(x, y)),
+      wallBroken: (index) => {
+        const rect = this.level.walls[index]
+        if (!rect) return
+        const x = rect.x + rect.w / 2
+        const y = rect.y + rect.h / 2
+        this.walls[index]?.setHealth(0)
+        this.sfx.wallBroken(x, y, index)
+        if (!this.plainSparks) return this.vfx?.wallBroken(rect)
+        for (let k = -1; k <= 1; k++) this.sparks.push({ x: x + (rect.w >= rect.h ? (k * rect.w) / 3 : 0), y: y + (rect.w >= rect.h ? 0 : (k * rect.h) / 3), life: 1, color: BRICK.light, size: 1.2 })
+      },
       captured: (cannon) => {
         this.popup(cannon.x, cannon.y, 'Captured', cssHex(sideColor(cannon.side)))
         this.sfx.captured(cannon)
@@ -627,7 +638,11 @@ export class BattleScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     const dt = Math.min(delta, 32)
     const moving = this.vfx?.cfg.rings ?? false
-    for (const wall of this.walls) wall.tick(time, moving)
+    for (let i = 0; i < this.walls.length; i++) {
+      const wall = this.walls[i]
+      wall.tick(time, moving)
+      if (wall.isBreakable) wall.setHealth(this.sim.wallHealth(i))
+    }
     for (const pane of this.glass) pane.draw(time, moving)
     for (const fan of this.fans) fan.draw(time)
 
@@ -2265,7 +2280,8 @@ export class BattleScene extends Phaser.Scene {
   private drawFx(time: number): void {
     const g = this.fx
     g.clear()
-    const walls = this.walls.map((wall) => wall.rect)
+    // Broken walls are gone: aim lines go through where they stood.
+    const walls = this.sim.intactWalls
 
     for (const cannon of this.cannons) {
       if (cannon.side === 'neutral') continue
