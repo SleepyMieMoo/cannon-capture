@@ -35,7 +35,9 @@ import { MirrorBot, makeBot, type Bot } from '../sim/bots'
 import { clipToWalls } from '../sim/geometry'
 import { starsFor } from '../sim/stars'
 import type { LevelDef, Point, Rect } from '../types'
-import { drawStar, makeButton } from '../ui/button'
+import { makeButton } from '../ui/button'
+import { ResultPanel } from '../ui/resultPanel'
+import { offlineResult, onlineResult, type ResultAction, type ResultView } from '../ui/resultView'
 import { SwapMenu, type AutoState } from '../ui/swapMenu'
 import { SettingsPanel } from '../ui/settingsPanel'
 import { perf } from '../perf/PerfOverlay'
@@ -194,7 +196,7 @@ export class BattleScene extends Phaser.Scene {
   /** Online: the side this screen plays (or gold, watching), in the server's terms. */
   private serverSide: Side = 'player'
   /** The result panel (vs AI and online), null until the round ends. */
-  private endRoot: Phaser.GameObjects.Container | null = null
+  private endRoot: ResultPanel | null = null
   /** Stars for a campaign win, worked out once when the round ends. */
   private endStars = 0
   /** Makes sure the result panel is up whenever the round is over (see resultGate.ts). */
@@ -383,7 +385,7 @@ export class BattleScene extends Phaser.Scene {
     this.quiet = false
     this.resultGate = new ResultGate(
       () => this.buildResult(),
-      () => !!this.endRoot && this.endRoot.active,
+      () => !!this.endRoot && this.endRoot.isUp(),
     )
     this.clockShown = -1
     this.netAt = 0
@@ -527,6 +529,8 @@ export class BattleScene extends Phaser.Scene {
       this.game.events.off(Phaser.Core.Events.BLUR, this.onLoseFocus, this)
       this.game.events.off(Phaser.Core.Events.HIDDEN, this.onLoseFocus, this)
       this.input.keyboard?.removeCapture('SPACE')
+      this.endRoot?.destroy()
+      this.endRoot = null
     })
     // A DOM button focused before the round (the editor's Playtest, say) must not catch Space.
     if (typeof document !== 'undefined') (document.activeElement as HTMLElement | null)?.blur?.()
@@ -755,9 +759,18 @@ export class BattleScene extends Phaser.Scene {
   /** Build (or rebuild) the result panel for the round's outcome. */
   private buildResult(): void {
     const result = this.sim.ended!
+    // A rebuild (online: rematch votes) keeps the keyboard on the same button.
+    const focused = this.endRoot?.focused() ?? null
     this.endRoot?.destroy()
     this.endRoot = null
-    this.endRoot = this.uiBlock(() => (this.online ? this.buildOnlineEnd(result) : this.buildEnd(result)))
+    const view = this.online ? this.onlineView(result) : this.offlineView(result)
+    const stroke = view.tone === 'draw' ? theme.neutral : sideColor(view.tone === 'win' ? 'player' : 'enemy')
+    this.endRoot = new ResultPanel(view, {
+      stroke,
+      topInset: () => this.hud?.el.getBoundingClientRect().bottom ?? 0,
+      onAction: (action) => this.onResultAction(action),
+    })
+    if (focused) this.endRoot.button(focused)?.focus({ preventScroll: true })
     if (DEBUG.enabled) {
       const w = window as unknown as { __ccPanels?: number }
       w.__ccPanels = (w.__ccPanels ?? 0) + 1
@@ -1977,135 +1990,42 @@ export class BattleScene extends Phaser.Scene {
     return { mine, theirs }
   }
 
+  /** A result panel button was pressed. */
+  private onResultAction(action: ResultAction): void {
+    if (action === 'next') this.goNext()
+    else if (action === 'back') this.goBack()
+    else if (action === 'restart') this.restart()
+    else if (action === 'rematch') this.voteRematch()
+    else if (action === 'lobby') this.go(LOBBY)
+    else this.go(MAIN_MENU)
+  }
+
   /** Online end screen: drawn again whenever the room changes (rematch votes). */
-  private buildOnlineEnd(result: Outcome): Phaser.GameObjects.Container {
+  private onlineView(result: Outcome): ResultView {
     const info = this.online!.info
-    const root = this.add.container(0, 0).setDepth(20)
-    const dim = this.add.graphics()
-    dim.fillStyle(theme.dim, 0.64)
-    dim.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT)
-    root.add(dim)
-    const cx = GAME_WIDTH / 2
-    const cy = GAME_HEIGHT / 2 + 10
-    const ph = 290
-    const top = cy - ph / 2
-    const panel = this.add.graphics()
-    panel.fillStyle(theme.panel, 0.98)
-    panel.fillRoundedRect(cx - 280, top, 560, ph, 18)
-    const stroke = result === 'draw' ? theme.neutral : sideColor(result === 'win' ? 'player' : 'enemy')
-    panel.lineStyle(3, stroke, 1)
-    panel.strokeRoundedRect(cx - 280, top, 560, ph, 18)
-    root.add(panel)
     // The final snapshot's reason and count, or the room's when that snapshot never came.
     const fromRoom = this.client?.latest?.winner == null && info?.result ? info.result : null
     const why = this.client?.latest?.x?.why ?? info?.result?.why
     const cannons = fromRoom && info ? cannonsFromResult(fromRoom, info.sides, this.serverSide) : this.tally()
     const { headline, detail } = endTexts(result, this.me, info, why, cannons)
-    const text = (y: number, s: string, size: number, bold = false, color: string = theme.textMuted) =>
-      root.add(this.add.text(cx, y, s, { fontFamily: theme.font, fontSize: `${size}px`, fontStyle: bold ? 'bold' : 'normal', color, align: 'center', wordWrap: { width: 520 } }).setOrigin(0.5))
-    text(top + 48, headline, 30, true, theme.text)
-    text(top + 92, detail, 16)
-    const by = top + ph - 70
-    if (this.me !== null) {
-      text(top + 130, rematchLine(info), 15, true, info && info.you.seat !== null && info.rematch[1 - info.you.seat] ? cssHex(theme.player) : theme.text)
-      const mine = !!(info && info.you.seat !== null && info.rematch[info.you.seat])
-      const other = info && info.you.seat !== null ? info.seats[1 - info.you.seat] : null
-      const rematch = makeButton(this, cx - 125, by, mine ? 'Cancel rematch' : 'Rematch', () => this.voteRematch(), { width: 220, primary: !mine })
-      if (!other) rematch.setAlpha(0.4).disableInteractive()
-      root.add(rematch)
-      root.add(makeButton(this, cx + 125, by, 'Back to the room', () => this.go(LOBBY), { width: 220, primary: false }))
-      text(by + 46, 'R for rematch  ·  Esc for the menu  ·  sides swap every match', 13)
-    } else {
-      root.add(makeButton(this, cx - 125, by, 'Back to the room', () => this.go(LOBBY), { width: 220 }))
-      root.add(makeButton(this, cx + 125, by, 'Leave the room', () => this.go(MAIN_MENU), { width: 220, primary: false }))
-      text(by + 46, 'You will watch the next match too', 13)
-    }
+    const seat = info?.you.seat ?? null
+    const player =
+      this.me === null
+        ? null
+        : {
+            rematchLine: rematchLine(info),
+            otherWants: !!(info && seat !== null && info.rematch[1 - seat]),
+            iWant: !!(info && seat !== null && info.rematch[seat]),
+            otherHere: !!(info && seat !== null && info.seats[1 - seat]),
+          }
     if (DEBUG.enabled) (window as unknown as { __ccResult?: unknown }).__ccResult = { online: true, result, headline, detail, seconds: Math.round(this.sim.clock / 1000) }
-    return root
+    return onlineResult({ result, headline, detail, player })
   }
 
-  private buildEnd(result: Outcome): Phaser.GameObjects.Container {
-    const root = this.add.container(0, 0).setDepth(20)
-    const dim = this.add.graphics()
-    dim.fillStyle(theme.dim, 0.64)
-    dim.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT)
-    root.add(dim)
-
+  private offlineView(result: Outcome): ResultView {
     const campaign = this.levelIndex >= 0
-    const next = this.nextLevel()
     const seconds = Math.round(this.sim.clock / 1000)
     const stars = result === 'win' && campaign ? this.endStars : 0
-
-    const cx = GAME_WIDTH / 2
-    const cy = GAME_HEIGHT / 2 + 10
-    const ph = campaign && result === 'win' ? 300 : 260
-    const top = cy - ph / 2
-    const panel = this.add.graphics()
-    panel.fillStyle(theme.panel, 0.98)
-    panel.fillRoundedRect(cx - 260, top, 520, ph, 18)
-    panel.lineStyle(3, sideColor(result === 'win' ? 'player' : 'enemy'), 1)
-    panel.strokeRoundedRect(cx - 260, top, 520, ph, 18)
-    root.add(panel)
-
-    let headline = result === 'win' ? 'All cannons captured' : 'No cannons left'
-    if (this.pvp) headline = result === 'win' ? 'You win' : 'You lost'
-    if (campaign && result === 'win') headline = next ? 'Level complete' : 'Campaign complete!'
-    if (result === 'lose' && this.isPuzzle) headline = 'Puzzle failed'
-    if (this.surrendered) headline = 'You surrendered'
-    let y = top + 50
-    root.add(
-      this.add
-        .text(cx, y, headline, { fontFamily: theme.font, fontSize: '30px', fontStyle: 'bold', color: theme.text })
-        .setOrigin(0.5),
-    )
-    y += 44
-    if (campaign && result === 'win') {
-      const sg = this.add.graphics()
-      for (let i = 0; i < 3; i++) drawStar(sg, cx - 52 + i * 52, y + 4, 20, i < stars)
-      root.add(sg)
-      y += 42
-    }
-    let detail = this.sim.endReason || (result === 'win' ? 'The board is yours.' : '')
-    if (this.pvp) detail = result === 'win' ? 'The other player has no cannons left.' : 'You have no cannons left.'
-    if (result === 'win' && campaign) {
-      const usesAims = this.isPuzzle && this.level.aims !== undefined
-      const par = this.level.par
-      detail = usesAims
-        ? `${this.sim.aimsUsed} aim${this.sim.aimsUsed === 1 ? '' : 's'} used${par ? `  ·  3 stars at ${par}` : ''}`
-        : `Won in ${seconds}s${par ? `  ·  3 stars under ${par}s` : ''}`
-    }
-    root.add(
-      this.add
-        .text(cx, y, detail, { fontFamily: theme.font, fontSize: '16px', color: theme.textMuted })
-        .setOrigin(0.5),
-    )
-
-    const by = top + ph - 62
-    const buttons: Phaser.GameObjects.Container[] = []
-    if (result === 'win' && next) {
-      buttons.push(makeButton(this, cx - 112, by, this.from === 'puzzles' ? 'Next puzzle' : 'Next level', () => this.goNext(), { width: 200 }))
-      buttons.push(makeButton(this, cx + 112, by, this.backLabel(false), () => this.goBack(), { width: 200, primary: false }))
-    } else if (campaign) {
-      const primaryLabel = result === 'win' ? this.backLabel(false) : 'Try again'
-      const primary = result === 'win' ? () => this.goBack() : () => this.restart()
-      const secondaryLabel = result === 'win' ? 'Play again' : this.backLabel(false)
-      const secondary = result === 'win' ? () => this.restart() : () => this.goBack()
-      buttons.push(makeButton(this, cx - 112, by, primaryLabel, primary, { width: 200 }))
-      buttons.push(makeButton(this, cx + 112, by, secondaryLabel, secondary, { width: 200, primary: false }))
-    } else {
-      buttons.push(makeButton(this, cx - 112, by, 'Play again', () => this.restart(), { width: 200 }))
-      buttons.push(makeButton(this, cx + 112, by, this.backLabel(false), () => this.goBack(), { width: 200, primary: false }))
-    }
-    buttons.forEach((b) => root.add(b))
-    root.add(
-      this.add
-        .text(cx, by + 44, result === 'win' && next ? 'N for next  ·  R to replay' : 'R to restart', {
-          fontFamily: theme.font,
-          fontSize: '13px',
-          color: theme.textMuted,
-        })
-        .setOrigin(0.5),
-    )
     if (DEBUG.enabled) {
       ;(window as unknown as { __ccResult?: unknown }).__ccResult = {
         level: this.level.id,
@@ -2115,7 +2035,22 @@ export class BattleScene extends Phaser.Scene {
         stars,
       }
     }
-    return root
+    return offlineResult({
+      result: result === 'win' ? 'win' : 'lose',
+      campaign,
+      hasNext: !!this.nextLevel(),
+      fromPuzzles: this.from === 'puzzles',
+      pvp: !!this.pvp,
+      isPuzzle: this.isPuzzle,
+      surrendered: this.surrendered,
+      endReason: this.sim.endReason,
+      seconds,
+      aimsUsed: this.sim.aimsUsed,
+      countsAims: this.isPuzzle && this.level.aims !== undefined,
+      par: this.level.par,
+      stars,
+      backLabel: this.backLabel(false),
+    })
   }
 
   /**

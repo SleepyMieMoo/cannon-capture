@@ -80,6 +80,21 @@ export function foldOrder(buttons: readonly { id: HudButtonId; keep: number }[])
     .map((b) => b.id)
 }
 
+/**
+ * Does a row's content spill out of it? scrollWidth only sees spill on the end
+ * side: a right-aligned row (the buttons row on phones) spills off its start,
+ * so its buttons' edges are checked too.
+ */
+function rowOverflows(row: HTMLElement): boolean {
+  if (row.scrollWidth > row.clientWidth + 1) return true
+  const box = row.getBoundingClientRect()
+  for (const child of row.children) {
+    const r = child.getBoundingClientRect()
+    if (r.width && (r.left < box.left - 1 || r.right > box.right + 1)) return true
+  }
+  return false
+}
+
 export class BattleHud {
   readonly el: HTMLDivElement
   /** Buttons folded into the Menu right now (the scene adds them there). */
@@ -216,7 +231,7 @@ export class BattleHud {
     for (const d of this.defs) this.btn.get(d.id)!.style.display = this.off.has(d.id) ? 'none' : ''
     const over = (): boolean => {
       const rows = this.twoRows ? [this.rowA, this.rowB] : [this.rowA]
-      return rows.some((row) => row.scrollWidth > row.clientWidth + 1)
+      return rows.some((row) => rowOverflows(row))
     }
     // A title cut down to "Ski…" says nothing: drop it instead.
     const titleTooSmall = (): boolean => this.titleEl.scrollWidth > this.titleEl.clientWidth + 1 && this.titleEl.clientWidth < 110
