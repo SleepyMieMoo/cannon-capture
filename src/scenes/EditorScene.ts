@@ -32,13 +32,17 @@ import {
 } from '../editor/maps'
 import { Cannon, setRingScale } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
+import { Glass } from '../entities/Glass'
+import { Pillar } from '../entities/Pillar'
 import { Wall } from '../entities/Wall'
+import { GLASS, PILLAR_SIZES, VOID_COLOURS } from '../config/obstacles'
 import { MAP_SIZES, MAP_SIZE_IDS, boardFor, insideBoard } from '../levels/board'
+import { EXAMPLE_MAPS } from '../levels/examples'
 import { drawBoardSurface } from '../render/boardSurface'
 import { bindSceneResolution } from '../render/resolution'
 import { WorldCamera } from '../render/WorldCamera'
 import { Overlay, h } from '../ui/overlay'
-import type { CannonDef, CannonKind, LevelDef, MapSize, Point, Rect, Side, WallDef } from '../types'
+import type { CannonDef, CannonKind, GlassDef, LevelDef, MapSize, Point, Rect, Side, WallDef } from '../types'
 
 export interface EditorData {
   /** Open a saved map from My maps. */
@@ -51,9 +55,9 @@ export interface EditorData {
   resume?: boolean
 }
 
-type Tool = 'select' | 'player' | 'enemy' | 'neutral' | 'wall' | 'fan' | 'delete'
+type Tool = 'select' | 'player' | 'enemy' | 'neutral' | 'wall' | 'void' | 'pillar' | 'glass' | 'fan' | 'delete'
 type Popover = 'map' | 'share' | 'help'
-type ItemKind = 'cannon' | 'wall' | 'fan'
+type ItemKind = 'cannon' | 'wall' | 'pillar' | 'glass' | 'fan'
 interface ItemRef {
   kind: ItemKind
   index: number
@@ -76,6 +80,9 @@ const TOOL_TIPS: Record<Tool, string> = {
   enemy: 'Place an enemy cannon',
   neutral: 'Place a neutral cannon',
   wall: 'Place a wall',
+  void: 'Place a void wall (absorbs shots)',
+  pillar: 'Place a round pillar',
+  glass: 'Place one-way glass',
   fan: 'Place a fan',
   delete: 'Delete tool',
 }
@@ -88,6 +95,9 @@ const TOOLS: { id: Tool; label: string; key: string; color?: number; side?: Side
   { id: 'neutral', label: 'Neutral', key: '3', color: theme.neutral },
   { id: 'wall', label: 'Wall', key: '4', color: theme.wall },
   { id: 'fan', label: 'Fan', key: '5', color: theme.fan },
+  { id: 'void', label: 'Void', key: '6', color: VOID_COLOURS.rim },
+  { id: 'pillar', label: 'Pillar', key: '7', color: theme.wall },
+  { id: 'glass', label: 'Glass', key: '8', color: GLASS },
 ]
 
 export class EditorScene extends Phaser.Scene {
@@ -112,6 +122,8 @@ export class EditorScene extends Phaser.Scene {
   /** Gold in your skin, pink in the one the AI would wear (as in the playtest). */
   private skins: SideSkins = vsAiSkins(DEFAULT_SKIN)
   private wallViews: Wall[] = []
+  private pillarViews: Pillar[] = []
+  private glassViews: Glass[] = []
   private fanViews: Fan[] = []
   private fx!: Phaser.GameObjects.Graphics
 
@@ -238,6 +250,8 @@ export class EditorScene extends Phaser.Scene {
       this.viewSavedAt = time
       this.persist()
     }
+    for (const wall of this.wallViews) wall.tick(time, true)
+    for (const pane of this.glassViews) pane.draw(time, true)
     for (const fan of this.fanViews) fan.draw(time)
     setRingScale(this.wc.cssPerWorld())
     this.cannonViews.forEach((c, i) => {
@@ -266,9 +280,21 @@ export class EditorScene extends Phaser.Scene {
   private renderAll(): void {
     this.cannonViews.forEach((c) => c.root?.destroy())
     this.wallViews.forEach((w) => w.destroy())
+    this.pillarViews.forEach((p) => p.destroy())
+    this.glassViews.forEach((g) => g.destroy())
     this.fanViews.forEach((f) => f.destroy())
     this.wallViews = this.level.walls.map((w) => {
       const view = new Wall(this, w)
+      view.parts.forEach((o) => this.world(o))
+      return view
+    })
+    this.pillarViews = (this.level.pillars ?? []).map((d) => {
+      const view = new Pillar(this, d)
+      this.world(view.gfx)
+      return view
+    })
+    this.glassViews = (this.level.glass ?? []).map((d) => {
+      const view = new Glass(this, d)
       this.world(view.gfx)
       return view
     })
@@ -311,7 +337,13 @@ export class EditorScene extends Phaser.Scene {
         }
       })
     } else if (ref.kind === 'wall') {
-      this.wallViews[ref.index]?.set(this.level.walls[ref.index])
+      const view = this.wallViews[ref.index]
+      view?.set(this.level.walls[ref.index])
+      view?.parts.forEach((o) => this.world(o))
+    } else if (ref.kind === 'pillar') {
+      this.pillarViews[ref.index]?.set(this.level.pillars![ref.index])
+    } else if (ref.kind === 'glass') {
+      this.glassViews[ref.index]?.set(this.level.glass![ref.index])
     } else {
       const f = this.level.fans[ref.index]
       const field = this.fanViews[ref.index]?.field
@@ -338,6 +370,11 @@ export class EditorScene extends Phaser.Scene {
       if (ref.kind === 'wall') {
         const w = this.level.walls[ref.index]
         strokeRotated(g, w, 6)
+      } else if (ref.kind === 'pillar') {
+        const p = this.level.pillars![ref.index]
+        g.strokeCircle(p.x, p.y, p.r + 6)
+      } else if (ref.kind === 'glass') {
+        strokeRotated(g, glassBox(this.level.glass![ref.index]), 6)
       } else if (ref.kind === 'fan') {
         const f = this.level.fans[ref.index]
         g.strokeCircle(f.x, f.y, 30)
@@ -359,9 +396,15 @@ export class EditorScene extends Phaser.Scene {
       } else if (this.tool === 'player' || this.tool === 'enemy' || this.tool === 'neutral') {
         g.fillStyle(sideColor(this.tool), 0.35)
         g.fillCircle(p.x, p.y, TUNING.cannonRadius)
-      } else if (this.tool === 'wall') {
-        g.fillStyle(theme.wall, 0.4)
+      } else if (this.tool === 'wall' || this.tool === 'void') {
+        g.fillStyle(this.tool === 'void' ? VOID_COLOURS.rim : theme.wall, 0.4)
         g.fillRect(p.x - 110, p.y - 13, 220, 26)
+      } else if (this.tool === 'pillar') {
+        g.fillStyle(theme.wall, 0.4)
+        g.fillCircle(p.x, p.y, PILLAR_SIZES[1])
+      } else if (this.tool === 'glass') {
+        g.lineStyle(6, GLASS, 0.45)
+        g.lineBetween(p.x - 100, p.y, p.x + 100, p.y)
       } else if (this.tool === 'fan') {
         g.lineStyle(2, theme.fan, 0.45)
         g.strokeCircle(p.x, p.y, 140)
@@ -389,6 +432,14 @@ export class EditorScene extends Phaser.Scene {
       const f = this.level.fans[i]
       if (Math.hypot(f.x - x, f.y - y) <= 28) return { kind: 'fan', index: i }
     }
+    const glass = this.level.glass ?? []
+    for (let i = glass.length - 1; i >= 0; i--) {
+      if (inWall(glassBox(glass[i]), x, y, 8)) return { kind: 'glass', index: i }
+    }
+    const pillars = this.level.pillars ?? []
+    for (let i = pillars.length - 1; i >= 0; i--) {
+      if (Math.hypot(pillars[i].x - x, pillars[i].y - y) <= pillars[i].r + 6) return { kind: 'pillar', index: i }
+    }
     for (let i = this.level.walls.length - 1; i >= 0; i--) {
       if (inWall(this.level.walls[i], x, y, 6)) return { kind: 'wall', index: i }
     }
@@ -414,6 +465,14 @@ export class EditorScene extends Phaser.Scene {
       const w = this.level.walls[ref.index]
       return { x: w.x + w.w / 2, y: w.y + w.h / 2 }
     }
+    if (ref.kind === 'pillar') {
+      const p = this.level.pillars![ref.index]
+      return { x: p.x, y: p.y }
+    }
+    if (ref.kind === 'glass') {
+      const g = this.level.glass![ref.index]
+      return { x: (g.x + g.x2) / 2, y: (g.y + g.y2) / 2 }
+    }
     const item = ref.kind === 'cannon' ? this.level.cannons[ref.index] : this.level.fans[ref.index]
     return { x: item.x, y: item.y }
   }
@@ -424,6 +483,20 @@ export class EditorScene extends Phaser.Scene {
       const c = this.clampCenter(to, 0)
       w.x = Math.round(c.x - w.w / 2)
       w.y = Math.round(c.y - w.h / 2)
+    } else if (ref.kind === 'pillar') {
+      const p = this.level.pillars![ref.index]
+      const c = this.clampCenter(to, p.r)
+      p.x = Math.round(c.x)
+      p.y = Math.round(c.y)
+    } else if (ref.kind === 'glass') {
+      const g = this.level.glass![ref.index]
+      const c = this.clampCenter(to, 0)
+      const hx = (g.x2 - g.x) / 2
+      const hy = (g.y2 - g.y) / 2
+      g.x = Math.round(c.x - hx)
+      g.y = Math.round(c.y - hy)
+      g.x2 = Math.round(c.x + hx)
+      g.y2 = Math.round(c.y + hy)
     } else {
       const item = ref.kind === 'cannon' ? this.level.cannons[ref.index] : this.level.fans[ref.index]
       const c = this.clampCenter(to, TUNING.cannonRadius + 4)
@@ -619,11 +692,26 @@ export class EditorScene extends Phaser.Scene {
       const c = this.clampCenter(p, TUNING.cannonRadius + 4)
       this.edit(() => L.cannons.push({ id, name: id.toUpperCase(), x: Math.round(c.x), y: Math.round(c.y), side: tool }))
       this.select({ kind: 'cannon', index: L.cannons.length - 1 })
-    } else if (tool === 'wall') {
+    } else if (tool === 'wall' || tool === 'void') {
       if (L.walls.length >= LIMITS.walls) return this.status(`Maps can have up to ${LIMITS.walls} walls.`, true)
       const c = this.clampCenter(p, 0)
-      this.edit(() => L.walls.push({ x: Math.round(c.x - 110), y: Math.round(c.y - 13), w: 220, h: 26 }))
+      const wall: WallDef = { x: Math.round(c.x - 110), y: Math.round(c.y - 13), w: 220, h: 26 }
+      if (tool === 'void') wall.kind = 'void'
+      this.edit(() => L.walls.push(wall))
       this.select({ kind: 'wall', index: L.walls.length - 1 })
+    } else if (tool === 'pillar') {
+      const list = (L.pillars ??= [])
+      if (list.length >= LIMITS.pillars) return this.status(`Maps can have up to ${LIMITS.pillars} pillars.`, true)
+      const r: number = PILLAR_SIZES[1]
+      const c = this.clampCenter(p, r)
+      this.edit(() => (L.pillars ??= []).push({ x: Math.round(c.x), y: Math.round(c.y), r }))
+      this.select({ kind: 'pillar', index: L.pillars!.length - 1 })
+    } else if (tool === 'glass') {
+      const list = (L.glass ??= [])
+      if (list.length >= LIMITS.glass) return this.status(`Maps can have up to ${LIMITS.glass} glass panes.`, true)
+      const c = this.clampCenter(p, 0)
+      this.edit(() => (L.glass ??= []).push({ x: Math.round(c.x - 100), y: Math.round(c.y), x2: Math.round(c.x + 100), y2: Math.round(c.y) }))
+      this.select({ kind: 'glass', index: L.glass!.length - 1 })
     } else if (tool === 'fan') {
       if (L.fans.length >= LIMITS.fans) return this.status(`Maps can have up to ${LIMITS.fans} fans.`, true)
       const c = this.clampCenter(p, TUNING.cannonRadius + 4)
@@ -638,6 +726,8 @@ export class EditorScene extends Phaser.Scene {
         const [gone] = this.level.cannons.splice(ref.index, 1)
         for (const c of this.level.cannons) if (c.aimAt === gone.id) delete c.aimAt
       } else if (ref.kind === 'wall') this.level.walls.splice(ref.index, 1)
+      else if (ref.kind === 'pillar') this.level.pillars?.splice(ref.index, 1)
+      else if (ref.kind === 'glass') this.level.glass?.splice(ref.index, 1)
       else this.level.fans.splice(ref.index, 1)
     })
     this.sel = null
@@ -688,10 +778,13 @@ export class EditorScene extends Phaser.Scene {
 
   private rotateSelected(dir: number): void {
     const ref = this.sel
-    if (!ref || ref.kind === 'cannon') return
+    if (!ref || ref.kind === 'cannon' || ref.kind === 'pillar') return
     this.edit(
       () => {
-        if (ref.kind === 'wall') {
+        if (ref.kind === 'glass') {
+          const g = this.level.glass![ref.index]
+          setGlassAngle(g, Math.round((glassAngle(g) + dir * ROTATE_STEP) / ROTATE_STEP) * ROTATE_STEP)
+        } else if (ref.kind === 'wall') {
           const w = this.level.walls[ref.index]
           w.angle = normAngle(Math.round(((w.angle ?? 0) + dir * ROTATE_STEP) / ROTATE_STEP) * ROTATE_STEP, Math.PI)
         } else {
@@ -720,6 +813,8 @@ export class EditorScene extends Phaser.Scene {
       this.level.cannons.forEach((_, i) => this.moveItem({ kind: 'cannon', index: i }, this.centerOf({ kind: 'cannon', index: i })))
       this.level.fans.forEach((_, i) => this.moveItem({ kind: 'fan', index: i }, this.centerOf({ kind: 'fan', index: i })))
       this.level.walls.forEach((_, i) => this.moveItem({ kind: 'wall', index: i }, this.centerOf({ kind: 'wall', index: i })))
+      this.level.pillars?.forEach((_, i) => this.moveItem({ kind: 'pillar', index: i }, this.centerOf({ kind: 'pillar', index: i })))
+      this.level.glass?.forEach((_, i) => this.moveItem({ kind: 'glass', index: i }, this.centerOf({ kind: 'glass', index: i })))
       for (const c of this.level.cannons) {
         if (c.aimPoint) c.aimPoint = this.clampCenter(c.aimPoint, 0)
       }
@@ -863,6 +958,7 @@ export class EditorScene extends Phaser.Scene {
     else if (key === 'x' || key === 'X') this.setTool('delete')
     else if (key === 'p' || key === 'P') this.playtest()
     else if ((key === 't' || key === 'T') && this.sel?.kind === 'cannon') this.cycleKind(this.sel.index)
+    else if ((key === 'f' || key === 'F') && this.sel?.kind === 'glass') this.flipGlass(this.sel.index)
     else if (key === '+' || key === '=') this.wc.zoomBy(1.25)
     else if (key === '-' || key === '_') this.wc.zoomBy(0.8)
     else if (key === '0') this.wc.fit()
@@ -884,7 +980,8 @@ export class EditorScene extends Phaser.Scene {
         'button.cc-btn.sm',
         { title: `${TOOL_TIPS[t.id]} (${t.key})`, onclick: () => this.setTool(t.id) },
         t.side ? dot(sideColor(t.side)) : t.color !== undefined ? dot(t.color) : null,
-        t.label,
+        // A dotted tool can drop its word when the bar is too narrow (wider system fonts): see fitToolbar.
+        t.side || t.color !== undefined ? h('span.cc-lbl', {}, t.label) : t.label,
       )
       tools.set(t.id, btn)
       toolGroup.append(btn)
@@ -895,10 +992,10 @@ export class EditorScene extends Phaser.Scene {
 
     const undo = h('button.cc-btn.sm.icon', { title: 'Undo (Ctrl+Z)', onclick: () => this.undo() }, '↶')
     const redo = h('button.cc-btn.sm.icon', { title: 'Redo (Ctrl+Shift+Z)', onclick: () => this.redo() }, '↷')
-    const snap = h('button.cc-btn.sm', { title: `Snap to a ${GRID}px grid (G)`, onclick: () => {
+    const snap = h('button.cc-btn.sm.icon', { title: `Snap to a ${GRID}px grid (G)`, onclick: () => {
       this.snap = !this.snap
       this.refreshPanel(false)
-    } }, '▦ Snap')
+    } }, '▦')
 
     const popBtns = new Map<Popover, HTMLButtonElement>()
     const popBtn = (id: Popover, label: string, title: string): HTMLButtonElement => {
@@ -917,7 +1014,7 @@ export class EditorScene extends Phaser.Scene {
       ),
       h('div.cc-spacer'),
       h('div.cc-group', {},
-        h('button.cc-btn.sm.primary', { title: 'Play this map now (P)', onclick: () => this.playtest() }, '▶ Playtest'),
+        h('button.cc-btn.sm.primary', { title: 'Play this map now (P)', onclick: () => this.playtest() }, '▶ Play'),
         h('button.cc-btn.sm', { title: 'Save to My maps', onclick: () => this.save() }, 'Save'),
         h('button.cc-btn.sm', { title: 'All your saved maps', onclick: () => {
           this.persist()
@@ -988,6 +1085,20 @@ export class EditorScene extends Phaser.Scene {
       }, { merge: 'hint', rebuild: false })
     } })
     const issues = h('div.cc-msg.err')
+    // Example boards for the newer obstacles: opens a copy (yours to change and save).
+    const example = h(
+      'select.cc-sel',
+      { title: 'Open an example map using void walls, pillars and one-way glass', onchange: () => {
+        const ex = EXAMPLE_MAPS.find((m) => m.id === example.value)
+        example.value = ''
+        if (!ex) return
+        this.togglePop(null)
+        const copy: LevelDef = { ...JSON.parse(JSON.stringify(ex)) as LevelDef, id: newMapId() }
+        this.replaceLevel(copy, null, `Opened the "${ex.name}" example. Undo (Ctrl+Z) brings your previous map back.`)
+      } },
+      h('option', { value: '' }, 'Open an example…'),
+      ...EXAMPLE_MAPS.map((m) => h('option', { value: m.id }, m.name)),
+    )
     const share = h('textarea.cc-area', { placeholder: 'Paste a share code (CC1:...) or map JSON here, then Import.', spellcheck: false })
     const file = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none', onchange: () => {
       const f = file.files?.[0]
@@ -1002,7 +1113,7 @@ export class EditorScene extends Phaser.Scene {
       o.el.style.display = 'none'
       pops.set(id, o)
     }
-    pop('map', 470, 340, 300,
+    pop('map', 470, 340, 336,
       h('div.cc-h', {}, 'Map settings'),
       h('div.cc-row', {}, h('label', {}, 'Name'), name),
       h('div.cc-row', {}, h('label', {}, 'Mode'), mode),
@@ -1010,6 +1121,7 @@ export class EditorScene extends Phaser.Scene {
       diffRow,
       h('div.cc-row', {}, h('label', {}, 'Size'), size),
       h('div.cc-row', {}, h('label', {}, 'Hint'), hint),
+      h('div.cc-row', {}, h('label', {}, 'Examples'), example),
       issues,
       h('div.cc-row', { style: 'margin-top:8px' },
         h('button.cc-btn.sm', { style: 'flex:1', onclick: () => this.save(true) }, 'Save as copy'),
@@ -1040,18 +1152,27 @@ export class EditorScene extends Phaser.Scene {
       ['WASD / arrows', 'Pan'],
       ['1 2 3', 'Your / enemy / neutral cannon'],
       ['4 5', 'Wall / fan'],
+      ['6 7 8', 'Void wall / round pillar / one-way glass'],
       ['V · X', 'Move tool · Delete tool'],
       ['Del', 'Delete the selection'],
-      ['Q / E', 'Rotate wall or fan 15°'],
+      ['Q / E · F', 'Rotate wall, glass or fan 15° · flip glass'],
       ['T', 'Next type for the selected cannon'],
       ['G · P', 'Snap · Playtest'],
       ['Ctrl+Z / Ctrl+Y', 'Undo / redo'],
       ['Esc', 'Close, cancel or deselect'],
     ]
-    pop('help', 610, 400, 292,
+    pop('help', 610, 400, 314,
       h('div.cc-h', {}, 'Controls'),
       h('div.cc-keys', {}, ...keys.flatMap(([k, v]) => [h('b', {}, k), h('span', {}, v)])),
     )
+
+    // If the bar overflows anyway (a wider fallback font), dotted tools show just their dot (the tooltip names them).
+    const fitToolbar = (): void => {
+      toolbar.classList.remove('tight')
+      if (toolbar.scrollWidth > toolbar.clientWidth + 1) toolbar.classList.add('tight')
+    }
+    requestAnimationFrame(fitToolbar)
+    void document.fonts?.ready.then(fitToolbar)
 
     this.dom = { tools, props, mapName, status, zoomText, snap, undo, redo, popBtns, pops, name, mode, aims, unlimited, aimsRow, diff, diffRow, diffNote, size, hint, issues, share, file }
   }
@@ -1147,7 +1268,8 @@ export class EditorScene extends Phaser.Scene {
           : this.tool === 'delete'
             ? 'Click anything to delete it'
             : `Click the board to place: ${TOOLS.find((t) => t.id === this.tool)?.label ?? ''}`
-      return [h('span.cc-note', {}, `${L.cannons.length} cannons · ${L.walls.length} walls · ${L.fans.length} fans  —  ${tip}`)]
+      const extras = [L.pillars?.length ? `${L.pillars.length} pillars` : '', L.glass?.length ? `${L.glass.length} glass` : ''].filter(Boolean)
+      return [h('span.cc-note', {}, `${[`${L.cannons.length} cannons`, `${L.walls.length} walls`, ...extras, `${L.fans.length} fans`].join(' · ')}  —  ${tip}`)]
     }
     const remove = h('button.cc-btn.xs.danger', { title: 'Delete (Del)', onclick: () => this.deleteItem(ref) }, 'Delete')
     const slider = (
@@ -1217,8 +1339,23 @@ export class EditorScene extends Phaser.Scene {
         w.x = Math.round(cx - len / 2)
         w.y = Math.round(cy - thick / 2)
       }
+      const isVoid = w.kind === 'void'
+      const wallType = h(
+        'select.cc-sel.xs',
+        { title: 'A void wall swallows shots instead of bouncing them.', onchange: () => {
+          this.edit(() => {
+            if (wallType.value === 'void') w.kind = 'void'
+            else delete w.kind
+          })
+          this.refreshPanel(true)
+        } },
+        h('option', { value: 'wall' }, 'Wall (bounces)'),
+        h('option', { value: 'void' }, 'Void (absorbs)'),
+      )
+      wallType.value = isVoid ? 'void' : 'wall'
       return [
-        h('span.cc-field', {}, dot(theme.wall), h('b', {}, 'Wall')),
+        h('span.cc-field', {}, dot(isVoid ? VOID_COLOURS.rim : theme.wall), h('b', {}, isVoid ? 'Void wall' : 'Wall')),
+        h('span.cc-field', {}, h('label', {}, 'Type'), wallType),
         slider('Length', w.w, 30, Math.min(1400, this.board.w), 10, (v) => resize(v, w.h), `wl-${ref.index}`),
         slider('Thick', w.h, 12, 80, 2, (v) => resize(w.w, v), `wt-${ref.index}`),
         h('span.cc-field', {},
@@ -1227,6 +1364,49 @@ export class EditorScene extends Phaser.Scene {
           h('span.cc-val', { style: 'min-width:34px;text-align:center' }, `${deg(w.angle ?? 0)}°`),
           h('button.cc-btn.xs', { title: 'E', onclick: () => this.rotateSelected(1) }, '⟳'),
         ),
+        remove,
+      ]
+    }
+
+    if (ref.kind === 'pillar') {
+      const p = L.pillars![ref.index]
+      const names = ['Small', 'Medium', 'Large']
+      return [
+        h('span.cc-field', {}, dot(theme.wall), h('b', {}, 'Pillar')),
+        h('span.cc-field', {},
+          h('label', {}, 'Size'),
+          ...PILLAR_SIZES.map((r, i) =>
+            h('button.cc-btn.xs', { className: `cc-btn xs${p.r === r ? ' on' : ''}`, title: `${r * 2} px across`, onclick: () => {
+              this.edit(() => {
+                p.r = r
+                const c = this.clampCenter(p, r)
+                p.x = Math.round(c.x)
+                p.y = Math.round(c.y)
+              }, { rebuild: false })
+              this.refreshItem(ref)
+              this.refreshPanel(true)
+            } }, names[i]),
+          ),
+        ),
+        h('span.cc-note', {}, 'Shots glance off it like off a ball.'),
+        remove,
+      ]
+    }
+
+    if (ref.kind === 'glass') {
+      const g = L.glass![ref.index]
+      const len = Math.round(Math.hypot(g.x2 - g.x, g.y2 - g.y))
+      return [
+        h('span.cc-field', {}, dot(GLASS), h('b', {}, 'One-way glass')),
+        slider('Length', len, 40, Math.min(1400, this.board.w), 10, (v) => setGlassLength(g, v), `gl-${ref.index}`),
+        h('span.cc-field', {},
+          h('label', {}, 'Turn'),
+          h('button.cc-btn.xs', { title: 'Q', onclick: () => this.rotateSelected(-1) }, '⟲'),
+          h('span.cc-val', { style: 'min-width:34px;text-align:center' }, `${deg(normAngle(glassAngle(g), Math.PI * 2))}°`),
+          h('button.cc-btn.xs', { title: 'E', onclick: () => this.rotateSelected(1) }, '⟳'),
+        ),
+        h('button.cc-btn.xs', { title: 'Swap which side shots pass through (F)', onclick: () => this.flipGlass(ref.index) }, 'Flip'),
+        h('span.cc-note', {}, 'Shots pass the way the arrows point; the bright side bounces them.'),
         remove,
       ]
     }
@@ -1250,6 +1430,19 @@ export class EditorScene extends Phaser.Scene {
       slider('Radius', f.radius, 60, 360, 10, (v) => (f.radius = v), `fr-${ref.index}`),
       remove,
     ]
+  }
+
+  /** Swap the side of a glass pane that shots pass through. */
+  private flipGlass(index: number): void {
+    const g = this.level.glass?.[index]
+    if (!g) return
+    this.edit(() => {
+      if (g.flip) delete g.flip
+      else g.flip = true
+    }, { rebuild: false })
+    this.refreshItem({ kind: 'glass', index })
+    this.refreshPanel(true)
+    this.status('Glass flipped: shots now pass through the other way.')
   }
 
   /** Tower type for one cannon. */
@@ -1367,4 +1560,36 @@ function dashed(
     g.lineTo(x1 + ux * e, y1 + uy * e)
   }
   g.strokePath()
+}
+
+/** A glass pane as a thin rotated box (hit testing and the selection outline). */
+function glassBox(g: GlassDef): WallDef {
+  const len = Math.hypot(g.x2 - g.x, g.y2 - g.y)
+  const cx = (g.x + g.x2) / 2
+  const cy = (g.y + g.y2) / 2
+  return { x: cx - len / 2, y: cy - 5, w: len, h: 10, angle: glassAngle(g) }
+}
+
+function glassAngle(g: GlassDef): number {
+  return Math.atan2(g.y2 - g.y, g.x2 - g.x)
+}
+
+/** Turn a pane about its middle (keeping its length). */
+function setGlassAngle(g: GlassDef, angle: number): void {
+  const len = Math.hypot(g.x2 - g.x, g.y2 - g.y)
+  placeGlass(g, (g.x + g.x2) / 2, (g.y + g.y2) / 2, angle, len)
+}
+
+/** Stretch a pane about its middle (keeping its angle). */
+function setGlassLength(g: GlassDef, len: number): void {
+  placeGlass(g, (g.x + g.x2) / 2, (g.y + g.y2) / 2, glassAngle(g), len)
+}
+
+function placeGlass(g: GlassDef, cx: number, cy: number, angle: number, len: number): void {
+  const hx = (Math.cos(angle) * len) / 2
+  const hy = (Math.sin(angle) * len) / 2
+  g.x = Math.round(cx - hx)
+  g.y = Math.round(cy - hy)
+  g.x2 = Math.round(cx + hx)
+  g.y2 = Math.round(cy + hy)
 }

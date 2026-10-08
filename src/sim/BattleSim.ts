@@ -7,7 +7,7 @@ import { Cannon } from '../entities/Cannon'
 import { Shot } from '../entities/Shot'
 import { boardFor } from '../levels/board'
 import type { AiLevel, CannonKind, LevelDef, Point, Rect, Side } from '../types'
-import { Broadphase, type BallisticsOpts, type Barrier, type Body } from './ballistics'
+import { Broadphase, type BallisticsOpts, type Barrier, type Body, type Surface } from './ballistics'
 import { LaneBuilder, lanesOf, levelFans, shotOpts, type LaneTable } from './solver'
 
 /** How a round ended, for gold: 'draw' only in player vs player (the time limit with equal cannons). */
@@ -24,7 +24,10 @@ export const MAX_SHOTS = 800
 const NO_BARRIERS: Barrier[] = []
 
 export interface SimEvents {
-  bounce?(x: number, y: number): void
+  /** A shot banked at (x, y) off a wall, a pillar or a pane of glass. */
+  bounce?(x: number, y: number, surface?: Surface): void
+  /** A void wall swallowed a shot from `side` at (x, y). */
+  absorbed?(x: number, y: number, side: Side, kind: CannonKind): void
   hit?(x: number, y: number, side: Side, kind: CannonKind): void
   /** A friendly shot took `amount` capture progress off one of its own cannons. */
   healed?(cannon: Cannon, amount: number): void
@@ -157,7 +160,7 @@ export class BattleSim {
     }
     this.bodies = this.cannons.map((c) => ({ id: c.id, x: c.x, y: c.y, radius: TUNING.cannonRadius }))
     // Steps are at most ~32ms at the capped shot speed (under 20px).
-    this.near = new Broadphase(level.walls, this.bodies, TUNING.shotRadius, 48)
+    this.near = new Broadphase(level.walls, this.bodies, TUNING.shotRadius, 48, 128, level.pillars ?? [], level.glass ?? [])
   }
 
   /**
@@ -509,8 +512,9 @@ export class BattleSim {
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const shot = this.shots[i]
       const near = this.near.at(shot.ball.x, shot.ball.y)
-      const result = shot.step(dt, near.walls, this.fans, near.bodies, this.opts, barriers.length ? this.barriersFor(shot, shields, barriers, dt) : undefined)
-      if (result.bounced) this.events.bounce?.(shot.ball.x, shot.ball.y)
+      const result = shot.step(dt, near.walls, this.fans, near.bodies, this.opts, barriers.length ? this.barriersFor(shot, shields, barriers, dt) : undefined, near.pillars, near.glass)
+      if (result.bounced) this.events.bounce?.(shot.ball.x, shot.ball.y, result.surface ?? 'wall')
+      if (result.absorbed) this.events.absorbed?.(shot.ball.x, shot.ball.y, shot.side, shot.kind)
       if (result.blockedBy && !this.ended) {
         const shield = this.byId(result.blockedBy)!
         this.events.blocked?.(shot.ball.x, shot.ball.y, shield, shot.side, shot.kind)

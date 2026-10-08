@@ -15,6 +15,9 @@ export const HALO_TEX = 'fx-halo'
 export const HALO_W = 128
 export const SWEEP_TEX = 'fx-sweep'
 export const SWEEP_W = 128
+/** The void wall's inner swirl: a small seamless tile. */
+export const VOID_TEX = 'fx-void'
+export const VOID_W = 64
 
 type Draw = (ctx: CanvasRenderingContext2D, w: number, h: number) => void
 
@@ -36,6 +39,35 @@ function radial(ctx: CanvasRenderingContext2D, w: number, stops: [number, number
 
 /** Make every effects texture (once per game: the texture manager is shared by all scenes). */
 export function bakeFxTextures(textures: Phaser.Textures.TextureManager): void {
+  // The void swirl: faint violet curls on black (drawn with ADD, so black is see-through), seamless both ways.
+  bake(textures, VOID_TEX, VOID_W, VOID_W, (ctx, w) => {
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, w, w)
+    ctx.lineCap = 'round'
+    const curls: [number, number, number, number, number, number][] = [
+      // x, y, radius, start, sweep, alpha
+      [14, 18, 13, 0.3, 3.4, 0.55],
+      [44, 40, 17, 3.6, 3.0, 0.45],
+      [30, 56, 9, 1.2, 3.8, 0.4],
+      [56, 10, 8, 2.4, 3.2, 0.35],
+    ]
+    for (const [cx, cy, r, a0, sweep, alpha] of curls) {
+      for (const ox of [-w, 0, w]) {
+        for (const oy of [-w, 0, w]) {
+          ctx.strokeStyle = `rgba(180,140,255,${alpha})`
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.arc(cx + ox, cy + oy, r, a0, a0 + sweep)
+          ctx.stroke()
+          ctx.strokeStyle = `rgba(122,85,184,${alpha * 0.6})`
+          ctx.lineWidth = 4
+          ctx.beginPath()
+          ctx.arc(cx + ox, cy + oy, r * 0.55, a0 + 1, a0 + 1 + sweep * 0.7)
+          ctx.stroke()
+        }
+      }
+    }
+  })
   // A soft glow: bright middle, long gentle falloff to exactly nothing at the edge.
   bake(textures, 'fx-glow', 64, 64, (ctx, w) => radial(ctx, w, [[0, 1], [0.18, 0.78], [0.42, 0.32], [0.7, 0.08], [1, 0]]))
   // A shockwave ring: a thin bright band near the edge, soft on both sides.

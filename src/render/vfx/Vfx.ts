@@ -4,6 +4,8 @@ import { lerpColor, sideColor, theme } from '../../config/theme'
 import type { Cannon, CannonFx } from '../../entities/Cannon'
 import type { Shot } from '../../entities/Shot'
 import type { Fan } from '../../entities/Fan'
+import { GLASS, GLASS_RIM, VOID_COLOURS } from '../../config/obstacles'
+import type { Surface } from '../../sim/ballistics'
 import type { CannonKind, Rect, Side } from '../../types'
 import { FADE_INOUT, FADE_LATE, ParticlePool, type Spawn } from './particlePool'
 import { FX_TEX, FX_TEX_W, HALO_TEX, HALO_W, SWEEP_TEX, SWEEP_W, TEX, TRAIL_H, TRAIL_TEX, TRAIL_W, bakeFxTextures } from './fxTextures'
@@ -18,6 +20,8 @@ const R = TUNING.cannonRadius
 const AURA = { size: R * 2 * 2.5, alpha: 0.5, breathe: 0.1, neutral: 0.12, flipMs: 520 }
 const WARM = 0xfff4d2
 const SMOKE = 0x8c7b6b
+const VOID_PUFF = VOID_COLOURS.puff
+const VOID_SPARK = VOID_COLOURS.spark
 
 /** One image per particle slot, made the first time the slot is used and reused ever after. */
 class Layer {
@@ -226,11 +230,24 @@ export class Vfx {
     }
   }
 
-  /** A shot banked off a wall or the board's edge. */
-  bounce(x: number, y: number): void {
+  /** A shot banked off a wall, a pillar or a pane of glass. */
+  bounce(x: number, y: number, surface: Surface = 'wall'): void {
     if (!this.cfg.particles || !this.onScreen(x, y, 30)) return
+    if (surface === 'glass') {
+      this.glow(x, y, 8, 16, 0.7, GLASS_RIM, 110)
+      this.sparks(x, y, this.count(2), GLASS, 90, 160, 12)
+      return
+    }
     this.glow(x, y, 10, 20, 0.6, WARM, 90)
     this.sparks(x, y, this.count(3), theme.spark, 120, 200, 16)
+  }
+
+  /** A void wall swallowed a shot: a small dark puff and a violet spark. */
+  absorbed(x: number, y: number): void {
+    if (!this.cfg.particles || !this.onScreen(x, y, 30)) return
+    this.add(this.smoke, { x, y, lifeMs: 420, size0: 10, size1: 26, alpha: 0.5, tint: VOID_PUFF, tex: TEX.smoke })
+    this.glow(x, y, 8, 14, 0.6, VOID_SPARK, 160)
+    this.sparks(x, y, this.count(2), VOID_SPARK, 60, 120, 10)
   }
 
   /** A shot struck a cannon. */

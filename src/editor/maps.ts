@@ -2,14 +2,14 @@ import { isKind } from '../config/kinds'
 import { TUNING } from '../config/tuning'
 import { MAP_SIZE_IDS, boardFor } from '../levels/board'
 import { inferDifficulty, isAiLevel, levelDifficulty } from '../ai/difficulty'
-import type { AiLevel, CannonDef, FanDef, LevelDef, MapSize, Side, WallDef } from '../types'
+import type { AiLevel, CannonDef, FanDef, GlassDef, LevelDef, MapSize, PillarDef, Side, WallDef } from '../types'
 
 /**
  * Custom maps: validation, share codes and localStorage. A custom map is a
  * plain LevelDef, so a shared map can be pasted into the campaign as-is.
  */
 
-export const LIMITS = { cannons: 60, walls: 160, fans: 40, name: 40 }
+export const LIMITS = { cannons: 60, walls: 160, fans: 40, pillars: 80, glass: 60, name: 40 }
 export const SHARE_PREFIX = 'CC1:'
 export const STORE_KEY = 'cannon-capture:maps:v1'
 export const DRAFT_KEY = 'cannon-capture:editor-draft:v1'
@@ -113,7 +113,32 @@ export function sanitizeLevel(raw: unknown): LevelDef {
       w: ww,
       h: hh,
     }
+    // Wall type (added later): anything but 'void' is a plain wall, so old maps and codes load as before.
+    if (o.kind === 'void') wall.kind = 'void'
     walls.push(tidyWall(wall, num(o.angle, 0, -Math.PI * 4, Math.PI * 4)))
+  }
+
+  // Pillars and glass (added later): missing means none.
+  const pillars: PillarDef[] = []
+  for (const p of Array.isArray(r.pillars) ? r.pillars.slice(0, LIMITS.pillars) : []) {
+    if (!p || typeof p !== 'object') continue
+    const o = p as Record<string, unknown>
+    const rr = Math.round(num(o.r, 28, 10, 120))
+    pillars.push({
+      x: Math.round(num(o.x, b.x + b.w / 2, b.x + rr, b.x + b.w - rr)),
+      y: Math.round(num(o.y, b.y + b.h / 2, b.y + rr, b.y + b.h - rr)),
+      r: rr,
+    })
+  }
+  const glass: GlassDef[] = []
+  for (const g of Array.isArray(r.glass) ? r.glass.slice(0, LIMITS.glass) : []) {
+    if (!g || typeof g !== 'object') continue
+    const o = g as Record<string, unknown>
+    const at = (v: unknown, lo: number, size: number): number => Math.round(num(v, lo + size / 2, lo, lo + size))
+    const pane: GlassDef = { x: at(o.x, b.x, b.w), y: at(o.y, b.y, b.h), x2: at(o.x2, b.x, b.w), y2: at(o.y2, b.y, b.h) }
+    if (Math.hypot(pane.x2 - pane.x, pane.y2 - pane.y) < 20) continue
+    if (o.flip === true) pane.flip = true
+    glass.push(pane)
   }
 
   const fans: FanDef[] = []
@@ -138,6 +163,8 @@ export function sanitizeLevel(raw: unknown): LevelDef {
     walls,
     fans,
   }
+  if (pillars.length) level.pillars = pillars
+  if (glass.length) level.glass = glass
   if (typeof r.hint === 'string' && r.hint.trim()) level.hint = r.hint.trim().slice(0, 160)
   if (level.kind === 'puzzle' && r.aims !== undefined && r.aims !== null) level.aims = Math.round(num(r.aims, 3, 1, 99))
   if (typeof r.par === 'number') level.par = Math.round(num(r.par, 0, 1, 999))
@@ -159,13 +186,14 @@ export function tidyWall(wall: WallDef, angle: number): WallDef {
   if (a < 0) a += Math.PI
   const eps = 1e-3
   const { x, y, w, h } = wall
-  if (a < eps || a > Math.PI - eps) return { x, y, w, h }
+  const kind = wall.kind ? { kind: wall.kind } : {}
+  if (a < eps || a > Math.PI - eps) return { x, y, w, h, ...kind }
   if (Math.abs(a - Math.PI / 2) < eps) {
     const cx = x + w / 2
     const cy = y + h / 2
-    return { x: Math.round(cx - h / 2), y: Math.round(cy - w / 2), w: h, h: w }
+    return { x: Math.round(cx - h / 2), y: Math.round(cy - w / 2), w: h, h: w, ...kind }
   }
-  return { x, y, w, h, angle: Math.round(a * 1e4) / 1e4 }
+  return { x, y, w, h, angle: Math.round(a * 1e4) / 1e4, ...kind }
 }
 
 /** The editor's view of a wall: w is always the length, rotation in `angle`. */
@@ -173,7 +201,7 @@ export function editorWall(wall: WallDef): WallDef {
   if (!wall.angle && wall.h > wall.w) {
     const cx = wall.x + wall.w / 2
     const cy = wall.y + wall.h / 2
-    return { x: cx - wall.h / 2, y: cy - wall.w / 2, w: wall.h, h: wall.w, angle: Math.PI / 2 }
+    return { ...wall, x: cx - wall.h / 2, y: cy - wall.w / 2, w: wall.h, h: wall.w, angle: Math.PI / 2 }
   }
   return { ...wall }
 }

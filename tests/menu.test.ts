@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { BRAND } from '../src/config/brand'
-import { CAMPAIGN, SKIRMISH } from '../src/levels'
+import { CAMPAIGN, EXAMPLE_MAPS, SKIRMISH } from '../src/levels'
 import { DEFAULT_PREFS, DIFFICULTY, loadMenuPrefs, nextPuzzle, pickMap, puzzleChoices, saveMenuPrefs, vsAiMaps } from '../src/menu/menuModel'
 import { PauseHold } from '../src/menu/pauseHold'
 import { EDITOR_KEY, MAIN_MENU, MenuNav, backLabel, backRoute, editorReturn, vsAiLevel } from '../src/menu/routes'
@@ -85,10 +85,10 @@ describe('battle routes', () => {
 })
 
 describe('Play vs AI', () => {
-  it('offers Skirmish first, the campaign battle boards, then your playable battle maps', () => {
+  it('offers Skirmish first, the campaign battle boards, the obstacle examples, then your playable battle maps', () => {
     const maps = vsAiMaps([saved(myBattle), saved(myPuzzle), saved(broken)])
     expect(maps[0].id).toBe('skirmish')
-    expect(maps.filter((m) => m.group === 'Built-in').map((m) => m.id)).toEqual(['skirmish', ...CAMPAIGN.filter((l) => l.kind !== 'puzzle').map((l) => l.id)])
+    expect(maps.filter((m) => m.group === 'Built-in').map((m) => m.id)).toEqual(['skirmish', ...CAMPAIGN.filter((l) => l.kind !== 'puzzle').map((l) => l.id), ...EXAMPLE_MAPS.map((l) => l.id)])
     expect(maps.filter((m) => m.group === 'My maps').map((m) => m.id)).toEqual(['map-mine'])
   })
 

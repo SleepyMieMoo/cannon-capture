@@ -1,6 +1,7 @@
 import { Cannon, type CannonNet } from '../entities/Cannon'
 import { Shot } from '../entities/Shot'
 import type { BattleSim, SimEvents } from '../sim/BattleSim'
+import type { Surface } from '../sim/ballistics'
 import { CANNON_KINDS, type CannonKind, type Point, type Side } from '../types'
 
 /**
@@ -67,7 +68,9 @@ export interface SnapExtra {
   why?: 'wipe' | 'time' | 'empty' | 'surrender'
 }
 
-const EV = { fired: 1, bounce: 2, hit: 3, blocked: 4, shieldBroken: 5, shieldBack: 6, captured: 7, healed: 8, swapped: 9 } as const
+const EV = { fired: 1, bounce: 2, hit: 3, blocked: 4, shieldBroken: 5, shieldBack: 6, captured: 7, healed: 8, swapped: 9, absorbed: 10 } as const
+/** Bounce rows carry what was hit as a 5th field (older builds leave it out: a wall). */
+const SURFACES: readonly Surface[] = ['wall', 'pillar', 'glass']
 
 /** Records sim events (wrap the events you pass to the host's BattleSim) for the next snapshot. */
 export class EventLog {
@@ -88,7 +91,8 @@ export class EventLog {
     return {
       ...events,
       fired: (c, shot) => (push([t(), EV.fired, i(c)]), events.fired?.(c, shot)),
-      bounce: (x, y) => (push([t(), EV.bounce, r1(x), r1(y)]), events.bounce?.(x, y)),
+      bounce: (x, y, surface = 'wall') => (push(surface === 'wall' ? [t(), EV.bounce, r1(x), r1(y)] : [t(), EV.bounce, r1(x), r1(y), SURFACES.indexOf(surface)]), events.bounce?.(x, y, surface)),
+      absorbed: (x, y, side, kind) => (push([t(), EV.absorbed, r1(x), r1(y), sideNo(side), kindNo(kind)]), events.absorbed?.(x, y, side, kind)),
       hit: (x, y, side, kind) => (push([t(), EV.hit, r1(x), r1(y), sideNo(side), kindNo(kind)]), events.hit?.(x, y, side, kind)),
       blocked: (x, y, shield, side, kind) => (push([t(), EV.blocked, r1(x), r1(y), i(shield), sideNo(side), kindNo(kind)]), events.blocked?.(x, y, shield, side, kind)),
       shieldBroken: (c) => (push([t(), EV.shieldBroken, i(c)]), events.shieldBroken?.(c)),
@@ -304,7 +308,10 @@ export function replayEvent(row: EventRow, view: BattleSim, events: SimEvents, f
       break
     }
     case EV.bounce:
-      events.bounce?.(n(2), n(3))
+      events.bounce?.(n(2), n(3), SURFACES[n(4)] ?? 'wall')
+      break
+    case EV.absorbed:
+      events.absorbed?.(n(2), n(3), side(4), kind(5))
       break
     case EV.hit:
       events.hit?.(n(2), n(3), side(4), kind(5))

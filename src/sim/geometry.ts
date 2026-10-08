@@ -130,3 +130,112 @@ export function reflect(
     vy: vy - 2 * dot * ny,
   }
 }
+
+/** Circle versus a round pillar. Normal points out of the pillar. */
+export function circlePillar(cx: number, cy: number, radius: number, p: { x: number; y: number; r: number }): CircleHit | null {
+  const dx = cx - p.x
+  const dy = cy - p.y
+  const reach = radius + p.r
+  const distSq = dx * dx + dy * dy
+  if (distSq >= reach * reach) return null
+  if (distSq < 1e-9) return { nx: 1, ny: 0, pen: reach }
+  const dist = Math.sqrt(distSq)
+  return { nx: dx / dist, ny: dy / dist, pen: reach - dist }
+}
+
+export interface GlassHit {
+  /** Outward normal of the solid side. */
+  nx: number
+  ny: number
+  /** How far the circle sits past the segment, along the normal. */
+  pen: number
+  /** True when the circle's centre is on the solid side (it should bounce). */
+  solid: boolean
+}
+
+/**
+ * Circle versus a one-way glass segment. `flip` swaps the solid side.
+ * The solid side is the normal's side (left of the segment's direction).
+ */
+export function circleGlass(
+  cx: number,
+  cy: number,
+  radius: number,
+  g: { x: number; y: number; x2: number; y2: number; flip?: boolean },
+): GlassHit | null {
+  const dx = g.x2 - g.x
+  const dy = g.y2 - g.y
+  const len = Math.hypot(dx, dy)
+  if (len < 1e-6) return null
+  const ux = dx / len
+  const uy = dy / len
+  const nx = g.flip ? uy : -uy
+  const ny = g.flip ? -ux : ux
+  const relX = cx - g.x
+  const relY = cy - g.y
+  const along = relX * ux + relY * uy
+  if (along < -radius || along > len + radius) return null
+  const side = relX * nx + relY * ny
+  if (Math.abs(side) >= radius) return null
+  return { nx, ny, pen: radius - Math.abs(side), solid: side >= 0 }
+}
+
+/** First point where a segment enters a pillar, or the original end if it does not. */
+export function clipToPillars(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  pillars: readonly { x: number; y: number; r: number }[],
+): { x: number; y: number } {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  let best = 1
+  for (const p of pillars) {
+    const fx = x1 - p.x
+    const fy = y1 - p.y
+    const a = dx * dx + dy * dy
+    if (a < 1e-9) continue
+    const b = 2 * (fx * dx + fy * dy)
+    const c = fx * fx + fy * fy - p.r * p.r
+    const disc = b * b - 4 * a * c
+    if (disc < 0) continue
+    const t = (-b - Math.sqrt(disc)) / (2 * a)
+    if (t > 0 && t < best) best = t
+  }
+  return { x: x1 + dx * best, y: y1 + dy * best }
+}
+
+/** First point where a segment hits the solid side of a glass pane, or the original end. */
+export function clipToGlass(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  panes: readonly { x: number; y: number; x2: number; y2: number; flip?: boolean }[],
+): { x: number; y: number } {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  let best = 1
+  for (const g of panes) {
+    const gx = g.x2 - g.x
+    const gy = g.y2 - g.y
+    const len = Math.hypot(gx, gy)
+    if (len < 1e-6) continue
+    const nx = g.flip ? gy / len : -gy / len
+    const ny = g.flip ? -gx / len : gx / len
+    // Only a segment coming from the solid side is stopped.
+    const from = (x1 - g.x) * nx + (y1 - g.y) * ny
+    if (from <= 1e-6) continue
+    const denom = dx * nx + dy * ny
+    if (denom >= -1e-9) continue
+    const t = -from / denom
+    if (t <= 0 || t >= best) continue
+    const px = x1 + dx * t - g.x
+    const py = y1 + dy * t - g.y
+    const along = (px * gx + py * gy) / len
+    if (along < 0 || along > len) continue
+    best = t
+  }
+  return { x: x1 + dx * best, y: y1 + dy * best }
+}

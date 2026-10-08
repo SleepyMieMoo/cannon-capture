@@ -1,5 +1,5 @@
 import { DIFFICULTY, validateMap, type SavedMap } from '../editor/maps'
-import { CAMPAIGN, SKIRMISH } from '../levels'
+import { CAMPAIGN, EXAMPLE_MAPS, SKIRMISH } from '../levels'
 import type { Progress } from '../sim/stars'
 import { AI_LEVELS, type AiLevel, type LevelDef } from '../types'
 import type { MapChoice } from './routes'
@@ -41,10 +41,10 @@ export function saveMenuPrefs(p: MenuPrefs): void {
 /**
  * Maps for Play vs AI: Skirmish, the campaign's battle boards (played as
  * plain battles at your difficulty; the levels themselves are unchanged),
- * then your own battle maps that are playable.
+ * the obstacle example boards, then your own battle maps that are playable.
  */
 export function vsAiMaps(saved: SavedMap[]): MapChoice[] {
-  const builtIn: LevelDef[] = [SKIRMISH, ...CAMPAIGN.filter((l) => l.kind !== 'puzzle')]
+  const builtIn: LevelDef[] = [SKIRMISH, ...CAMPAIGN.filter((l) => l.kind !== 'puzzle'), ...EXAMPLE_MAPS]
   const mine = saved.map((m) => m.level).filter((l) => l.kind !== 'puzzle' && validateMap(l).length === 0)
   return [
     ...builtIn.map((level) => ({ id: level.id, name: level.name, group: 'Built-in' as const, level })),

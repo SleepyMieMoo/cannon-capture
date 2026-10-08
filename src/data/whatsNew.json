@@ -4,6 +4,11 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.4.0: new obstacles", "text": "Three new things to aim around: void walls that swallow shots, round pillars that bounce them off their curve, and one-way glass. The AI knows them too: it banks off pillars and glass and never wastes shots into the void." },
+        { "kind": "new", "title": "Void walls", "text": "Dark purple walls with a slow swirl. Any shot that touches one vanishes in a puff, with no bounce, so they close off a lane completely." },
+        { "kind": "new", "title": "Round pillars", "text": "Shots glance off a pillar like a ball off a post: hit it off-centre and the shot flies off at a wide angle. Handy for banking round a crowd." },
+        { "kind": "new", "title": "One-way glass", "text": "Shots pass through a glass pane the way its arrows point and bounce off its bright side. Guard a cannon from one side while still firing out through it." },
+        { "kind": "new", "title": "Two new maps: Glass Garden and Void Gate", "text": "Try the new obstacles in Play vs AI or online on two fair, mirrored maps. In the editor, Map → Examples opens a copy of either, and keys 6, 7 and 8 place void walls, pillars and glass (Q/E turns glass, F flips it)." },
         { "kind": "fix", "title": "Bank shots keep their range", "text": "A shot now flies a set distance, measured along its path, so banking off walls no longer cuts it short (it used to vanish on its 4th bounce). Snipers keep twice the range, and wind that slows a shot doesn't shorten it." },
         { "kind": "new", "title": "Version 0.3.0: battles that pop", "text": "Cannons glow in their team's colour and every shot leaves a trail. Muzzle flashes, smoke and recoil when they fire, sparks where shots hit or bank, barriers that shimmer and shatter, heal sparkles, and a burst when a cannon changes hands." },
         { "kind": "new", "title": "Effects quality setting", "text": "Settings → Display → Effects quality: High, Low or Off. It starts on High, or on Low on a slower device or if battles run slowly. Reduce motion stills the shakes and moving effects but keeps the glows." },

@@ -124,10 +124,11 @@ function injectStyles(): void {
   background: ${glass(theme.hud)}; border-bottom: 2px solid ${cssHex(theme.boardEdge)};
 }
 .cc-bar *, .cc-pop * { box-sizing: border-box; }
-.cc-toolbar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-bottom: 1px solid ${cssHex(theme.boardEdge)}; }
-.cc-group { display: flex; align-items: center; gap: 4px; }
+.cc-toolbar { height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid ${cssHex(theme.boardEdge)}; }
+.cc-group { display: flex; align-items: center; gap: 3px; }
+.cc-toolbar.tight .cc-lbl { display: none; }
 .cc-spacer { flex: 1; min-width: 4px; }
-.cc-btn.sm { min-height: 30px; padding: 3px 8px; border-radius: 8px; font-size: 12px; gap: 4px; white-space: nowrap; }
+.cc-btn.sm { min-height: 30px; padding: 3px 6px; border-radius: 8px; font-size: 12px; gap: 4px; white-space: nowrap; }
 .cc-btn.sm.icon { width: 30px; padding: 0; font-size: 16px; }
 .cc-btn.xs { min-height: 24px; padding: 1px 7px; border-radius: 7px; font-size: 12px; border-width: 1.5px; white-space: nowrap; }
 .cc-context { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; white-space: nowrap; overflow: hidden; }

@@ -7,7 +7,7 @@ import {
   type FanField,
   type StepResult,
 } from '../sim/ballistics'
-import type { CannonKind, Rect, Side } from '../types'
+import type { CannonKind, GlassDef, PillarDef, Rect, Side } from '../types'
 
 export class Shot {
   ball: Ball
@@ -32,10 +32,19 @@ export class Shot {
     this.side = side
   }
 
-  step(dt: number, walls: Rect[], fans: FanField[], bodies: Body[], opts: BallisticsOpts, barriers?: Barrier[]): StepResult {
+  step(
+    dt: number,
+    walls: Rect[],
+    fans: FanField[],
+    bodies: Body[],
+    opts: BallisticsOpts,
+    barriers?: Barrier[],
+    pillars?: readonly PillarDef[],
+    glass?: readonly GlassDef[],
+  ): StepResult {
     this.prevX = this.ball.x
     this.prevY = this.ball.y
-    const result = stepBall(this.ball, dt, walls, fans, bodies, opts, barriers)
+    const result = stepBall(this.ball, dt, walls, fans, bodies, opts, barriers, pillars, glass)
     this.ball = result.ball
     return result
   }

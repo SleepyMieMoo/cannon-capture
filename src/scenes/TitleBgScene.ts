@@ -8,8 +8,10 @@ import { applyTeamColours, sideColor, theme } from '../config/theme'
 import { TUNING } from '../config/tuning'
 import { Fan } from '../entities/Fan'
 import { Wall } from '../entities/Wall'
+import { Pillar } from '../entities/Pillar'
+import { Glass } from '../entities/Glass'
 import { withDifficulty } from '../editor/maps'
-import { CAMPAIGN, SKIRMISH } from '../levels'
+import { CAMPAIGN, EXAMPLE_MAPS, SKIRMISH } from '../levels'
 import { setRingScale } from '../entities/Cannon'
 import { drawBoardSurface } from '../render/boardSurface'
 import { SideGlow, glowColours, glowEdges } from '../render/sideGlow'
@@ -21,7 +23,7 @@ import { beatPulse } from '../ui/beatPulse'
 import type { LevelDef } from '../types'
 
 /** Boards the title's background battle cycles through (both sides played by the Normal AI). */
-export const DEMO_LEVELS: LevelDef[] = [SKIRMISH, ...CAMPAIGN.filter((l) => l.kind !== 'puzzle')]
+export const DEMO_LEVELS: LevelDef[] = [SKIRMISH, ...CAMPAIGN.filter((l) => l.kind !== 'puzzle'), ...EXAMPLE_MAPS]
 /** A background battle restarts on the next board after this long, if nobody has won. */
 const DEMO_MS = 70_000
 
@@ -34,6 +36,8 @@ const DEMO_MS = 70_000
 export class TitleBgScene extends Phaser.Scene {
   private sim!: BattleSim
   private fans: Fan[] = []
+  private walls: Wall[] = []
+  private glass: Glass[] = []
   private fx!: Phaser.GameObjects.Graphics
   private index = 0
   private glow?: SideGlow
@@ -51,13 +55,16 @@ export class TitleBgScene extends Phaser.Scene {
     this.add.graphics().fillStyle(theme.bg, 1).fillRect(-200, -200, GAME_WIDTH + 400, GAME_HEIGHT + 400)
     const board = { x: 24, y: 88, w: 1152, h: 608 }
     drawBoardSurface(this, board)
-    level.walls.forEach((rect) => new Wall(this, rect))
+    this.walls = level.walls.map((rect) => new Wall(this, rect))
+    for (const p of level.pillars ?? []) new Pillar(this, p)
+    this.glass = (level.glass ?? []).map((g) => new Glass(this, g))
     this.fans = level.fans.map((def) => new Fan(this, def))
     this.fx = this.add.graphics().setDepth(3)
     this.vfx = null
     const events: SimEvents = {
       fired: (c) => this.vfx?.fired(c),
-      bounce: (x, y) => this.vfx?.bounce(x, y),
+      bounce: (x, y, surface) => this.vfx?.bounce(x, y, surface),
+      absorbed: (x, y) => this.vfx?.absorbed(x, y),
       hit: (x, y, side, kind) => this.vfx?.hit(x, y, side, kind),
       blocked: (x, y, shield, _side, kind) => this.vfx?.blocked(x, y, shield, kind),
       shieldBroken: (c) => this.vfx?.shieldBroken(c),
@@ -101,6 +108,9 @@ export class TitleBgScene extends Phaser.Scene {
     this.sim.pumpLanes(3)
     if (!this.sim.ended) this.sim.step(dt)
     for (const fan of this.fans) fan.draw(time)
+    const moving = this.vfx?.cfg.rings ?? false
+    for (const wall of this.walls) wall.tick(time, moving)
+    for (const pane of this.glass) pane.draw(time, moving)
     setRingScale(this.cameras.main.zoom / (this.scale.displayScale.x || 1))
     this.vfx?.update(dt, time, this.sim.cannons, this.sim.shots, this.fans)
     for (const c of this.sim.cannons) c.draw(time, this.vfx?.cannonFx ?? null)
