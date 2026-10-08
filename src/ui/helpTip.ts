@@ -189,7 +189,6 @@ function injectTipStyles(): void {
 }
 .ht-tip.above::before { top: auto; bottom: -7px; transform: rotate(225deg); }
 @keyframes ht-in { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .ht-tip { animation: none; } }
 `
   document.head.appendChild(Object.assign(document.createElement('style'), { id: 'cc-help-tip', textContent: css }))
 }

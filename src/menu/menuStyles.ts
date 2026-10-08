@@ -80,7 +80,6 @@ export function injectMenuStyles(): void {
 .jb-eq i:nth-child(2) { animation-delay: -.3s; }
 .jb-eq i:nth-child(3) { animation-delay: -.6s; }
 @keyframes jb-eq { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
-@media (prefers-reduced-motion: reduce) { .jb-eq i { animation: none; transform: scaleY(.7); } }
 .jb-ctrl { display: flex; justify-content: center; align-items: center; gap: 12px; }
 .jb-btn { font: inherit; color: ${theme.text}; background: ${rgba(theme.board, 0.94)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 50%; width: 46px; height: 46px; padding: 0; display: grid; place-items: center; cursor: pointer; transition: background .12s, border-color .12s, transform .08s; }
 .jb-btn .ic { width: 20px; height: 20px; }

@@ -19,6 +19,9 @@ export interface BattleMenuItem {
  * so the board can't be clicked while it is open. Keys: Esc resumes, R
  * restarts, arrows move between buttons.
  */
+/** How long the menu takes to fade out (it takes no clicks meanwhile). */
+const CLOSE_MS = 140
+
 export class BattleMenu {
   open = false
   private readonly overlay: Overlay
@@ -28,6 +31,8 @@ export class BattleMenu {
   private readonly onKey = (e: KeyboardEvent): void => this.key(e)
   /** The last list of buttons (a panel's Back returns to it). */
   private last: { title: string; sub: string; items: BattleMenuItem[] } | null = null
+  /** The fade-out's timer (the overlay hides when it ends). */
+  private closing = 0
   /** Clean-up for a panel shown in place of the buttons (the jukebox). */
   private panelOff: (() => void) | null = null
 
@@ -48,7 +53,10 @@ export class BattleMenu {
       if (e.target === this.overlay.el) this.onEsc()
     })
     this.overlay.el.style.display = 'none'
-    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener('keydown', this.onKey))
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener('keydown', this.onKey)
+      window.clearTimeout(this.closing)
+    })
   }
 
   show(title: string, sub: string, items: BattleMenuItem[]): void {
@@ -65,6 +73,8 @@ export class BattleMenu {
       }),
     )
     this.open = true
+    window.clearTimeout(this.closing)
+    this.overlay.el.classList.remove('closing')
     this.overlay.el.style.display = 'flex'
     this.overlay.place()
     window.addEventListener('keydown', this.onKey)
@@ -98,7 +108,15 @@ export class BattleMenu {
     this.closePanel()
     if (!this.open) return
     this.open = false
-    this.overlay.el.style.display = 'none'
+    // Fades out for a moment (no clicks meanwhile), then it's gone.
+    const el = this.overlay.el
+    el.classList.add('closing')
+    window.clearTimeout(this.closing)
+    this.closing = window.setTimeout(() => {
+      if (this.open) return
+      el.classList.remove('closing')
+      el.style.display = 'none'
+    }, CLOSE_MS)
     window.removeEventListener('keydown', this.onKey)
     ;(document.activeElement as HTMLElement | null)?.blur?.()
   }

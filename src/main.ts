@@ -12,6 +12,8 @@ import { TitleBgScene } from './scenes/TitleBgScene'
 import { TitleScene } from './scenes/TitleScene'
 import { mountPvpPanel, mountSplitView } from './net/pvpDev'
 import { music } from './audio/music'
+import { applyMotion } from './ui/motion'
+import { injectMotionStyles } from './ui/motionStyles'
 
 // ?pvpdev=split shows two copies of the game side by side instead (player vs player test mode).
 const split = mountSplitView()
@@ -23,6 +25,9 @@ if (!split) {
 
 function boot(parent: HTMLElement): void {
   document.body.style.background = theme.bgCss
+  // Reduce motion (Settings, or the device's own setting): marks <html> before anything animates.
+  applyMotion()
+  injectMotionStyles()
 
   // Discord Activity (src/platform/discord.ts): mark the page so CSS can respect Discord's
   // mobile safe areas, send external links through the Discord client, and start the SDK

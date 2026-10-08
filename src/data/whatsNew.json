@@ -4,6 +4,8 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "change", "title": "Version 0.2.5: a livelier feel", "text": "Small touches all over: buttons lift and glow under the mouse and squish when pressed, pages and panels ease in, the result panel pops in with a few bits of confetti on a win, and the top bar shines when a cannon changes hands." },
+        { "kind": "new", "title": "Reduce motion setting", "text": "Settings → Display → Reduce motion stills all of that movement. Auto, the default, follows your device’s own reduce-motion setting." },
         { "kind": "fix", "title": "Version 0.2.4: result buttons fit", "text": "The buttons on the win, loss and surrender panel always fit their words now, sit side by side at the same size, and stack neatly on phones. On small screens the top bar tucks extra buttons into the Menu instead of cutting them off." }
       ]
     },

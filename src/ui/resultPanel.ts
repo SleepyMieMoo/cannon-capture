@@ -11,6 +11,8 @@ export interface ResultPanelOpts {
   /** Screen px the battle HUD takes at the top: the panel centres in the space below it. */
   topInset: () => number
   onAction: (action: ResultAction) => void
+  /** Play the entrance (the first time this round; a rebuild for rematch votes just appears). */
+  animate?: boolean
 }
 
 const STAR = 'M12 1.6l3.1 6.9 7.5.8-5.6 5.1 1.6 7.4L12 18l-6.6 3.8 1.6-7.4L1.4 9.3l7.5-.8z'
@@ -53,7 +55,8 @@ export class ResultPanel {
       view.keys ? h(`p.rp-keys${view.keysOnly ? '.keys' : ''}`, {}, view.keys) : null,
     )
     this.panel.style.borderColor = cssHex(opts.stroke)
-    this.el = h('div.rp', { dataset: { ui: 'result' } }, this.panel)
+    if (opts.animate && view.tone === 'win') this.panel.append(confetti())
+    this.el = h(`div.rp${opts.animate ? '.enter' : ''}`, { dataset: { ui: 'result' } }, this.panel)
     // Presses on the panel are the panel's: the board under it never sees them.
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation())
     this.place()
@@ -89,6 +92,30 @@ export class ResultPanel {
   }
 }
 
+/** Colours the confetti is cut from (the gold, its lighter shade, cream and caramel). */
+const CONFETTI = [theme.player, theme.playerHot, 0xf3e6d8, 0xb49e8a]
+const BITS = 12
+
+/** A small burst of confetti: fixed spread (no randomness), drawn and moved by CSS only. */
+function confetti(): HTMLDivElement {
+  const box = h('div.rp-confetti', { 'aria-hidden': 'true' })
+  for (let i = 0; i < BITS; i++) {
+    // Spread over a fan above the panel's top, alternating sides, the outer bits further.
+    const side = i % 2 === 0 ? -1 : 1
+    const step = Math.floor(i / 2) / (BITS / 2)
+    const x = side * (24 + step * 150 + ((i * 37) % 17))
+    const y = -(30 + ((i * 53) % 46))
+    const bit = h('i')
+    bit.style.setProperty('--x', `${Math.round(x)}px`)
+    bit.style.setProperty('--y', `${Math.round(y)}px`)
+    bit.style.setProperty('--r', `${side * (180 + ((i * 61) % 360))}deg`)
+    bit.style.setProperty('--d', `${80 + ((i * 29) % 160)}ms`)
+    bit.style.setProperty('--c', cssHex(CONFETTI[i % CONFETTI.length]))
+    box.append(bit)
+  }
+  return box
+}
+
 function starSvg(filled: boolean): SVGSVGElement {
   const ns = 'http://www.w3.org/2000/svg'
   const svg = document.createElementNS(ns, 'svg')
@@ -108,7 +135,7 @@ function injectResultStyles(): void {
   const gold = cssHex(theme.player)
   const css = `
 .rp {
-  position: fixed; inset: 0; z-index: 3; box-sizing: border-box; overflow: auto; overscroll-behavior: contain;
+  position: fixed; inset: 0; z-index: 3; box-sizing: border-box; overflow: hidden auto; overscroll-behavior: contain;
   display: flex; padding: 8px max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   background: ${rgba(theme.dim, 0.64)}; font-family: ${theme.font}; color: ${theme.text};
   -webkit-tap-highlight-color: transparent; user-select: none;

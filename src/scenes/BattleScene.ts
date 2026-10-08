@@ -37,6 +37,7 @@ import { starsFor } from '../sim/stars'
 import type { LevelDef, Point, Rect } from '../types'
 import { makeButton } from '../ui/button'
 import { ResultPanel } from '../ui/resultPanel'
+import { motionOK } from '../ui/motion'
 import { offlineResult, onlineResult, type ResultAction, type ResultView } from '../ui/resultView'
 import { SwapMenu, type AutoState } from '../ui/swapMenu'
 import { SettingsPanel } from '../ui/settingsPanel'
@@ -197,6 +198,8 @@ export class BattleScene extends Phaser.Scene {
   private serverSide: Side = 'player'
   /** The result panel (vs AI and online), null until the round ends. */
   private endRoot: ResultPanel | null = null
+  /** This round's result panel has played its entrance (rebuilds just appear). */
+  private endAnimated = false
   /** Stars for a campaign win, worked out once when the round ends. */
   private endStars = 0
   /** Makes sure the result panel is up whenever the round is over (see resultGate.ts). */
@@ -377,6 +380,7 @@ export class BattleScene extends Phaser.Scene {
     this.roomOutcome = null
     this.serverSide = 'player'
     this.endRoot = null
+    this.endAnimated = false
     this.endStars = 0
     this.tabPrefs = loadTabPrefs()
     this.catchUp.clear()
@@ -682,8 +686,20 @@ export class BattleScene extends Phaser.Scene {
     const cx = GAME_WIDTH / 2
     const cy = WORLD_VIEW.y + WORLD_VIEW.h / 2
     const ease = (x: number) => 1 - (1 - x) * (1 - x)
-    const pop = go ? 1 + 0.25 * ease(t) : 1 + 0.28 * (1 - ease(Math.min(1, t / 0.22)))
     const alpha = go ? (t < 0.45 ? 1 : 1 - ((t - 0.45) / 0.55) ** 2) : t > 0.85 ? 1 - ((t - 0.85) / 0.15) * 0.5 : 1
+    // The number punches in (big, then settles with a little give) and shrinks away at the end of its second.
+    // Reduce motion: it just shows. Plain arithmetic: nothing is made per frame.
+    let pop = go ? 1 + 0.25 * ease(t) : 1 + 0.28 * (1 - ease(Math.min(1, t / 0.22)))
+    let numAlpha = alpha
+    if (!motionOK()) pop = 1
+    else if (!go) {
+      const tin = Math.min(1, t / 0.26)
+      const tout = t > 0.8 ? (t - 0.8) / 0.2 : 0
+      const c = 1.70158
+      const back = 1 + (c + 1) * (tin - 1) ** 3 + c * (tin - 1) ** 2
+      pop = (1.35 - 0.35 * back) * (1 - 0.2 * tout * tout)
+      numAlpha = Math.min(1, t / 0.08) * (1 - 0.85 * tout * tout)
+    }
     const r = 84 * k * (go ? pop : 1)
     g.fillStyle(theme.hud, 0.86 * alpha)
     g.fillCircle(cx, cy, r)
@@ -704,7 +720,7 @@ export class BattleScene extends Phaser.Scene {
       .setFontSize(go ? 76 : 112)
       .setPosition(cx, cy + 2 * k)
       .setScale(k * pop)
-      .setAlpha(alpha)
+      .setAlpha(numAlpha)
     if (cd > 0) {
       const kh = Math.min(2.4, Math.max(1, 12 / (16 * cssPerLayout)))
       const spectate = this.online !== null && this.me === null
@@ -767,9 +783,11 @@ export class BattleScene extends Phaser.Scene {
     const stroke = view.tone === 'draw' ? theme.neutral : sideColor(view.tone === 'win' ? 'player' : 'enemy')
     this.endRoot = new ResultPanel(view, {
       stroke,
+      animate: !this.endAnimated,
       topInset: () => this.hud?.el.getBoundingClientRect().bottom ?? 0,
       onAction: (action) => this.onResultAction(action),
     })
+    this.endAnimated = true
     if (focused) this.endRoot.button(focused)?.focus({ preventScroll: true })
     if (DEBUG.enabled) {
       const w = window as unknown as { __ccPanels?: number }
@@ -1963,7 +1981,11 @@ export class BattleScene extends Phaser.Scene {
       .container(GAME_WIDTH / 2, GAME_HEIGHT - 24 - h / 2 - 14, [g, text])
       .setDepth(12)
       .setAlpha(0)
-    this.tweens.add({ targets: this.banner, alpha: 1, duration: 260 })
+    const y = this.banner.y
+    if (motionOK()) {
+      this.banner.y = y + 10
+      this.tweens.add({ targets: this.banner, alpha: 1, y, duration: 280, ease: 'Back.Out' })
+    } else this.tweens.add({ targets: this.banner, alpha: 1, duration: 200 })
     this.time.delayedCall(9000, () => this.hideBanner())
   }
 
@@ -1971,7 +1993,7 @@ export class BattleScene extends Phaser.Scene {
     const banner = this.banner
     if (!banner) return
     this.banner = null
-    this.tweens.add({ targets: banner, alpha: 0, duration: 300, onComplete: () => banner.destroy() })
+    this.tweens.add({ targets: banner, alpha: 0, y: banner.y + (motionOK() ? 8 : 0), duration: 240, ease: 'Quad.In', onComplete: () => banner.destroy() })
   }
 
   /** Online: draw the end screen again (rematch votes, names). */
