@@ -29,6 +29,7 @@ const ringYou = cssHex(theme.ringYou)
 const ringEnemy = cssHex(theme.ringEnemy)
 const ringEdge = cssHex(theme.ringEdge)
 const tinted = cssHex(lerpColor(theme.enemy, theme.player, 0.55))
+const healing = cssHex(lerpColor(theme.player, theme.enemy, 0.32))
 
 const cannon = (x: number, y: number, color: string, angle = 0, r = 15): string => {
   const bx = Math.cos(angle)
@@ -49,8 +50,8 @@ const key = (x: number, y: number, t: string, w = 0): string => {
 const pointer = (x: number, y: number): string =>
   `<path d="M${x} ${y}l0 16 4.5-4 3 7 3-1.4-3-6.6 6-.4z" fill="#fff" stroke="${board}" stroke-width="1.4"/>`
 
-/** How to play, one picture per tip. */
-export const HOWTO: { title: string; text: string; art: string }[] = [
+/** How to play, one picture per tip (a wide tip spans the whole row, picture beside the text). */
+export const HOWTO: { title: string; text: string; art: string; wide?: boolean }[] = [
   {
     title: 'Aim',
     text: 'Click one of your gold cannons (the light ring means yours to steer), then click a cannon or a spot to aim at. It keeps firing there by itself.',
@@ -93,6 +94,14 @@ export const HOWTO: { title: string; text: string; art: string }[] = [
     text: 'Big maps: scroll or pinch to zoom, drag empty space (or WASD / arrows) to pan. Fit shows the whole board.',
     art: svg(
       `<rect x="24" y="18" width="110" height="64" rx="8" fill="none" stroke="${edge}" stroke-width="2"/><rect x="48" y="32" width="58" height="36" rx="5" fill="none" stroke="${gold}" stroke-width="2" stroke-dasharray="5 4"/><path d="M77 50h22m-4-4 4 4-4 4M77 50H55m4-4-4 4 4 4" stroke="${gold}" stroke-width="2" fill="none"/>${key(176, 32, '+  −', 44)}${key(176, 68, 'WASD', 52)}`,
+    ),
+  },
+  {
+    title: 'Heal friends',
+    wide: true,
+    text: 'Select one of your cannons, then click one of yours that’s being captured: your hits heal it instead of hurting it. Once it’s whole, the healer goes back to its earlier aim (auto-target on or off). If it had none, or that target has since become yours, it waits for you to aim it. Tip: heal a cannon a few hits from flipping; a sniper heals 2 per shot.',
+    art: svg(
+      `${cannon(40, 58, gold, -0.06)}${own(40, 58, ringYou)}<circle cx="94" cy="54" r="4" fill="${gold}"/><circle cx="120" cy="53" r="4" fill="${gold}"/><circle cx="146" cy="52" r="4" fill="${gold}"/>${cannon(196, 50, healing, Math.PI)}${own(196, 50, ringYou)}<circle cx="196" cy="50" r="23.5" fill="none" stroke="${edge}" stroke-width="3.5"/><path d="M196 26.5 A23.5 23.5 0 0 1 212.6 66.6" fill="none" stroke="${pink}" stroke-width="3.5" stroke-linecap="round"/><circle cx="196" cy="50" r="30" fill="none" stroke="${gold}" stroke-opacity=".45" stroke-width="2"/>${label(196, 15, '+1 heal', gold, 11)}${label(92, 90, 'your hits heal yours')}`,
     ),
   },
 ]
