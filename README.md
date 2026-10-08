@@ -46,7 +46,7 @@ A cannon tints toward whoever is hitting it, and a ring around it fills in their
 - After a swap the cannon reloads for its new type's full interval (at least 1 s) before it shoots again: 1 s for Normal or a Machine gun, 3 s for a Sniper. A light ring on the cannon fills up while it reloads. So swapping back and forth never gains you damage.
 - In puzzles, swapping is free and does not spend an aim.
 - While a cannon is selected for aiming, only that cannon's own menu shows, so the menu never covers an aim click elsewhere.
-- Pink swaps too, kept simple: if one of your cannons can only be reached as another type, or one of its cannons can't reach anything as it is, it swaps that cannon. It also swaps a normal cannon to a machine gun when one of your cannons is close (within 3/4 of the gun's range, on a lane wide enough for the spread), and back once nothing is in reach. It only counts a lane as usable when it is at least as wide as the type's spread.
+- Pink picks a type for each cannon's current job, the cannon it is attacking or the friend it is healing. It estimates how long each type would take to finish that job: the swap reload, plus the damage still needed divided by the type's expected damage rate on that lane. That rate counts how much of its spread actually lands. So a cannon goes machine gun when its target is close (on open ground, within about 300–350 px of a single cannon; further out so many spread shots miss that a normal cannon does more), sniper when only a sniper reaches (very far, or through a headwind), and normal otherwise. It keeps its type unless another is clearly quicker (Easy 1.4×, Normal 1.15×, Hard 1.08×), and it swaps a given cannon at most every 6 / 3.5 / 2.5 s (half that while healing a friend under attack; no wait if its current type can't hit the job at all). Its swaps follow the same rules as yours, reload included. If none of its cannons can reach one of yours as fitted, it sends the one that can after a swap.
 
 The enemy obeys the same turn speed. Your aim shows as a gold dashed line with a crosshair at free aim points; while a cannon is selected, a pale line previews where your next click would aim. Faint pink lines are the enemy's. The mint ring is a fan blowing downward. P1 starts aimed into the tall wall, so re-aim it. Restart from the corner, or press **R** on the end screen. Works with taps on touch screens too.
 
@@ -214,7 +214,8 @@ All gameplay numbers live in [`src/config/tuning.ts`](src/config/tuning.ts).
 | `aiRetargetMs` | 1600 | How often the enemy re-aims |
 | `aiFinishBias` | 80 | How strongly the AI finishes a cannon it is already capturing |
 | `towers.<type>` | see below | Per tower type (`normal`, `sniper`, `machinegun`): `fireMs`, `damage`, `speedMul`, `lifetimeMul`, `turnMul`, `spreadDeg` |
-| `aiMachineGunReach` | 0.75 | The AI swaps a normal cannon to a machine gun when a foe is within this share of the gun's range |
+| `aiSwap.cooldownMs` | easy 6000 / normal 3500 / hard 2500 | Least time between two type swaps of one AI cannon (half while healing) |
+| `aiSwap.gain` | easy 1.4 / normal 1.15 / hard 1.08 | How much quicker another type must finish the job before the AI swaps |
 | `swapLockMs` | 1000 | Minimum reload after swapping type in play |
 | `aiHealAtProgress` | 4 | The AI sends a healer once a foe has this much capture progress on one of its cannons |
 

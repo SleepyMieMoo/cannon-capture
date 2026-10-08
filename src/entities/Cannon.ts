@@ -125,6 +125,11 @@ export class Cannon {
     return fireMsFor(this.kind, sideMs)
   }
 
+  /** Milliseconds between shots if it were fitted as `kind` (same side rate). */
+  fireMsAs(kind: CannonKind): number {
+    return fireMsFor(kind, this.sideMs)
+  }
+
   /** Still reloading after a type swap. */
   get swapping(): boolean {
     return this.swapLeft > 0
