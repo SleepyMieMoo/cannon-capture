@@ -285,7 +285,7 @@ describe('AI on big maps', () => {
     while (!step.pump(0.5)) frames++
     expect(frames).toBeGreaterThan(1)
     expect(step.table).toEqual(all)
-  })
+  }, 30_000) // builds every lane twice: about 3.5 s alone, more while other test files run
 
   it('builds enemy lanes first', () => {
     const level = hugeMap(30, 20)

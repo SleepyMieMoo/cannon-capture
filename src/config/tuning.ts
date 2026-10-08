@@ -37,7 +37,7 @@ export const TUNING = {
   shotLifetimeMs: 4500,
   /** Default fan acceleration in pixels per second squared. */
   fanForce: 540,
-  /** How often each enemy cannon re-thinks its plan (a map's ai.retargetMs overrides it). */
+  /** How often each AI cannon re-thinks its plan (every difficulty; staggered per cannon). */
   aiRetargetMs: 1600,
   /**
    * The AI sends one helper to heal its own cannon once a foe has this much
@@ -47,8 +47,7 @@ export const TUNING = {
   /**
    * Tower types, one block each. Shots fly at shotSpeed * speedMul and live
    * shotLifetimeMs * lifetimeMul, so range = speedMul * lifetimeMul * the
-   * normal range. fireMs: ms between shots (null = the side's normal rate,
-   * fireIntervalMs or a level's ai.fireMs). damage: capture progress per hit,
+   * normal range. fireMs: ms between shots (null = fireIntervalMs). damage: capture progress per hit,
    * and how much a hit heals on a friend (fractions are fine). turnMul: barrel
    * turn speed relative to turnSpeedDeg. spreadDeg: each shot leaves the
    * barrel up to this many degrees off its aim, at random (0 = exact).
@@ -71,28 +70,57 @@ export const TUNING = {
    * fire interval x the share of its spread that lands on the lane). It
    * swaps only when the best type beats the current one by `gain`, and at
    * most once per `cooldownMs` per cannon (unless the current type can't hit
-   * the job at all). Keyed by the map's difficulty.
+   * the job at all). The same for every difficulty.
    */
-  aiSwap: {
-    cooldownMs: { easy: 6000, normal: 3500, hard: 2500 },
-    gain: { easy: 1.4, normal: 1.15, hard: 1.08 },
-  },
+  aiSwap: { cooldownMs: 3000, gain: 1.15 },
   /**
    * How the AI commits to a plan (see src/ai/AiController.ts). Each cannon
-   * thinks on its own staggered tick (the map's ai.retargetMs: Easy 2.4 s,
-   * Normal 1.8 s, Hard 1.3 s). A job (a foe to capture or a friend to heal,
-   * plus the tower type for it) is kept until it is done, impossible, or,
-   * after at least commitMs, another job looks `margin` times quicker.
-   * It never changes its mind mid-turn unless the job fell through.
-   * reactMs: how soon it responds to real events (a friend under attack,
-   * a job finished or lost). crowdMs: the extra cost, per cannon already on
-   * it, of piling onto the same target (not charged when the other side is
-   * capturing it: then ganging up wins the race).
+   * thinks on its own staggered tick (aiRetargetMs, every difficulty). A job
+   * (a foe to capture or a friend to heal, plus the tower type for it) is
+   * kept until it is done, impossible, or, after at least commitMs, another
+   * job looks `margin` times quicker (see aiLevels). It never changes its
+   * mind mid-turn unless the job fell through. crowdMs: the extra cost, per
+   * cannon already on it, of piling onto the same target (not charged when
+   * the other side is capturing it: then ganging up wins the race).
    */
-  aiPlan: {
-    commitMs: { easy: 5000, normal: 4000, hard: 4000 },
-    margin: { easy: 1.4, normal: 1.3, hard: 1.3 },
-    reactMs: { easy: 1200, normal: 600, hard: 250 },
-    crowdMs: 3000,
+  aiPlan: { crowdMs: 3000 },
+  /**
+   * Difficulty is intelligence only: every level fires, turns, thinks and
+   * swaps exactly like you. What differs:
+   * - aimError: how far off its first shot at a new job is, in half-widths
+   *   of the lane (the spread of a half-normal; under 1 lands, before the
+   *   type's own spread). 1.9 gives about 50% first-shot hits, 1.0 about
+   *   75% (measured, see tests/difficulty.test.ts), 0 is perfect. The AI just aims at an offset point; shots follow
+   *   the same rules as yours. overshoot: share of errors past the target in
+   *   the direction it was turning (the rest stop short).
+   * - correct: after it sees a miss, the error is multiplied by this (it
+   *   recalculates), so a target it keeps shooting gets hit more and more.
+   * - maxTricks: bank shots and fan curves it will use (each bounce or fan
+   *   counts one; straight shots count 0).
+   * - misjudge: up to this share of error in how quick it thinks each job
+   *   is (fixed per cannon and target, so it doesn't make it twitchy).
+   * - reactMs: how soon it responds to events (a friend under attack, a job
+   *   finished or lost). commitMs / margin: see aiPlan.
+   * - lookahead: try its best few jobs in a quick headless simulation
+   *   first (see aiLookahead).
+   */
+  aiLevels: {
+    easy: { aimError: 1.9, overshoot: 0.6, correct: 0.45, maxTricks: 0, misjudge: 0.15, reactMs: 1200, commitMs: 5000, margin: 1.4, lookahead: false },
+    normal: { aimError: 1.0, overshoot: 0.6, correct: 0.45, maxTricks: 1, misjudge: 0.07, reactMs: 600, commitMs: 4000, margin: 1.3, lookahead: false },
+    hard: { aimError: 0, overshoot: 0.6, correct: 0, maxTricks: 99, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: false },
+    impossible: { aimError: 0, overshoot: 0.6, correct: 0, maxTricks: 99, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: true },
   },
+  /**
+   * Impossible's look-ahead. When a cannon is free to pick a new job it
+   * simulates its `candidates` best jobs (plus keeping its current one, and
+   * trading jobs with a teammate) for horizonMs of game time in a copy of
+   * the round, in steps of stepMs, and takes the best outcome. At most
+   * frameSteps simulation steps and at most frameBudgetMs of this work per
+   * frame (whichever comes first); the rest waits for the next frame. The
+   * step cap keeps Impossible equally quick-thinking on fast and slow
+   * computers; the time cap protects the frame rate on slow ones.
+   * A new plan must beat keeping the current one by minGain (in capture
+   * progress points over the horizon; holding a cannon is worth 12).
+   */
+  aiLookahead: { candidates: 3, horizonMs: 4000, stepMs: 33, frameSteps: 120, frameBudgetMs: 3, minGain: 1.5 },
 } as const

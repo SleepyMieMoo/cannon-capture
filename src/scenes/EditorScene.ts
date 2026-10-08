@@ -132,6 +132,7 @@ export class EditorScene extends Phaser.Scene {
     aimsRow: HTMLDivElement
     diff: HTMLSelectElement
     diffRow: HTMLDivElement
+    diffNote: HTMLDivElement
     size: HTMLSelectElement
     hint: HTMLInputElement
     issues: HTMLDivElement
@@ -955,9 +956,11 @@ export class EditorScene extends Phaser.Scene {
     const diff = h(
       'select.cc-sel',
       { onchange: () => this.edit(() => (this.level = withDifficulty(this.level, diff.value as Difficulty)), { rebuild: false }) },
-      ...(Object.keys(DIFFICULTY) as Difficulty[]).map((d) => h('option', { value: d }, DIFFICULTY[d].label)),
+      ...(Object.keys(DIFFICULTY) as Difficulty[]).map((d) => h('option', { value: d, title: DIFFICULTY[d].blurb }, DIFFICULTY[d].label)),
     )
-    const diffRow = h('div.cc-row', {}, h('label', {}, 'AI'), diff)
+    // Difficulty is how smart pink plays; every level fires and turns like you.
+    const diffNote = h('div.cc-note', { style: 'margin:-2px 0 6px' }, '')
+    const diffRow = h('div', {}, h('div.cc-row', {}, h('label', {}, 'AI'), diff), diffNote)
     const size = h(
       'select.cc-sel',
       { onchange: () => this.setSize(size.value as MapSize) },
@@ -1039,7 +1042,7 @@ export class EditorScene extends Phaser.Scene {
       h('div.cc-keys', {}, ...keys.flatMap(([k, v]) => [h('b', {}, k), h('span', {}, v)])),
     )
 
-    this.dom = { tools, props, mapName, status, zoomText, snap, undo, redo, popBtns, pops, name, mode, aims, unlimited, aimsRow, diff, diffRow, size, hint, issues, share, file }
+    this.dom = { tools, props, mapName, status, zoomText, snap, undo, redo, popBtns, pops, name, mode, aims, unlimited, aimsRow, diff, diffRow, diffNote, size, hint, issues, share, file }
   }
 
   /** Open one popover (or close all with null). Clicking its button again closes it. */
@@ -1103,6 +1106,7 @@ export class EditorScene extends Phaser.Scene {
     d.aims.disabled = d.unlimited.checked
     if (active !== d.aims && L.aims !== undefined) d.aims.value = String(L.aims)
     d.diff.value = difficultyOf(L)
+    d.diffNote.textContent = DIFFICULTY[difficultyOf(L)].blurb
     d.size.value = L.size ?? 'small'
     if (active !== d.hint) d.hint.value = L.hint ?? ''
     d.issues.textContent = validateMap(L).join(' ')

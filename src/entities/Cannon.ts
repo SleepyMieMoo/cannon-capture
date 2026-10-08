@@ -4,6 +4,7 @@ import { lerpColor, shade, sideColor, theme } from '../config/theme'
 import { aimAngle, aimShot, type Ball } from '../sim/ballistics'
 import { angleDelta, turnToward } from '../sim/aim'
 import { applyCaptureHit } from '../sim/capture'
+import { seededRandom } from '../sim/random'
 import {
   KINDS,
   damageFor,
@@ -94,6 +95,35 @@ export class Cannon {
       this.root = scene.add.container(x, y, [this.body, this.barrel])
       this.root.setDepth(5)
     }
+  }
+
+  /**
+   * A headless copy for look-ahead simulations: same side, type, barrel,
+   * capture meter, reload and aim. Aims at other cannons are remapped
+   * through `byId` (call linkCopy once every copy exists).
+   */
+  copy(): Cannon {
+    const c = new Cannon(null, this.id, this.name, this.x, this.y, this.side, 0, this.kind)
+    c.angle = this.angle
+    c.captureAttacker = this.captureAttacker
+    c.captureProgress = this.captureProgress
+    c.aimPoint = this.aimPoint ? { ...this.aimPoint } : null
+    c.cooldown = this.cooldown
+    c.swapTotal = this.swapTotal
+    c.swapLeft = this.swapLeft
+    c.sideMs = this.sideMs
+    c.shotsFired = this.shotsFired
+    return c
+  }
+
+  /** Point a copy's cannon references (target, heal, saved aim) at the other copies. */
+  linkCopy(original: Cannon, byId: (id: string) => Cannon | undefined): void {
+    const map = (c: Cannon | null): Cannon | null => (c ? (byId(c.id) ?? null) : null)
+    this.target = map(original.target)
+    this.healing = map(original.healing)
+    this.resumeAim = original.resumeAim
+      ? { target: map(original.resumeAim.target), aimPoint: original.resumeAim.aimPoint ? { ...original.resumeAim.aimPoint } : null }
+      : null
   }
 
   setTarget(target: Cannon | null): void {
@@ -417,19 +447,5 @@ export class Cannon {
 
   private facing(): number {
     return this.angle
-  }
-}
-
-/** Small seeded PRNG (mulberry32) keyed on a string. */
-function seededRandom(key: string): () => number {
-  let h = 2166136261
-  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619)
-  let a = h >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }

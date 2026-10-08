@@ -22,14 +22,6 @@ function run(s: BattleSim, ms: number, each?: () => void): void {
   }
 }
 
-/** What a cannon is doing right now, e.g. "normal>n1" or "machinegun heal e2". */
-function doing(c: Cannon): string {
-  if (c.healing) return `${c.kind} heal ${c.healing.id}`
-  if (c.target) return `${c.kind}>${c.target.id}`
-  if (c.aimPoint) return `${c.kind}@${Math.round(c.aimPoint.x)},${Math.round(c.aimPoint.y)}`
-  return `${c.kind} -`
-}
-
 /** Like Nova's Hard playtest: two unaimed pink cannons, a fan and a wall in the middle, neutrals all around. */
 const NOVA: LevelDef = {
   id: 'custom-nova', name: 'Nova', kind: 'battle', size: 'medium',
@@ -57,7 +49,7 @@ const TWO: LevelDef = {
     { id: 'e1', name: 'E1', x: 900, y: 330, side: 'enemy' },
     { id: 'e2', name: 'E2', x: 900, y: 450, side: 'enemy' },
     { id: 'n1', name: 'N1', x: 640, y: 390, side: 'neutral' },
-    { id: 'n2', name: 'N2', x: 560, y: 600, side: 'neutral' },
+    { id: 'n2', name: 'N2', x: 640, y: 520, side: 'neutral' },
   ],
 }
 
@@ -79,8 +71,8 @@ describe('AI commits to a plan', () => {
     expect(new Set(t).size).toBe(t.length)
   })
 
-  it("Nova's Hard map: no cannon changes its mind within commitMs unless something actually happened", () => {
-    const s = sim(NOVA, 'hard')
+  it.each(['easy', 'normal', 'hard', 'impossible'] as const)("Nova's map on %s: no cannon changes its mind within commitMs unless something actually happened", (d) => {
+    const s = sim(NOVA, d)
     const bot = new BattleBot(s)
     while (s.clock < 40_000 && !s.ended) {
       bot.update(FRAME)
@@ -88,12 +80,12 @@ describe('AI commits to a plan', () => {
     }
     expect(s.ai.log.length).toBeGreaterThan(2)
     const last = new Map<string, number>()
-    for (const d of s.ai.log) {
-      const prev = last.get(d.id)
-      if (!EVENT.test(d.why) && !d.why.startsWith('refit') && prev !== undefined) {
-        expect(d.t - prev, `${d.id} at ${d.t}ms: ${d.why}`).toBeGreaterThanOrEqual(TUNING.aiPlan.commitMs.hard)
+    for (const e of s.ai.log) {
+      const prev = last.get(e.id)
+      if (!EVENT.test(e.why) && !e.why.startsWith('refit') && prev !== undefined) {
+        expect(e.t - prev, `${e.id} at ${e.t}ms: ${e.why}`).toBeGreaterThanOrEqual(TUNING.aiLevels[d].commitMs)
       }
-      if (!d.why.startsWith('refit')) last.set(d.id, d.t)
+      if (!e.why.startsWith('refit')) last.set(e.id, e.t)
     }
   })
 
@@ -103,11 +95,13 @@ describe('AI commits to a plan', () => {
       run(s, 1000)
       const e1 = s.byId('e1')!
       const e2 = s.byId('e2')!
-      const plan = [doing(e1), doing(e2)]
+      // The job (target and type) stays put; Easy and Normal may nudge their aim after a miss.
+      const job = (c: Cannon) => `${c.kind} ${s.ai.jobs.get(c)?.kind} ${s.ai.jobs.get(c)?.target.id}`
+      const plan = [job(e1), job(e2)]
       let changes = 0
       // Nothing gets captured in 6 s (8 hits at 1 per second or slower).
       run(s, 6000, () => {
-        if (doing(e1) !== plan[0] || doing(e2) !== plan[1]) changes += 1
+        if (job(e1) !== plan[0] || job(e2) !== plan[1]) changes += 1
       })
       expect(changes, d).toBe(0)
     }
@@ -119,10 +113,10 @@ describe('AI commits to a plan', () => {
       const e1 = s.byId('e1')!
       const e2 = s.byId('e2')!
       run(s, 1000)
-      const first = [e1.target?.id ?? e1.aimPoint, e2.target?.id ?? e2.aimPoint]
-      expect(new Set([s.ai.jobs.get(e1)?.target.id, s.ai.jobs.get(e2)?.target.id]), d).toEqual(new Set(['n1', 'n2']))
+      const first = [s.ai.jobs.get(e1)?.target.id, s.ai.jobs.get(e2)?.target.id]
+      expect(new Set(first), d).toEqual(new Set(['n1', 'n2']))
       run(s, 6000)
-      expect([e1.target?.id ?? e1.aimPoint, e2.target?.id ?? e2.aimPoint], d).toEqual(first)
+      expect([s.ai.jobs.get(e1)?.target.id, s.ai.jobs.get(e2)?.target.id], d).toEqual(first)
     }
   })
 
@@ -143,9 +137,9 @@ describe('AI commits to a plan', () => {
     const hard = react('hard')
     const easy = react('easy')
     expect(hard).toBeGreaterThan(0)
-    expect(hard).toBeLessThanOrEqual(TUNING.aiPlan.reactMs.hard + 50)
-    expect(easy).toBeGreaterThanOrEqual(TUNING.aiPlan.reactMs.easy - 50)
-    expect(easy).toBeLessThanOrEqual(TUNING.aiPlan.reactMs.easy + 50)
+    expect(hard).toBeLessThanOrEqual(TUNING.aiLevels.hard.reactMs + 50)
+    expect(easy).toBeGreaterThanOrEqual(TUNING.aiLevels.easy.reactMs - 50)
+    expect(easy).toBeLessThanOrEqual(TUNING.aiLevels.easy.reactMs + 50)
   })
 
   it('a friend one hit from flipping gets a second helper', () => {
@@ -168,7 +162,7 @@ describe('AI commits to a plan', () => {
     const e1 = s.byId('e1')!
     const target = e1.target!
     while (target.side !== 'enemy') target.receiveHit('enemy', 1)
-    run(s, TUNING.aiPlan.reactMs.hard + 50)
+    run(s, TUNING.aiLevels.hard.reactMs + 50)
     expect(e1.target).not.toBe(null)
     expect(e1.target).not.toBe(target)
   })

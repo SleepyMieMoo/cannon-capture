@@ -201,7 +201,7 @@ describe('machine gun', () => {
     expect(first.damage).toBe(0.3)
   })
 
-  it('a level that slows pink down slows its machine guns by the same factor', () => {
+  it("an old level's slower pink fire rate no longer slows anything: machine guns still fire every 0.2 s", () => {
     const level: LevelDef = { ...range, kind: 'battle', ai: { fireMs: 1300 }, cannons: [{ id: 'e1', name: 'E1', x: 900, y: 400, side: 'enemy', kind: 'machinegun' }, { id: 'p1', name: 'P1', x: 500, y: 400, side: 'player' }] }
     const sim = new BattleSim(level)
     const e1 = sim.byId('e1')!
@@ -212,7 +212,7 @@ describe('machine gun', () => {
     const mg = log.filter((s) => s.id === 'e1')
     const gaps = mg.slice(1).map((s, i) => s.t - mg[i].t)
     const avg = gaps.reduce((a, b) => a + b, 0) / gaps.length
-    expect(Math.abs(avg - 260)).toBeLessThan(10)
+    expect(Math.abs(avg - 200)).toBeLessThan(5)
   })
 
   it('share codes and saved maps keep machine guns; unknown types fall back to normal', () => {

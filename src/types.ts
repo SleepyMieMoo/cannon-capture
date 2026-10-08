@@ -17,6 +17,10 @@ export interface WallDef extends Rect {
 export type MapSize = 'small' | 'medium' | 'large' | 'huge'
 
 /** Tower types. More can slot in later (see src/config/kinds.ts). */
+/** AI difficulty levels, easiest first. */
+export const AI_LEVELS = ['easy', 'normal', 'hard', 'impossible'] as const
+export type AiLevel = (typeof AI_LEVELS)[number]
+
 export const CANNON_KINDS = ['normal', 'sniper', 'machinegun'] as const
 
 export type CannonKind = (typeof CANNON_KINDS)[number]
@@ -74,10 +78,12 @@ export interface LevelDef {
    */
   par?: number
   /**
-   * Enemy AI overrides. retargetMs: how often each of its cannons re-thinks its plan. fireMs: time between
-   * enemy shots (yours are always TUNING.fireIntervalMs), to ease early levels.
+   * The enemy AI. difficulty: how smart it is (never faster or stronger:
+   * every level fires at TUNING.fireIntervalMs, like you). Older maps have
+   * no difficulty but a fireMs (and retargetMs) instead; the difficulty is
+   * read from those (see levelDifficulty) and they no longer change speed.
    */
-  ai?: { retargetMs?: number; fireMs?: number }
+  ai?: { difficulty?: AiLevel; retargetMs?: number; fireMs?: number }
   /** Board size preset (custom maps). Defaults to small, the original board. */
   size?: MapSize
   cannons: CannonDef[]
