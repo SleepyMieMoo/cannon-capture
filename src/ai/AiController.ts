@@ -171,6 +171,8 @@ export class AiController {
   /** Each own cannon's committed job: the team's claims list. */
   readonly jobs = new Map<Cannon, Job>()
   private readonly nextThink = new Map<Cannon, number>()
+  /** Cannons re-thinking after a pause: free of the commitment time (Impossible only, see afterPause). */
+  private readonly reassess = new Set<Cannon>()
   /** Reaction thinks that are due (cannon -> when, why). */
   private readonly react = new Map<Cannon, { at: number; why: string }>()
   private helpAt: number | null = null
@@ -217,6 +219,7 @@ export class AiController {
     this.world = world
     this.jobs.clear()
     this.nextThink.clear()
+    this.reassess.clear()
     this.react.clear()
     this.helpAt = null
     this.log.length = 0
@@ -267,7 +270,7 @@ export class AiController {
         this.react.delete(c)
         this.think(c, cannons, due.why)
       } else if (this.now >= (this.nextThink.get(c) ?? Infinity)) {
-        this.think(c, cannons, 'tick')
+        this.think(c, cannons, this.reassess.has(c) ? 'after pause' : 'tick')
       }
     }
     if (this.deliberating.length) this.deliberate(cannons)
@@ -276,6 +279,26 @@ export class AiController {
   /** When `c` next thinks on its own tick (ms of controller time), if scheduled. */
   nextThinkAt(c: Cannon): number | undefined {
     return this.nextThink.get(c)
+  }
+
+  /**
+   * The round resumed after your tactical pause. Impossible re-assesses at
+   * once: every cannon of its side (except ones mid-heal) thinks on the very
+   * next tick, with the board as you left it (look-aheads started before the
+   * pause are dropped, they no longer match), and may drop a committed job
+   * if the look-ahead finds one clearly better (minGain still applies).
+   * Other levels carry on as usual: they notice your changes through their
+   * normal reaction time.
+   */
+  afterPause(cannons: Cannon[]): void {
+    if (!this.skill.lookahead) return
+    this.deliberating.length = 0
+    for (const c of cannons) {
+      if (c.side !== this.side || c.healing) continue
+      this.react.delete(c)
+      this.nextThink.set(c, this.now)
+      this.reassess.add(c)
+    }
   }
 
   /** Make every cannon think right now (tests, debugging). Impossible still deliberates over the next frames. */
@@ -342,6 +365,7 @@ export class AiController {
       this.aimErr.delete(c)
       this.threats.delete(c)
       this.routes.delete(c)
+      this.reassess.delete(c)
     }
   }
 
@@ -439,6 +463,7 @@ export class AiController {
   private think(c: Cannon, cannons: Cannon[], why: string): void {
     this.nextThink.set(c, this.now + this.timing.thinkMs)
     if (this.deliberating.some((d) => d.cannon === c)) return
+    const fresh = this.reassess.delete(c)
     this.sync(c)
     const job = this.jobs.get(c)
     const broken = job ? this.broken(c, job) : 'no job'
@@ -449,10 +474,10 @@ export class AiController {
       // Heals run until the friend is whole (or lost).
       if (kept.kind === 'heal') return this.refit(c, kept)
       this.reroute(c, kept)
-      // Committed: only a type that can't hit at all gets changed.
-      if (this.now - kept.since < this.timing.commitMs) return this.refit(c, kept, true)
+      // Committed: only a type that can't hit at all gets changed (unless it is re-assessing after a pause).
+      if (!fresh && this.now - kept.since < this.timing.commitMs) return this.refit(c, kept, true)
       // Never change its mind halfway through a turn.
-      if (c.aimErrorDeg() > TURNING_DEG) return
+      if (!fresh && c.aimErrorDeg() > TURNING_DEG) return
     }
     if (this.skill.lookahead && this.world && this.lanesKnown(c)) {
       const candidates = this.candidates(c, cannons, kept)
