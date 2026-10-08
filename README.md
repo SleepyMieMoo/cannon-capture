@@ -31,6 +31,16 @@ Nothing else is automatic. Free aim points are never changed, cannons you haven'
 - Puzzles never auto-target, whatever the switches say, since every aim there is yours to spend. The Settings panel shows the switch greyed out there, and the hover menu leaves out the Auto pill.
 - The AI's cannons ignore all of this. Pink plans its own targets.
 
+**Tactical pause.** Press **Space** (or **Pause** in the top bar, for touch) to freeze the round. Everything stops: shots, turning, reloads, barrier regen, capture meters and the AI. A gold frame and a "Paused" label show it, and the board stays clickable.
+
+- While paused you give orders as usual: select cannons, click aim points or targets, pick types from the hover menu (or **T**), switch auto-target. They show as queued orders: a dashed gold aim line (or a gold barrier arc for a shield), and a spinning dashed ring with "→ Sniper" for a queued type. The hover menu outlines the queued type. Picking the cannon's current type again cancels the queued swap.
+- Resume (Space again) and every queued order happens at that one instant. Swaps go first, so their reload starts at resume, not when you queued them.
+- Auto-target switches apply at once, even while paused (they only act at capture moments anyway).
+- Camera pan and zoom still work. Leaving the tab or window pauses the round on its own.
+- Puzzles pause too. A queued aim spends one of your aims straight away; re-aiming a cannon you already queued is free. Editor playtests pause like any battle.
+- Fairness: Impossible re-assesses the moment you resume. Every one of its cannons (except ones mid-heal) thinks on the next tick with fresh look-aheads, and may drop a job it committed to if the look-ahead finds a clearly better one (its usual minimum gain still applies). Easy, Normal and Hard just carry on and notice your changes at their normal reaction speed.
+- There is no limit on pausing. A versus mode would need one (a few pauses per round, or a short cooldown).
+
 **Healing.** Each cannon has one capture meter, like a tug of war:
 
 - Your own shots heal your cannons. If pink is part-way through capturing one of your gold cannons, select another gold cannon and click the damaged one. Every hit takes one point of pink's progress back off, so the tint and the ring shrink and a gold ring pulses out with a "+1 heal" popup. Once it is whole, the healer goes back to whatever it was aiming at before.

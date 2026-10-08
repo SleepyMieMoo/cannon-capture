@@ -23,7 +23,7 @@ import { drawStar, makeButton } from '../ui/button'
 import { SwapMenu, type AutoState } from '../ui/swapMenu'
 import { SettingsPanel } from '../ui/settingsPanel'
 import { layoutScale } from '../render/resolution'
-import { KINDS, fmtNum, kindLabel, nextKind } from '../config/kinds'
+import { KINDS, firesAs, fmtNum, kindLabel, nextKind } from '../config/kinds'
 
 interface Spark {
   x: number
@@ -95,6 +95,12 @@ export class BattleScene extends Phaser.Scene {
   private shownEnd = false
   private restarting = false
   private hint!: Phaser.GameObjects.Text
+  private pauseLink!: Phaser.GameObjects.Text
+  /** Paused: a frame round the board and a label at its top (UI camera; never blocks the board). */
+  private pausedFx!: Phaser.GameObjects.Graphics
+  private pausedLabel!: Phaser.GameObjects.Text
+  /** Paused: "→ Sniper" over cannons with a queued type swap (board layer). */
+  private queuedLabels = new Map<Cannon, Phaser.GameObjects.Text>()
   private counts!: Partial<Record<Side, Phaser.GameObjects.Text>>
   private aimsText: Phaser.GameObjects.Text | null = null
   private banner: Phaser.GameObjects.Container | null = null
@@ -241,7 +247,30 @@ export class BattleScene extends Phaser.Scene {
         : makeBot(this.sim)
 
     this.uiBlock(() => this.createHud())
-    this.swapMenu = new SwapMenu(this, (obj) => this.ui(obj), (c) => this.autoState(c))
+    this.swapMenu = new SwapMenu(this, (obj) => this.ui(obj), (c) => this.autoState(c), (c) => this.sim.queuedKind(c))
+    this.pausedFx = this.ui(this.add.graphics().setDepth(30))
+    this.pausedLabel = this.ui(
+      this.add
+        .text(GAME_WIDTH / 2, HUD_H + 24, 'Paused  ·  give orders now, they all happen when you resume (Space)', {
+          fontFamily: theme.font,
+          fontSize: '14px',
+          fontStyle: 'bold',
+          color: theme.ink,
+        })
+        .setOrigin(0.5)
+        .setDepth(31)
+        .setVisible(false),
+    )
+    // Leaving the tab (or the window) pauses the round, so nothing happens behind your back.
+    this.game.events.on(Phaser.Core.Events.BLUR, this.onLoseFocus, this)
+    this.game.events.on(Phaser.Core.Events.HIDDEN, this.onLoseFocus, this)
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.game.events.off(Phaser.Core.Events.BLUR, this.onLoseFocus, this)
+      this.game.events.off(Phaser.Core.Events.HIDDEN, this.onLoseFocus, this)
+      this.input.keyboard?.removeCapture('SPACE')
+    })
+    // A DOM button focused before the round (the editor's Playtest, say) must not catch Space.
+    if (typeof document !== 'undefined') (document.activeElement as HTMLElement | null)?.blur?.()
     this.settings = new SettingsPanel(this, (obj) => this.ui(obj), GAME_WIDTH - 16, HUD_H + 8)
     if (this.wc.canZoomOut) this.createZoomUi()
     if (this.level.hint) this.showBanner(this.level.hint)
@@ -257,7 +286,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.wc.update(dt)
     this.sim.pumpLanes(5)
-    for (let i = 0; i < DEBUG.speed && !this.sim.ended; i++) {
+    for (let i = 0; i < DEBUG.speed && !this.sim.ended && !this.sim.paused; i++) {
       this.bot?.update(dt)
       this.sim.step(dt)
     }
@@ -269,6 +298,7 @@ export class BattleScene extends Phaser.Scene {
     for (const ping of this.pings) ping.life -= dt / 420
     this.pings = this.pings.filter((ping) => ping.life > 0)
     this.drawFx(time)
+    this.drawPaused(time)
     this.updateSwapMenu(dt, time)
     if (this.ended) this.settings.hide()
     const lp = this.pointerLayout
@@ -313,6 +343,10 @@ export class BattleScene extends Phaser.Scene {
     keyboard.off('keydown-N', this.onNextKey, this)
     keyboard.off('keydown-T', this.onTypeKey, this)
     keyboard.off('keydown-M', this.onAutoKey, this)
+    keyboard.off('keydown-SPACE', this.onSpaceKey, this)
+    keyboard.on('keydown-SPACE', this.onSpaceKey, this)
+    // Space never scrolls the page or presses a focused button.
+    keyboard.addCapture('SPACE')
     keyboard.on('keydown-T', this.onTypeKey, this)
     keyboard.on('keydown-M', this.onAutoKey, this)
     keyboard.on('keydown-R', this.onRestartKey, this)
@@ -357,10 +391,26 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /** T: swap the selected cannon to the next tower type. */
+  private onSpaceKey(): void {
+    this.togglePause()
+  }
+
+  /** Tactical pause on/off (Space, or the HUD's Pause / Resume). */
+  togglePause(): void {
+    if (this.ended || this.restarting) return
+    if (this.sim.paused) this.sim.resume()
+    else this.sim.pause()
+    this.pauseLink?.setText(this.sim.paused ? 'Resume' : 'Pause').setFontStyle(this.sim.paused ? 'bold' : 'normal')
+  }
+
+  private onLoseFocus(): void {
+    if (!this.sim.paused && !this.ended && !this.restarting) this.togglePause()
+  }
+
   private onTypeKey(): void {
     const sel = this.selected
     if (!sel || this.ended) return
-    this.sim.playerSwap(sel, nextKind(sel.kind))
+    this.sim.playerSwap(sel, nextKind(this.sim.queuedKind(sel) ?? sel.kind))
   }
 
   private toLayout(pointer: Phaser.Input.Pointer): Point {
@@ -627,10 +677,10 @@ export class BattleScene extends Phaser.Scene {
 
     const legend = this.add.graphics().setDepth(10)
     const groups: { side: Side; x: number; label: string }[] = [
-      { side: 'player', x: 564, label: 'You' },
-      { side: 'neutral', x: 676, label: 'Neutral' },
+      { side: 'player', x: 504, label: 'You' },
+      { side: 'neutral', x: 616, label: 'Neutral' },
     ]
-    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 816, label: 'Enemy' })
+    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 756, label: 'Enemy' })
     const counts: Partial<Record<Side, Phaser.GameObjects.Text>> = {}
     this.counts = counts
     for (const group of groups) {
@@ -652,12 +702,12 @@ export class BattleScene extends Phaser.Scene {
     }
     if (this.isPuzzle && this.level.aims !== undefined) {
       this.aimsText = this.add
-        .text(816, HUD_ROW, '', { fontFamily: theme.font, fontSize: '15px', fontStyle: 'bold', color: theme.text })
+        .text(756, HUD_ROW, '', { fontFamily: theme.font, fontSize: '15px', fontStyle: 'bold', color: theme.text })
         .setOrigin(0, 0.5)
         .setDepth(10)
     }
 
-    const link = (x: number, label: string, onClick: () => void): void => {
+    const link = (x: number, label: string, onClick: () => void): Phaser.GameObjects.Text => {
       const text = this.add
         .text(x, HUD_ROW, label, { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
         .setOrigin(1, 0.5)
@@ -666,10 +716,12 @@ export class BattleScene extends Phaser.Scene {
       text.on('pointerover', () => text.setColor(theme.text))
       text.on('pointerout', () => text.setColor(theme.textMuted))
       text.on('pointerdown', onClick)
+      return text
     }
     link(GAME_WIDTH - 28, 'Restart', () => this.restart())
     link(GAME_WIDTH - 112, this.backLabel(true), () => this.goBack())
     link(GAME_WIDTH - 196, 'Settings', () => this.settings.toggle())
+    this.pauseLink = link(GAME_WIDTH - 276, 'Pause', () => this.togglePause())
   }
 
   private refreshHud(): void {
@@ -693,6 +745,17 @@ export class BattleScene extends Phaser.Scene {
 
   private hintLine(): string {
     if (this.ended) return this.ended === 'win' ? 'You hold every cannon.' : 'Not this time.'
+    if (this.sim.paused) {
+      const lp0 = this.pointerLayout
+      const pill0 = lp0 && this.swapMenu.open ? this.swapMenu.pillAt(lp0.x, lp0.y) : null
+      const c0 = this.swapMenu.cannon
+      if (pill0 && pill0 !== 'auto' && c0) {
+        if (pill0 === c0.kind) return this.sim.queuedKind(c0) ? `Cancel ${c0.name}'s queued swap (it stays a ${kindLabel(c0.kind)}).` : `${c0.name} is a ${kindLabel(c0.kind)}.`
+        return `Queue: ${c0.name} → ${kindLabel(pill0)} when you resume (its reload starts then, not now).`
+      }
+      if (!pill0 && !this.selected) return 'Paused: select cannons, aim them, swap types. Everything happens at once when you resume (Space).'
+      if (!pill0 && this.selected) return `Paused: click where ${this.selected.name} should aim; it happens when you resume (Space).`
+    }
     const lp = this.pointerLayout
     const pill = lp && this.swapMenu.open ? this.swapMenu.pillAt(lp.x, lp.y) : null
     if (pill === 'auto') {
@@ -902,6 +965,69 @@ export class BattleScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- drawing
 
+  /** Paused: queued orders on the board (ghost aim lines, barrier arcs, pending types). */
+  private drawQueued(g: Phaser.GameObjects.Graphics, time: number, walls: Rect[]): void {
+    const seen = new Set<Cannon>()
+    const pulse = 0.85 + 0.15 * Math.sin(time / 160)
+    for (const { cannon: c, aim, kind } of this.sim.queuedOrders()) {
+      const fires = firesAs(kind ?? c.kind)
+      if (aim) {
+        if (fires) {
+          const end = clipToWalls(c.x, c.y, aim.x, aim.y, walls)
+          const onCannon = aim instanceof Cannon
+          const blocked = end.x !== aim.x || end.y !== aim.y
+          dash(g, c.x, c.y, end.x, end.y, TUNING.cannonRadius + 14, onCannon && !blocked ? TUNING.cannonRadius + 12 : 4, theme.select, pulse)
+          if (onCannon) {
+            g.lineStyle(2.5, theme.select, pulse)
+            g.strokeCircle(aim.x, aim.y, TUNING.cannonRadius + 9)
+          } else crosshair(g, aim.x, aim.y, 11, theme.select, pulse)
+        } else {
+          const s = TUNING.shield
+          const facing = Math.atan2(aim.y - c.y, aim.x - c.x)
+          const half = (s.arcDeg * Math.PI) / 360
+          g.lineStyle(6, theme.select, 0.35 + 0.3 * pulse)
+          g.beginPath()
+          g.arc(c.x, c.y, s.reach, facing - half, facing + half, false)
+          g.strokePath()
+        }
+      }
+      if (kind) {
+        seen.add(c)
+        // A dashed ring: this cannon changes type when you resume.
+        const r = TUNING.cannonRadius + 16
+        g.lineStyle(2, theme.select, pulse)
+        for (let i = 0; i < 16; i += 2) g.beginPath(), g.arc(c.x, c.y, r, (i * Math.PI) / 8 + time / 900, ((i + 1) * Math.PI) / 8 + time / 900, false), g.strokePath()
+        let label = this.queuedLabels.get(c)
+        if (!label) {
+          label = this.world(
+            this.add
+              .text(0, 0, '', { fontFamily: theme.font, fontSize: '13px', fontStyle: 'bold', color: cssHex(theme.select), stroke: cssHex(theme.hud), strokeThickness: 4 })
+              .setOrigin(0.5)
+              .setDepth(7),
+          )
+          this.queuedLabels.set(c, label)
+        }
+        label.setText(`→ ${kindLabel(kind)}`).setPosition(c.x, c.y + TUNING.cannonRadius + 30).setVisible(true)
+      }
+    }
+    for (const [c, label] of this.queuedLabels) if (!seen.has(c)) label.setVisible(false)
+  }
+
+  /** The "Paused" frame and label (UI camera, leaves the board clickable). */
+  private drawPaused(time: number): void {
+    const g = this.pausedFx
+    g.clear()
+    const on = this.sim.paused && !this.ended
+    this.pausedLabel.setVisible(on)
+    if (!on) return
+    const v = WORLD_VIEW
+    g.lineStyle(3, theme.select, 0.55 + 0.25 * Math.sin(time / 300))
+    g.strokeRect(v.x + 2, v.y + 2, v.w - 4, v.h - 4)
+    const w = this.pausedLabel.width + 28
+    g.fillStyle(theme.select, 0.95)
+    g.fillRoundedRect(GAME_WIDTH / 2 - w / 2, HUD_H + 10, w, 28, 14)
+  }
+
   private drawFx(time: number): void {
     const g = this.fx
     g.clear()
@@ -927,7 +1053,7 @@ export class BattleScene extends Phaser.Scene {
 
     // Live preview from the selected cannon to wherever the pointer is.
     const sel = this.selected
-    if (sel && !this.ended && !sel.fires) {
+    if (sel && !this.ended && !firesAs(this.sim.queuedKind(sel) ?? sel.kind)) {
       // A shield: a ghost of the barrier, turned toward the pointer.
       const at = this.hover && this.hover !== sel ? this.hover : this.pointer
       if (at) {
@@ -954,6 +1080,9 @@ export class BattleScene extends Phaser.Scene {
         crosshair(g, this.pointer.x, this.pointer.y, 10, theme.select, 0.75)
       }
     }
+
+    if (this.sim.paused) this.drawQueued(g, time, walls)
+    else for (const label of this.queuedLabels.values()) label.setVisible(false)
 
     for (const ping of this.pings) {
       g.lineStyle(2, ping.color, ping.life)

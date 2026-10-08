@@ -51,6 +51,8 @@ export class SwapMenu {
     scene: Phaser.Scene,
     ui: <T extends Phaser.GameObjects.GameObject>(obj: T) => T,
     private readonly autoState: (cannon: Cannon) => AutoState = () => null,
+    /** A type swap queued for this cannon during a pause (shown outlined), if any. */
+    private readonly pending: (cannon: Cannon) => CannonKind | null = () => null,
   ) {
     this.g = ui(scene.add.graphics().setDepth(40))
     this.labels = new Map(
@@ -143,6 +145,7 @@ export class SwapMenu {
     this.g.lineStyle(1.5, theme.boardEdge, 1)
     this.g.strokeRoundedRect(x, y, w, h, 10)
     this.pills = []
+    const queued = this.pending(cannon)
     KIND_IDS.forEach((kind, i) => {
       const cx = x + PAD + PILL_W / 2 + i * (PILL_W + GAP)
       const cy = y + h / 2
@@ -157,6 +160,13 @@ export class SwapMenu {
         this.g.fillRoundedRect(cx - PILL_W / 2, cy - PILL_H / 2, PILL_W, PILL_H, 8)
         this.g.lineStyle(1.5, hot ? theme.player : theme.boardEdge, 1)
         this.g.strokeRoundedRect(cx - PILL_W / 2, cy - PILL_H / 2, PILL_W, PILL_H, 8)
+      }
+      if (queued === kind) {
+        // Queued during a pause: swaps to this when you resume.
+        this.g.fillStyle(theme.select, 0.22)
+        this.g.fillRoundedRect(cx - PILL_W / 2, cy - PILL_H / 2, PILL_W, PILL_H, 8)
+        this.g.lineStyle(2.5, theme.select, 1)
+        this.g.strokeRoundedRect(cx - PILL_W / 2 - 1, cy - PILL_H / 2 - 1, PILL_W + 2, PILL_H + 2, 9)
       }
       const label = this.labels.get(kind)!
       label.setText(kindLabel(kind)).setPosition(cx, cy).setColor(active ? theme.ink : theme.text).setVisible(true)

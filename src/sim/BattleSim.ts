@@ -74,6 +74,14 @@ export class BattleSim {
    * when it comes back on). Every round starts with it on. AI sides ignore it.
    */
   autoTarget = true
+  /**
+   * Tactical pause: while true, step() does nothing (shots, turning, reloads,
+   * barriers, meters, AI and timers all hold), and your aim and type orders
+   * are queued, then all applied the instant you resume (see resume()).
+   */
+  paused = false
+  private queuedAims = new Map<Cannon, Cannon | Point>()
+  private queuedKinds = new Map<Cannon, CannonKind>()
   /** Scratch list: shields with their barrier up this step. */
   private readonly upShields: Cannon[] = []
 
@@ -147,6 +155,9 @@ export class BattleSim {
       clock: this.clock,
       aimsUsed: this.aimsUsed,
       autoTarget: this.autoTarget,
+      paused: false,
+      queuedAims: new Map(),
+      queuedKinds: new Map(),
       ended: this.ended,
       endReason: '',
       lastPuzzleProgress: this.lastPuzzleProgress,
@@ -163,8 +174,61 @@ export class BattleSim {
     return this.level.kind === 'puzzle'
   }
 
+  /** Puzzle aims still to spend (aims queued during a pause count as spent). */
   get aimsLeft(): number {
-    return this.level.aims === undefined ? Infinity : Math.max(0, this.level.aims - this.aimsUsed)
+    return this.level.aims === undefined ? Infinity : Math.max(0, this.level.aims - this.aimsUsed - this.queuedAims.size)
+  }
+
+  /** Pause the round (no-op once it has ended). */
+  pause(): boolean {
+    if (this.ended) return false
+    this.paused = true
+    return true
+  }
+
+  /**
+   * Resume: apply every queued order at this one instant (type swaps first,
+   * so their reload starts now, then aims), then let each AI react. Only
+   * Impossible re-thinks at once (see AiController.afterPause); the other
+   * levels keep their usual reaction time.
+   */
+  resume(): void {
+    if (!this.paused) return
+    this.paused = false
+    for (const [cannon, kind] of this.queuedKinds) {
+      if (cannon.side === 'player' && cannon.setKind(kind)) this.events.swapped?.(cannon)
+    }
+    const aims = [...this.queuedAims]
+    this.queuedKinds.clear()
+    this.queuedAims.clear()
+    for (const [cannon, aim] of aims) {
+      if (cannon.side !== 'player') continue
+      this.applyAim(cannon, aim)
+      if (this.level.aims !== undefined) this.aimsUsed += 1
+    }
+    for (const ai of this.ais) ai.afterPause(this.cannons)
+  }
+
+  /** The aim order queued for one of your cannons during this pause, if any. */
+  queuedAim(cannon: Cannon): Cannon | Point | null {
+    return this.queuedAims.get(cannon) ?? null
+  }
+
+  /** The type swap queued for one of your cannons during this pause, if any. */
+  queuedKind(cannon: Cannon): CannonKind | null {
+    return this.queuedKinds.get(cannon) ?? null
+  }
+
+  /** Every queued order (for drawing them). */
+  queuedOrders(): { cannon: Cannon; aim: Cannon | Point | null; kind: CannonKind | null }[] {
+    const out = new Map<Cannon, { cannon: Cannon; aim: Cannon | Point | null; kind: CannonKind | null }>()
+    for (const [cannon, aim] of this.queuedAims) out.set(cannon, { cannon, aim, kind: null })
+    for (const [cannon, kind] of this.queuedKinds) {
+      const o = out.get(cannon)
+      if (o) o.kind = kind
+      else out.set(cannon, { cannon, aim: null, kind })
+    }
+    return [...out.values()]
   }
 
   byId(id: string): Cannon | undefined {
@@ -188,7 +252,7 @@ export class BattleSim {
 
   /** Advance the round by `dt` ms. */
   step(dt: number): void {
-    if (this.ended) return
+    if (this.ended || this.paused) return
     this.clock += dt
     if (!this.isPuzzle && !this.aiOff) for (const ai of this.ais) ai.update(dt, this.cannons)
     this.stepShots(dt)
@@ -221,10 +285,23 @@ export class BattleSim {
   /** A player aim order. Returns false when the puzzle aim budget is spent. */
   playerAim(cannon: Cannon, aim: Cannon | Point): boolean {
     if (this.ended || cannon.side !== 'player') return false
-    if (this.aimsLeft <= 0) {
+    // Re-aiming a cannon that already has an order queued in this pause is free.
+    if (this.aimsLeft <= 0 && !(this.paused && this.queuedAims.has(cannon))) {
       this.events.noAims?.(cannon)
       return false
     }
+    if (this.paused) {
+      this.queuedAims.set(cannon, aim)
+      this.events.aimed?.({ x: aim.x, y: aim.y })
+      return true
+    }
+    this.applyAim(cannon, aim)
+    if (this.level.aims !== undefined) this.aimsUsed += 1
+    this.events.aimed?.({ x: aim.x, y: aim.y })
+    return true
+  }
+
+  private applyAim(cannon: Cannon, aim: Cannon | Point): void {
     // A shield just turns its barrier: toward a foe (and keeps facing it), or toward any point.
     if (!cannon.fires) {
       if (aim instanceof Cannon && aim.side !== cannon.side) cannon.setTarget(aim)
@@ -232,9 +309,6 @@ export class BattleSim {
     } else if (aim instanceof Cannon && aim.side === cannon.side) cannon.startHeal(aim)
     else if (aim instanceof Cannon) cannon.setTarget(aim)
     else cannon.setAimPoint(aim)
-    if (this.level.aims !== undefined) this.aimsUsed += 1
-    this.events.aimed?.({ x: aim.x, y: aim.y })
-    return true
   }
 
   /**
@@ -244,6 +318,12 @@ export class BattleSim {
    */
   playerSwap(cannon: Cannon, kind: CannonKind): boolean {
     if (this.ended || cannon.side !== 'player') return false
+    if (this.paused) {
+      // Queued: the swap (and its reload) happens when you resume. Picking its current type cancels it.
+      if (kind === cannon.kind) return this.queuedKinds.delete(cannon)
+      this.queuedKinds.set(cannon, kind)
+      return true
+    }
     if (!cannon.setKind(kind)) return false
     this.events.swapped?.(cannon)
     return true
