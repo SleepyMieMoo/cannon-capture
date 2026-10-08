@@ -5,6 +5,7 @@ import type { LevelDef, Side } from '../types'
 import { applySnap, encodeSnap, EventLog, replayEvent, sideMapper, type EventRow, type Snap } from './snapshot'
 import type { Transport } from './transport'
 import { isSkin, pvpSkins, type SideSkins, type SkinId } from '../config/skins'
+import { isTeamColour, pvpColours, type SideColours, type TeamColourId } from '../config/teamColours'
 
 /**
  * Player vs player, Phase 0: one game is the host (it runs the real round,
@@ -15,7 +16,7 @@ import { isSkin, pvpSkins, type SideSkins, type SkinId } from '../config/skins'
 
 /** Host to player. */
 export type HostMsg =
-  | { t: 'start'; match: string; level: LevelDef; side: Side; stepMs: number; skins?: SideSkins }
+  | { t: 'start'; match: string; level: LevelDef; side: Side; stepMs: number; skins?: SideSkins; colours?: SideColours }
   | { t: 'snap'; match: string; s: Snap }
   | { t: 'ack'; seq: number; ok: boolean }
   | { t: 'busy' }
@@ -23,12 +24,14 @@ export type HostMsg =
   | { t: 'ping' }
 
 /** Player to host. */
-export type ClientMsg = { t: 'hello'; skin?: SkinId } | { t: 'order'; seq: number; o: Order } | { t: 'restart' } | { t: 'bye' } | { t: 'ping' }
+export type ClientMsg = { t: 'hello'; skin?: SkinId; colour?: TeamColourId } | { t: 'order'; seq: number; o: Order } | { t: 'restart' } | { t: 'bye' } | { t: 'ping' }
 
 export type StartMsg = Extract<HostMsg, { t: 'start' }>
 
 /** The skin each player who said hello picked (kept across restarts, which make a new host). */
 const peerSkins = new Map<string, SkinId>()
+/** The same for team colours. */
+const peerColours = new Map<string, TeamColourId>()
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
 
@@ -67,6 +70,8 @@ export class PvpHost {
 
   /** This screen's own skin (gold); set before attach(). */
   localSkin: SkinId | undefined
+  /** This screen's own team colour; set before attach(). */
+  localColour: TeamColourId | undefined
 
   constructor(
     private readonly transport: Transport,
@@ -106,6 +111,11 @@ export class PvpHost {
     return this.peer
   }
 
+  /** Both players' team colours, host first (the joiner keeps theirs unless the pair clashes). */
+  get colours(): SideColours {
+    return pvpColours(this.localColour, this.peer ? peerColours.get(this.peer) : undefined)
+  }
+
   /** Both players' skins, gold first (pink gets another if they match). */
   get skins(): SideSkins {
     return pvpSkins(this.localSkin, this.peer ? peerSkins.get(this.peer) : undefined)
@@ -117,6 +127,7 @@ export class PvpHost {
     if (!this.peer && msg.t !== 'bye' && msg.t !== 'hello') this.handle({ t: 'hello' }, from)
     if (msg.t === 'hello') {
       if (isSkin(msg.skin)) peerSkins.set(from, msg.skin)
+      if (isTeamColour(msg.colour)) peerColours.set(from, msg.colour)
       const quiet = now() - this.heard > PVP.timeoutMs
       if (this.peer && this.peer !== from && !quiet) {
         this.transport.send({ t: 'busy' } satisfies HostMsg)
@@ -156,7 +167,7 @@ export class PvpHost {
   }
 
   private sendStart(): void {
-    this.transport.send({ t: 'start', match: this.match, level: this.level, side: this.remoteSide, stepMs: this.stepMs, skins: this.skins } satisfies HostMsg)
+    this.transport.send({ t: 'start', match: this.match, level: this.level, side: this.remoteSide, stepMs: this.stepMs, skins: this.skins, colours: this.colours } satisfies HostMsg)
     this.sendSnap()
   }
 
@@ -319,7 +330,7 @@ export class PvpClient {
 }
 
 /** Knock on a room until its host answers with a round to play (or says it is busy). Returns a cancel function. */
-export function joinRoom(transport: Transport, onStart: (start: StartMsg) => void, onBusy: () => void, skin?: SkinId): () => void {
+export function joinRoom(transport: Transport, onStart: (start: StartMsg) => void, onBusy: () => void, skin?: SkinId, colour?: TeamColourId): () => void {
   let done = false
   const off = transport.onMessage((raw) => {
     const msg = raw as HostMsg
@@ -330,7 +341,7 @@ export function joinRoom(transport: Transport, onStart: (start: StartMsg) => voi
       onStart(msg)
     } else if (msg.t === 'busy') onBusy()
   })
-  const hello = () => transport.send({ t: 'hello', skin } satisfies ClientMsg)
+  const hello = () => transport.send({ t: 'hello', skin, colour } satisfies ClientMsg)
   hello()
   const timer = setInterval(hello, 500)
   const cancel = () => {

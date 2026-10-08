@@ -1,5 +1,7 @@
 import { SKIN_LABEL } from '../config/skins'
 import { loadSkin } from './skinPref'
+import { loadColour } from './colourPref'
+import { TEAM_COLOUR } from '../config/teamColours'
 import { PVP_RULES } from '../config/pvpRules'
 import { drawThumb } from '../editor/thumb'
 import { MAP_SIZES } from '../levels/board'
@@ -37,7 +39,7 @@ const mins = (ms: number): string => `${Math.round(ms / 60000)}-minute`
 export const RULES_LINE =
   `${mins(PVP_RULES.matchMs)} matches: take every cannon, or hold the most when time runs out. ` +
   `${PVP_RULES.pausesPerPlayer} pauses each, up to ${PVP_RULES.pauseMaxMs / 1000} s. ` +
-  `Drop out for more than ${PVP_RULES.graceMs / 1000} s and an AI plays your side. Sides swap every rematch; you are always gold.`
+  `Drop out for more than ${PVP_RULES.graceMs / 1000} s and an AI plays your side. Sides swap every rematch; your cannons always wear your colour and the light rings.`
 
 export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
   const err = h('div.mm-err', { role: 'status' })
@@ -85,7 +87,7 @@ export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
         h('div.mm-h', {}, 'New room'),
         create,
         h('div.mm-note', {}, 'You get a 4-letter code and a link to send to a friend.'),
-        h('div.mm-note', { dataset: { id: 'skin-note' } }, `Your cannons wear ${SKIN_LABEL[loadSkin()]} (change it in Settings before you join).`),
+        h('div.mm-note', { dataset: { id: 'skin-note' } }, `Your cannons wear ${SKIN_LABEL[loadSkin()]} in ${TEAM_COLOUR[loadColour()].label} (change them in Settings before you join).`),
       ),
       h('div.mm-side', {},
         h('label.mm-h', { htmlFor: 'mm-code' }, 'Join a room'),

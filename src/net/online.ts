@@ -6,6 +6,7 @@ import type { Order } from '../sim/orders'
 import type { LevelDef, Side } from '../types'
 import type { Snap } from './snapshot'
 import { isSkin, type SideSkins, type SkinId } from '../config/skins'
+import { isTeamColour, type SideColours, type TeamColourId } from '../config/teamColours'
 
 /**
  * Online player vs player: the messages between the game and the server
@@ -16,7 +17,7 @@ import { isSkin, type SideSkins, type SkinId } from '../config/skins'
 /** Game to server. */
 export type ClientMsg =
   /** First message on every connection; `token` is this tab's, so a reload gets the same seat back. */
-  | { t: 'hello'; token: string; name: string; skin?: SkinId }
+  | { t: 'hello'; token: string; name: string; skin?: SkinId; colour?: TeamColourId }
   | { t: 'name'; name: string }
   /** Host: the map for the next match. */
   | { t: 'map'; id: string }
@@ -69,9 +70,10 @@ export type ServerMsg =
   | RoomInfo
   /**
    * `skins`: what each side wears, gold ('player') first, as the server
-   * decided (every client and watcher shows the same). Old servers leave it out.
+   * decided (every client and watcher shows the same). `colours`: the same
+   * for team colours. Old servers leave them out.
    */
-  | { t: 'start'; match: string; level: LevelDef; side: Side; stepMs: number; spectate?: boolean; skins?: SideSkins }
+  | { t: 'start'; match: string; level: LevelDef; side: Side; stepMs: number; spectate?: boolean; skins?: SideSkins; colours?: SideColours }
   | { t: 'snap'; match: string; s: Snap }
   | { t: 'ack'; seq: number; ok: boolean }
   | { t: 'error'; code: 'noroom' | 'bad' | 'rate' | 'notallowed' | 'full' | 'closed'; msg: string }
@@ -132,7 +134,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   const m = raw as Record<string, unknown>
   switch (m.t) {
     case 'hello':
-      return typeof m.token === 'string' && m.token.length >= 8 && m.token.length <= 64 ? { t: 'hello', token: m.token, name: cleanName(m.name, ''), ...(isSkin(m.skin) ? { skin: m.skin } : {}) }
+      return typeof m.token === 'string' && m.token.length >= 8 && m.token.length <= 64 ? { t: 'hello', token: m.token, name: cleanName(m.name, ''), ...(isSkin(m.skin) ? { skin: m.skin } : {}), ...(isTeamColour(m.colour) ? { colour: m.colour } : {}) }
         : null
     case 'name':
       return { t: 'name', name: cleanName(m.name, '') }

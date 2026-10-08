@@ -20,8 +20,13 @@ export const PVP_RULES = {
   takeoverAi: 'hard' as AiLevel,
   /** A rematch starts only when both players ask; sides swap every match. */
   swapSidesEachMatch: true,
-  /** Everyone sees their own side as gold. */
-  seeSelfAsGold: true,
+  /**
+   * Everyone sees their own side as 'player' (the board is flipped for the
+   * pink seat) in their own team colour, with the light "yours" rings; the
+   * colours follow the person, so both screens and watchers agree on who
+   * wears what (config/teamColours.ts).
+   */
+  seeSelfAsYours: true,
   /** Past two players, everyone watches (up to this many). */
   maxSpectators: 30,
   /** The server steps the round at 60 Hz and sends a snapshot every this many steps (3 = 20 a second). */

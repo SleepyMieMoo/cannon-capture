@@ -3,7 +3,9 @@ import { loadSkin } from '../menu/skinPref'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import type { MapView } from '../editor/maps'
-import { cssHex, ownerRing, sideColor, swapSideColours, theme } from '../config/theme'
+import { applyTeamColours, cssHex, ownerRing, sideColor, theme } from '../config/theme'
+import { DEFAULT_COLOUR, flipColours, readColours, TEAM_COLOUR, vsAiColours, type SideColours } from '../config/teamColours'
+import { loadColour } from '../menu/colourPref'
 import { TUNING } from '../config/tuning'
 import { DEBUG } from '../debug'
 import { BRAND } from '../config/brand'
@@ -36,7 +38,6 @@ import { SettingsPanel } from '../ui/settingsPanel'
 import { perf } from '../perf/PerfOverlay'
 import { layoutScale } from '../render/resolution'
 import { KINDS, firesAs, fmtNum, kindLabel, nextKind } from '../config/kinds'
-import { PVP } from '../config/pvp'
 import { FixedStep, SIM_STEP_MS } from '../sim/fixedStep'
 import { applyOrder, type Order, type OrderResult } from '../sim/orders'
 import type { SimEvents } from '../sim/BattleSim'
@@ -142,6 +143,10 @@ export class BattleScene extends Phaser.Scene {
   private goLeft = 0
   /** Time left on the "no pausing during the countdown" note (player vs player). */
   private countNoteLeft = 0
+  /** The colours each side wears in this view. */
+  private colours: SideColours = vsAiColours(DEFAULT_COLOUR)
+  /** The HUD legend (null before the HUD is made). */
+  private legend: { g: Phaser.GameObjects.Graphics; groups: { side: Side; x: number }[] } | null = null
   private restarting = false
   /** The in-battle menu (HUD "Menu" or Esc); the round is paused while it is open. */
   private battleMenu!: BattleMenu
@@ -309,12 +314,11 @@ export class BattleScene extends Phaser.Scene {
     this.sawPlaying = false
     this.endRoot = null
     this.clockText = null
+    this.legend = null
     this.netText = null
     this.dropAt = [null, null]
     this.steps.reset()
     const pvp = this.pvp
-    if (pvp?.role === 'client') swapSideColours(!PVP.seeSelfAsGold)
-    else swapSideColours(false)
     let events: SimEvents = {
         fired: (cannon) => this.sfx.shot(cannon),
       bounce: (x, y) => this.sparks.push({ x, y, life: 1, color: theme.spark }),
@@ -349,8 +353,12 @@ export class BattleScene extends Phaser.Scene {
     }
     // The second player's round is only a picture of the host's: it never runs, so it gets no handlers.
     this.sim = new BattleSim(this.level, this, pvp && pvp.role !== 'host' ? {} : events, DEBUG.bot && !pvp ? undefined : 'progressive')
-    if (this.host) this.host.localSkin = loadSkin()
+    if (this.host) {
+      this.host.localSkin = loadSkin()
+      this.host.localColour = loadColour()
+    }
     this.sim.setSkins(this.roundSkins(pvp))
+    this.setColours(this.roundColours(pvp))
     // 3-2-1-Go before every round this screen runs (a network view shows the host's or server's countdown instead).
     if (!pvp || pvp.role === 'host') this.sim.startCountdown(DEBUG.countdown ?? TUNING.countdownMs)
     if (pvp) this.startPvp(pvp)
@@ -406,7 +414,8 @@ export class BattleScene extends Phaser.Scene {
       // Stop listening (Back / Main menu say goodbye first; a restart keeps the connection).
       this.host?.close(false)
       this.client?.close(false)
-      swapSideColours(false)
+      // Menus, thumbnails and the title demo show your colours again.
+      applyTeamColours(vsAiColours(loadColour()))
       this.game.events.off(Phaser.Core.Events.BLUR, this.onLoseFocus, this)
       this.game.events.off(Phaser.Core.Events.HIDDEN, this.onLoseFocus, this)
       this.input.keyboard?.removeCapture('SPACE')
@@ -680,6 +689,55 @@ export class BattleScene extends Phaser.Scene {
     return pvp.start.side === 'enemy' ? flipSkins(s) : s
   }
 
+  /**
+   * What colour each side wears, like roundSkins: your pick and its contrast
+   * against the AI; two players: the host's/server's decision (each player
+   * keeps theirs unless the pair clashes), flipped when this view is, so
+   * everyone sees themselves in their own colour.
+   */
+  private roundColours(pvp: PvpData | null): SideColours {
+    const mine = loadColour()
+    if (!pvp) return vsAiColours(mine)
+    if (pvp.role === 'host') return this.host!.colours
+    const c = readColours(pvp.start.colours)
+    if (pvp.role === 'client') return c ? flipColours(c) : vsAiColours(mine)
+    // Online: a watcher sees the server's sides as they are. An older server sends no colours: guess.
+    if (!c) return vsAiColours(pvp.start.spectate ? DEFAULT_COLOUR : mine)
+    return pvp.start.side === 'enemy' ? flipColours(c) : c
+  }
+
+  /** This view's colours (labels for watchers, the board through theme.sideColor). */
+  private setColours(c: SideColours): void {
+    this.colours = c
+    applyTeamColours(c)
+    this.paintLegend()
+  }
+
+  /** The HUD legend's dots and counts in the team colours (again when they change: a LAN joiner's colour arrives late). */
+  private paintLegend(): void {
+    if (!this.legend) return
+    const { g, groups } = this.legend
+    g.clear()
+    for (const group of groups) {
+      g.fillStyle(sideColor(group.side), 1)
+      g.fillCircle(group.x, HUD_ROW, 6)
+      const ring = ownerRing(group.side)
+      if (ring !== null) {
+        // The same ownership ring the cannons wear.
+        g.lineStyle(4.5, theme.ringEdge, 0.85)
+        g.strokeCircle(group.x, HUD_ROW, 8)
+        g.lineStyle(2.5, ring, 1)
+        g.strokeCircle(group.x, HUD_ROW, 8)
+      }
+      this.counts[group.side]?.setColor(cssHex(sideColor(group.side)))
+    }
+  }
+
+  /** A side's colour name in this view ("Blueberry"). */
+  private colourName(side: 'player' | 'enemy'): string {
+    return TEAM_COLOUR[this.colours[side]].label
+  }
+
   /** Player vs player: hook this screen up to the other player. */
   private startPvp(pvp: PvpData): void {
     if (this.host) {
@@ -687,8 +745,9 @@ export class BattleScene extends Phaser.Scene {
       this.sim.makePvp()
       host.onPeer = (joined) => {
         this.peerHere = joined
-        // The joiner's skin arrives with them.
+        // The joiner's skin and colour arrive with them.
         this.sim.setSkins(host.skins)
+        this.setColours(host.colours)
         this.pvpBanner()
       }
       host.onRestart = () => this.restart()
@@ -760,12 +819,12 @@ export class BattleScene extends Phaser.Scene {
       const mins = clock(PVP_RULES.matchMs)
       this.showBanner(
         this.me === null
-          ? `Watching room ${this.online.code}: ${nameOnSide(info, 0)} (gold) vs ${nameOnSide(info, 1)} (pink).`
-          : `Online · room ${this.online.code} · you are gold${this.me === 1 ? ' here (pink on the other screen)' : ''}. Take every cannon, or hold the most when the ${mins} clock runs out.`,
+          ? `Watching room ${this.online.code}: ${nameOnSide(info, 0)} (${this.colourName('player')}) vs ${nameOnSide(info, 1)} (${this.colourName('enemy')}).`
+          : `Online · room ${this.online.code} · you are ${this.colourName('player')} (light rings)${this.colours.player !== loadColour() ? `: ${TEAM_COLOUR[loadColour()].label} was too close to theirs` : ''}. Take every cannon, or hold the most when the ${mins} clock runs out.`,
       )
       return
     }
-    const you = this.pvp.role === 'host' ? 'gold' : PVP.seeSelfAsGold ? 'pink (shown as gold)' : 'pink'
+    const you = `${this.colourName('player')} (${this.pvp.role === 'host' ? 'the host' : 'player 2'})`
     const msg = this.host
       ? this.peerHere
         ? `PvP test · room ${this.pvp.room} · you are ${you} · player 2 is here: go!`
@@ -1276,23 +1335,16 @@ export class BattleScene extends Phaser.Scene {
 
     const legend = this.add.graphics().setDepth(10)
     const groups: { side: Side; x: number; label: string }[] = [
-      { side: 'player', x: 504, label: this.online && this.me === null ? 'Gold' : 'You' },
-      { side: 'neutral', x: 616, label: 'Neutral' },
+      { side: 'player', x: 504, label: this.online && this.me === null ? this.colourName('player') : 'You' },
+      // Watchers see colour names ("Strawberry") instead of "You": room for the longest.
+      { side: 'neutral', x: this.online && this.me === null ? 638 : 616, label: 'Neutral' },
     ]
-    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 756, label: this.online ? (this.me === null ? 'Pink' : 'Them') : 'Enemy' })
+    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 756, label: this.online ? (this.me === null ? this.colourName('enemy') : 'Them') : 'Enemy' })
     const counts: Partial<Record<Side, Phaser.GameObjects.Text>> = {}
     this.counts = counts
+    this.legend = { g: legend, groups }
+    this.paintLegend()
     for (const group of groups) {
-      legend.fillStyle(sideColor(group.side), 1)
-      legend.fillCircle(group.x, HUD_ROW, 6)
-      const ring = ownerRing(group.side)
-      if (ring !== null) {
-        // The same ownership ring the cannons wear.
-        legend.lineStyle(4.5, theme.ringEdge, 0.85)
-        legend.strokeCircle(group.x, HUD_ROW, 8)
-        legend.lineStyle(2.5, ring, 1)
-        legend.strokeCircle(group.x, HUD_ROW, 8)
-      }
       counts[group.side] = this.add
         .text(group.x + 14, HUD_ROW, '0', {
           fontFamily: theme.font,
@@ -1388,7 +1440,7 @@ export class BattleScene extends Phaser.Scene {
       const room = this.online
       if (room.closed) return room.error?.msg ?? 'Disconnected from the room.'
       if (room.status !== 'open') return `Connection lost: reconnecting… (after ${PVP_RULES.graceMs / 1000} s an AI plays your side until you are back)`
-      if (this.me === null) return `Watching ${nameOnSide(room.info, 0)} (gold) vs ${nameOnSide(room.info, 1)} (pink).`
+      if (this.me === null) return `Watching ${nameOnSide(room.info, 0)} (${this.colourName('player')}) vs ${nameOnSide(room.info, 1)} (${this.colourName('enemy')}).`
       const them = (1 - this.me) as 0 | 1
       const line = opponentLine(this.client?.latest?.x, this.me, room.info, this.dropAt[them], performance.now())
       if (line) return line
@@ -1425,7 +1477,7 @@ export class BattleScene extends Phaser.Scene {
     }
     if (!this.selected) {
       if (this.hover && this.hover.side === 'player') return `Click to select ${this.hover.name}, or pick a type above it (long-press on touch).`
-      return `Click one of your ${this.client && !PVP.seeSelfAsGold ? 'pink' : 'gold'} cannons to select it, then click where it should aim.`
+      return 'Click one of your cannons (light ring) to select it, then click where it should aim.'
     }
     const name = this.selected.name
     if (!this.selected.fires) {
@@ -1513,7 +1565,7 @@ export class BattleScene extends Phaser.Scene {
     const panel = this.add.graphics()
     panel.fillStyle(theme.panel, 0.98)
     panel.fillRoundedRect(cx - 280, top, 560, ph, 18)
-    const stroke = result === 'draw' ? theme.neutral : result === 'win' ? theme.player : theme.enemy
+    const stroke = result === 'draw' ? theme.neutral : sideColor(result === 'win' ? 'player' : 'enemy')
     panel.lineStyle(3, stroke, 1)
     panel.strokeRoundedRect(cx - 280, top, 560, ph, 18)
     root.add(panel)
@@ -1564,7 +1616,7 @@ export class BattleScene extends Phaser.Scene {
     const panel = this.add.graphics()
     panel.fillStyle(theme.panel, 0.98)
     panel.fillRoundedRect(cx - 260, top, 520, ph, 18)
-    panel.lineStyle(3, result === 'win' ? theme.player : theme.enemy, 1)
+    panel.lineStyle(3, sideColor(result === 'win' ? 'player' : 'enemy'), 1)
     panel.strokeRoundedRect(cx - 260, top, 520, ph, 18)
     root.add(panel)
 
@@ -1755,7 +1807,7 @@ export class BattleScene extends Phaser.Scene {
       const aim = cannon.aim()
       if (!aim) continue
       const mine = cannon.side === 'player'
-      const color = mine ? theme.player : sideColor(cannon.side)
+      const color = sideColor(cannon.side)
       const alpha = mine ? (cannon.selected ? 0.85 : 0.4) : 0.34
       const end = clipToWalls(cannon.x, cannon.y, aim.x, aim.y, walls)
       const blocked = end.x !== aim.x || end.y !== aim.y

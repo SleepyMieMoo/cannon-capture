@@ -1,4 +1,5 @@
 import { loadSkin } from '../menu/skinPref'
+import { loadColour } from '../menu/colourPref'
 import type Phaser from 'phaser'
 import { PVP } from '../config/pvp'
 import { theme } from '../config/theme'
@@ -10,18 +11,17 @@ import { BroadcastTransport, randomId } from './transport'
 /**
  * Player vs player test mode (Phase 0), only with ?pvpdev. Two tabs of the
  * same browser play each other over a BroadcastChannel: one hosts (runs the
- * round, plays gold), the other joins (plays pink). Nothing leaves the
+ * round, gold seat), the other joins (pink seat). Nothing leaves the
  * browser and no server is involved.
  *
  *   ?pvpdev              a small panel: room, map, Host / Join / Split view
  *   ?pvpdev=split        both players side by side in one page (two frames)
  *   &role=host|join&room=abcd&map=skirmish   start straight away
- *   &gold=0              player 2 sees their cannons pink
  *   &lag=150&jitter=50   fake network delay (ms)
  */
 
 /** Switches passed on to the frames / second window. */
-const PASS = ['gold', 'lag', 'jitter', 'debug', 'perf']
+const PASS = ['lag', 'jitter', 'debug', 'perf']
 
 function baseUrl(extra: Record<string, string>): string {
   const here = new URLSearchParams(location.search)
@@ -44,14 +44,12 @@ export function mountSplitView(): boolean {
   document.getElementById('app')?.remove()
   const bar = document.createElement('div')
   bar.style.cssText = 'height:30px;display:flex;align-items:center;gap:16px;padding:0 12px;box-sizing:border-box'
-  bar.innerHTML = `<b>PvP test · room ${room}</b><span>Left: host, plays gold</span><span>Right: player 2, plays pink${
-    params.get('gold') === '0' ? '' : ' (sees itself as gold)'
-  }</span><span style="opacity:.7">Click a side to play it. Nothing leaves this browser.</span>`
+  bar.innerHTML = `<b>PvP test · room ${room}</b><span>Left: host</span><span>Right: player 2</span><span style="opacity:.7">Click a side to play it. Nothing leaves this browser.</span>`
   const row = document.createElement('div')
   row.style.cssText = 'display:flex;height:calc(100vh - 30px)'
   for (const role of ['host', 'join']) {
     const f = document.createElement('iframe')
-    f.title = role === 'host' ? 'Host (gold)' : 'Player 2 (pink)'
+    f.title = role === 'host' ? 'Host' : 'Player 2'
     f.src = baseUrl({ role, room, map })
     f.style.cssText = `flex:1;border:0;border-${role === 'host' ? 'right' : 'left'}:1px solid ${theme.textMuted};min-width:0`
     f.allow = 'autoplay'
@@ -134,11 +132,12 @@ export function mountPvpPanel(game: Phaser.Game): void {
       t,
       (start) => {
         cancelJoin = null
-        status.textContent = `Playing pink in room ${r}.`
+        status.textContent = `Playing as player 2 in room ${r}.`
         startBattle({ from: 'menu', pvp: { role: 'client', room: r, transport: t, start } })
       },
       () => (status.textContent = `Room ${r} already has two players.`),
       loadSkin(),
+      loadColour(),
     )
   }
   // Its own window (not a tab), so both can stay in sight: a browser stops drawing a tab that is out of sight.
@@ -150,7 +149,7 @@ export function mountPvpPanel(game: Phaser.Game): void {
   }
   body.append(
     line('Room', room, 'Map', map),
-    line(btn('Host (gold)', host), btn('Join (pink)', join)),
+    line(btn('Host', host), btn('Join', join)),
     line(btn('Open player 2 window', secondWindow), btn('Split view', split)),
     status,
   )

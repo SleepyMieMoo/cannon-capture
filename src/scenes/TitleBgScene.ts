@@ -1,8 +1,10 @@
 import { vsAiSkins } from '../config/skins'
 import { loadSkin, onSkinChange } from '../menu/skinPref'
+import { loadColour, onColourChange } from '../menu/colourPref'
+import { vsAiColours } from '../config/teamColours'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
-import { sideColor, theme } from '../config/theme'
+import { applyTeamColours, sideColor, theme } from '../config/theme'
 import { TUNING } from '../config/tuning'
 import { Fan } from '../entities/Fan'
 import { Wall } from '../entities/Wall'
@@ -52,6 +54,10 @@ export class TitleBgScene extends Phaser.Scene {
     this.sim.setSkins(vsAiSkins(loadSkin()))
     const offSkin = onSkinChange((skin) => this.sim.setSkins(vsAiSkins(skin)))
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, offSkin)
+    // Your team colour too (and the AI's contrasting one); a new pick in Settings recolours it at once.
+    applyTeamColours(vsAiColours(loadColour()))
+    const offColour = onColourChange((c) => applyTeamColours(vsAiColours(c)))
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, offColour)
     // Dimmed: the menu sits on top.
     this.add.graphics().setDepth(50).fillStyle(theme.bg, 0.2).fillRect(-200, -200, GAME_WIDTH + 400, GAME_HEIGHT + 400)
     this.cameras.main.fadeIn(700, 20, 14, 12)

@@ -1,10 +1,12 @@
 import { DEFAULT_SKIN, vsAiSkins, type SideSkins } from '../config/skins'
+import { vsAiColours } from '../config/teamColours'
+import { loadColour } from '../menu/colourPref'
 import { loadSkin } from '../menu/skinPref'
 import { KINDS, KIND_IDS, kindLabel, nextKind } from '../config/kinds'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import { TUNING } from '../config/tuning'
-import { cssHex, sideColor, theme } from '../config/theme'
+import { applyTeamColours, cssHex, sideColor, theme } from '../config/theme'
 import { DEBUG } from '../debug'
 import {
   DIFFICULTY,
@@ -70,7 +72,7 @@ const rad = (d: number): number => (d * Math.PI) / 180
 
 const TOOL_TIPS: Record<Tool, string> = {
   select: 'Move: drag things, drag empty space to pan',
-  player: 'Place a gold (player) cannon',
+  player: 'Place one of your (player) cannons',
   enemy: 'Place an enemy cannon',
   neutral: 'Place a neutral cannon',
   wall: 'Place a wall',
@@ -78,10 +80,11 @@ const TOOL_TIPS: Record<Tool, string> = {
   delete: 'Delete tool',
 }
 
-const TOOLS: { id: Tool; label: string; key: string; color?: number }[] = [
+/** `side`: drawn in that side's team colour (yours and the AI's pick, see config/teamColours.ts). */
+const TOOLS: { id: Tool; label: string; key: string; color?: number; side?: Side }[] = [
   { id: 'select', label: 'Move', key: 'V' },
-  { id: 'player', label: 'Gold', key: '1', color: theme.player },
-  { id: 'enemy', label: 'Enemy', key: '2', color: theme.enemy },
+  { id: 'player', label: 'Yours', key: '1', side: 'player' },
+  { id: 'enemy', label: 'Enemy', key: '2', side: 'enemy' },
   { id: 'neutral', label: 'Neutral', key: '3', color: theme.neutral },
   { id: 'wall', label: 'Wall', key: '4', color: theme.wall },
   { id: 'fan', label: 'Fan', key: '5', color: theme.fan },
@@ -185,6 +188,7 @@ export class EditorScene extends Phaser.Scene {
 
   create(): void {
     this.skins = vsAiSkins(loadSkin())
+    applyTeamColours(vsAiColours(loadColour()))
     this.surface = []
     this.cannonViews = []
     this.wallViews = []
@@ -879,7 +883,7 @@ export class EditorScene extends Phaser.Scene {
       const btn = h(
         'button.cc-btn.sm',
         { title: `${TOOL_TIPS[t.id]} (${t.key})`, onclick: () => this.setTool(t.id) },
-        t.color !== undefined ? dot(t.color) : null,
+        t.side ? dot(sideColor(t.side)) : t.color !== undefined ? dot(t.color) : null,
         t.label,
       )
       tools.set(t.id, btn)
@@ -1034,7 +1038,7 @@ export class EditorScene extends Phaser.Scene {
       ['Drag', 'Move things · drag empty space to pan'],
       ['Wheel / pinch', 'Zoom (+ / − / 0 keys, or the zoom buttons)'],
       ['WASD / arrows', 'Pan'],
-      ['1 2 3', 'Gold / enemy / neutral cannon'],
+      ['1 2 3', 'Your / enemy / neutral cannon'],
       ['4 5', 'Wall / fan'],
       ['V · X', 'Move tool · Delete tool'],
       ['Del', 'Delete the selection'],
@@ -1170,7 +1174,7 @@ export class EditorScene extends Phaser.Scene {
       const side = h(
         'select.cc-sel.xs',
         { onchange: () => this.setSide(ref.index, side.value as Side) },
-        h('option', { value: 'player' }, 'Gold (yours)'),
+        h('option', { value: 'player' }, 'Yours (player)'),
         h('option', { value: 'enemy' }, 'Enemy'),
         h('option', { value: 'neutral' }, 'Neutral'),
       )

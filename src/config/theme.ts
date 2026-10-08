@@ -1,4 +1,5 @@
 import type { Side } from '../types'
+import { TEAM_COLOUR, type SideColours } from './teamColours'
 
 /**
  * Palette source: ChocoNeko's colour themes (SleepyMie's studio), copied from
@@ -102,9 +103,31 @@ function buildPalette(t: ChocoTheme) {
 
 export const theme = buildPalette(CHOCO_THEMES[ACTIVE_THEME])
 
+/**
+ * The round's team colours (config/teamColours.ts): what sideColor() hands
+ * the board for each side. theme.player / theme.enemy stay the menu's gold
+ * accent and pink warning colour; only cannons, shots, capture tint and
+ * rings, the HUD legend, popups, the result frame and the menu's pictures
+ * follow the team colours. Changed in place, so nothing is allocated per
+ * frame.
+ */
+const team: { player: number; enemy: number } = { player: theme.player, enemy: theme.enemy }
+
+/** Set this view's team colours ('player' is always the local viewer's side). */
+export function setTeamColours(player: number, enemy: number): void {
+  team.player = player
+  team.enemy = enemy
+}
+
+/** The same, from preset ids. */
+export function applyTeamColours(c: SideColours): void {
+  setTeamColours(TEAM_COLOUR[c.player].hex, TEAM_COLOUR[c.enemy].hex)
+}
+
+/** A side's team colour (neutrals: the theme's warm grey). */
 export function sideColor(side: Side): number {
-  if (side === 'player') return theme.player
-  if (side === 'enemy') return theme.enemy
+  if (side === 'player') return team.player
+  if (side === 'enemy') return team.enemy
   return theme.neutral
 }
 
@@ -143,19 +166,4 @@ export function shade(color: number, factor: number): number {
   const g = Math.min(255, Math.round(((color >> 8) & 255) * factor))
   const b = Math.min(255, Math.round((color & 255) * factor))
   return (r << 16) | (g << 8) | b
-}
-
-const baseSides = { player: theme.player, playerHot: theme.playerHot, enemy: theme.enemy, select: theme.select }
-
-/**
- * Player vs player with "see yourself as gold" off: the second player's own
- * cannons are gold in the game's logic (so the battle screen works as usual)
- * but should look pink, so the two side colours trade places while on.
- */
-export function swapSideColours(on: boolean): void {
-  const t = theme as unknown as Record<'player' | 'enemy' | 'playerHot' | 'select', number>
-  t.player = on ? baseSides.enemy : baseSides.player
-  t.enemy = on ? baseSides.player : baseSides.enemy
-  t.playerHot = on ? mix(baseSides.enemy, 0xffffff, 0.3) : baseSides.playerHot
-  t.select = on ? mix(baseSides.enemy, 0xffffff, 0.75) : baseSides.select
 }

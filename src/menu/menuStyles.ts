@@ -93,6 +93,10 @@ export function injectMenuStyles(): void {
 .mm-skin[aria-pressed="true"] .n { color: ${gold}; }
 .mm-skins.small .mm-skin { font-size: 11px; padding: 2px 1px 3px; }
 .mm-skins.small .mm-skin .pv { max-width: 40px; }
+.mm-skins.colours.small { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+.mm-skins.colours.small .mm-skin { padding: 2px 0; }
+.mm-skins.colours.small .mm-skin .n { display: none; }
+.mm-vs i { display: inline-block; width: .8em; height: .8em; border-radius: 50%; vertical-align: -1px; margin: 0 4px 0 0; box-shadow: 0 0 0 1px ${cssHex(theme.dim)}; }
 .mm-blurb { min-height: 3.2em; color: ${theme.textMuted}; line-height: 1.4; }
 .mm-pick { background: ${rgba(theme.panel, 0.7)}; border-radius: 12px; padding: 10px 12px; border: 1px solid ${cssHex(theme.boardEdge)}; }
 .mm-pick .n { font-weight: bold; font-size: 1.1em; }

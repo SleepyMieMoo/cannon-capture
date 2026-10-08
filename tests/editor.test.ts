@@ -175,7 +175,7 @@ describe('validateMap', () => {
     fans: [],
   })
   it('needs a player cannon', () => {
-    expect(validateMap(map('battle', ['enemy']))[0]).toMatch(/gold/)
+    expect(validateMap(map('battle', ['enemy']))[0]).toMatch(/your \(player\)/)
   })
   it('battles need an enemy', () => {
     expect(validateMap(map('battle', ['player', 'neutral'])).join()).toMatch(/enemy/)

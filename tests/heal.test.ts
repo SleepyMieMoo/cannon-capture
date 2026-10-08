@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BattleSim } from '../src/sim/BattleSim'
 import { planHeals } from '../src/ai/AiController'
 import type { LevelDef } from '../src/types'
-import { HOWTO } from '../src/menu/art'
+import { howtoTips } from '../src/menu/art'
 
 const level: LevelDef = {
   id: 'heal-test',
@@ -195,7 +195,7 @@ describe('after a heal (what the How to play card promises)', () => {
 })
 
 it('How to play has a Heal friends card that says what happens after the heal', () => {
-  const card = HOWTO.find((t) => t.title === 'Heal friends')
+  const card = howtoTips().find((t) => t.title === 'Heal friends')
   expect(card).toBeTruthy()
   expect(card!.text).toMatch(/auto-target on, the healer aims at the nearest foe/)
   expect(card!.text).toMatch(/With it off .*earlier aim/)

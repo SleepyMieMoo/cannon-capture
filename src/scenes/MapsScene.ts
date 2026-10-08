@@ -129,7 +129,7 @@ export class MapsScene extends Phaser.Scene {
     const problems = validateMap(L)
     const count = (side: string): number => L.cannons.filter((c) => c.side === side).length
     const mode = L.kind === 'puzzle' ? `Puzzle${L.aims ? ` · ${L.aims} aims` : ''}` : 'Battle'
-    const details = `${MAP_SIZES[L.size ?? 'small'].label} · ${mode} · ${count('player')} gold, ${count('enemy')} enemy, ${count('neutral')} neutral · ${L.walls.length} walls, ${L.fans.length} fans`
+    const details = `${MAP_SIZES[L.size ?? 'small'].label} · ${mode} · ${count('player')} yours, ${count('enemy')} enemy, ${count('neutral')} neutral · ${L.walls.length} walls, ${L.fans.length} fans`
     const nameEl = h('div.name', {}, L.name)
     const meta = h('div.meta', {},
       nameEl,
