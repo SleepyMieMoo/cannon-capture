@@ -12,6 +12,7 @@ import { discord } from '../platform/runtime'
 import { isRoomCode, normaliseCode } from '../net/online'
 import { createRoom, online, saveName, savedName, type OnlineRoom } from '../net/onlineClient'
 import type { OnlineMenu } from '../menu/onlineMenu'
+import { DemoWatch, keepDemoRunning, type DemoScenes } from './demoWatch'
 
 let launchedFromUrl = false
 let joinedFromUrl = false
@@ -33,6 +34,7 @@ export interface TitleData {
 export class TitleScene extends Phaser.Scene {
   menu: MainMenu | null = null
   private leaving = false
+  private demo: DemoWatch | null = null
 
   constructor() {
     super('title')
@@ -54,8 +56,25 @@ export class TitleScene extends Phaser.Scene {
     document.title = BRAND.title
     bindSceneResolution(this)
     applyAudioSettings(this.sound, loadAudioSettings())
-    if (!this.scene.isActive('titlebg')) this.scene.launch('titlebg')
+    // The demo battle behind the menu: start it (or wake it), and keep it going (alt-tab, tab switches).
+    const scenes: DemoScenes = {
+      status: (key) => this.scene.get(key)?.sys.settings.status,
+      wake: (key) => this.scene.wake(key),
+      resume: (key) => this.scene.resume(key),
+      launch: (key) => this.scene.launch(key),
+    }
+    keepDemoRunning(scenes, 'titlebg')
     this.scene.sendToBack('titlebg')
+    const demo = new DemoWatch(scenes, 'titlebg')
+    this.demo = demo
+    const back = (): void => void demo.now()
+    this.game.events.on(Phaser.Core.Events.VISIBLE, back)
+    this.game.events.on(Phaser.Core.Events.FOCUS, back)
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.game.events.off(Phaser.Core.Events.VISIBLE, back)
+      this.game.events.off(Phaser.Core.Events.FOCUS, back)
+      this.demo = null
+    })
 
     const go = (key: string, payload?: object): void => {
       if (this.leaving) return
@@ -146,5 +165,9 @@ export class TitleScene extends Phaser.Scene {
       this.scene.stop('titlebg')
     })
     if (DEBUG.enabled) (window as unknown as { __menu?: unknown }).__menu = this
+  }
+
+  update(_time: number, delta: number): void {
+    this.demo?.tick(delta)
   }
 }
