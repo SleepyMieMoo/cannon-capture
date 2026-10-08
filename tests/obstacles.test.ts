@@ -348,7 +348,9 @@ describe('maps: save format', () => {
     for (const map of EXAMPLE_MAPS) {
       const back = decodeShare(encodeShare(map))
       expect(back.walls).toEqual(map.walls)
-      expect(back.pillars).toEqual(map.pillars)
+      // Turns are kept to 4 decimals.
+      expect(back.pillars?.map(({ angle, ...rest }) => rest)).toEqual(map.pillars?.map(({ angle, ...rest }) => rest))
+      back.pillars?.forEach((p, i) => expect(p.angle ?? 0).toBeCloseTo(map.pillars![i].angle ?? 0, 3))
       expect(back.glass).toEqual(map.glass)
     }
     const junk = sanitizeLevel({
@@ -377,7 +379,8 @@ describe('example maps', () => {
       const sw = (s: string) => (s === 'player' ? 'enemy' : s === 'enemy' ? 'player' : s)
       for (const c of map.cannons) expect(map.cannons.some((d) => Math.abs(d.x - (1200 - c.x)) < 1 && Math.abs(d.y - c.y) < 1 && d.side === sw(c.side))).toBe(true)
       const mirrorX = (x: number) => 1200 - x
-      for (const p of map.pillars ?? []) expect((map.pillars ?? []).some((q) => q.x === mirrorX(p.x) && q.y === p.y && q.r === p.r)).toBe(true)
+      const mirrorTurn = (a = 0) => (a === 0 ? 0 : Math.PI - a)
+      for (const p of map.pillars ?? []) expect((map.pillars ?? []).some((q) => q.x === mirrorX(p.x) && q.y === p.y && q.r === p.r && q.ry === p.ry && Math.abs((q.angle ?? 0) - mirrorTurn(p.angle)) < 1e-9)).toBe(true)
       for (const w of map.walls) expect(map.walls.some((v) => v.x === mirrorX(w.x + w.w) && v.y === w.y && v.kind === w.kind)).toBe(true)
       expect(vsAiMaps([]).some((c) => c.id === map.id)).toBe(true)
       expect(PVP_MAPS.some((m) => m.id === map.id)).toBe(true)

@@ -124,11 +124,21 @@ export function sanitizeLevel(raw: unknown): LevelDef {
     if (!p || typeof p !== 'object') continue
     const o = p as Record<string, unknown>
     const rr = Math.round(num(o.r, 28, 10, 120))
-    pillars.push({
-      x: Math.round(num(o.x, b.x + b.w / 2, b.x + rr, b.x + b.w - rr)),
-      y: Math.round(num(o.y, b.y + b.h / 2, b.y + rr, b.y + b.h - rr)),
+    // Ovals (added later): a half-height and a turn; a missing or equal half-height is a circle.
+    const ry = o.ry === undefined ? rr : Math.round(num(o.ry, rr, 10, 120))
+    const reach = Math.max(rr, ry)
+    const pillar: PillarDef = {
+      x: Math.round(num(o.x, b.x + b.w / 2, b.x + reach, b.x + b.w - reach)),
+      y: Math.round(num(o.y, b.y + b.h / 2, b.y + reach, b.y + b.h - reach)),
       r: rr,
-    })
+    }
+    if (ry !== rr) {
+      pillar.ry = ry
+      const angle = num(o.angle, 0, -Math.PI * 4, Math.PI * 4)
+      const a = Math.round((((angle % Math.PI) + Math.PI) % Math.PI) * 1e4) / 1e4
+      if (a > 1e-3 && a < Math.PI - 1e-3) pillar.angle = a
+    }
+    pillars.push(pillar)
   }
   const glass: GlassDef[] = []
   for (const g of Array.isArray(r.glass) ? r.glass.slice(0, LIMITS.glass) : []) {

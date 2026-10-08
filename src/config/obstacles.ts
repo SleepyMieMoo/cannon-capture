@@ -11,3 +11,23 @@ export const GLASS = 0xcfe8ff
 export const GLASS_RIM = 0xf2f9ff
 /** Pillar radii the editor offers (Small, Medium, Large). */
 export const PILLAR_SIZES = [18, 28, 44] as const
+/**
+ * Pillars are drawn as rocks (top-down): an irregular outline, faceted
+ * stone and a little moss on the smaller ones, so they read as terrain and
+ * never as a cannon, a neutral or a button.
+ */
+export const ROCK = {
+  shadow: 0x0c0806,
+  edge: 0x2b221c,
+  base: 0x564638,
+  mid: 0x6b5847,
+  light: 0x8a7563,
+  crack: 0x231b16,
+  moss: 0x4f5d2c,
+  mossLight: 0x6f7f3a,
+} as const
+/** Oval presets the editor offers: [half-width, half-height]. */
+export const PILLAR_OVALS: readonly { name: string; r: number; ry: number }[] = [
+  { name: 'Oval', r: 40, ry: 24 },
+  { name: 'Long', r: 60, ry: 20 },
+]

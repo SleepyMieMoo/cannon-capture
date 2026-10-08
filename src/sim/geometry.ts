@@ -131,16 +131,79 @@ export function reflect(
   }
 }
 
-/** Circle versus a round pillar. Normal points out of the pillar. */
-export function circlePillar(cx: number, cy: number, radius: number, p: { x: number; y: number; r: number }): CircleHit | null {
+type PillarShape = { x: number; y: number; r: number; ry?: number; angle?: number }
+
+/** The furthest any part of a pillar reaches from its centre. */
+export function pillarReach(p: PillarShape): number {
+  return Math.max(p.r, p.ry ?? p.r)
+}
+
+const isOval = (p: PillarShape): boolean => p.ry !== undefined && Math.abs(p.ry - p.r) > 1e-6
+
+/**
+ * Closest point on the ellipse x²/a² + y²/b² = 1 to (px, py), for a point
+ * inside or outside it (a few fixed-point steps; exact enough for play).
+ */
+export function closestOnEllipse(px: number, py: number, a: number, b: number): { x: number; y: number } {
+  const x = Math.abs(px)
+  const y = Math.abs(py)
+  let tx = Math.SQRT1_2
+  let ty = Math.SQRT1_2
+  for (let i = 0; i < 4; i++) {
+    const ex = ((a * a - b * b) * tx ** 3) / a
+    const ey = ((b * b - a * a) * ty ** 3) / b
+    const rx = a * tx - ex
+    const ry = b * ty - ey
+    const qx = x - ex
+    const qy = y - ey
+    const r = Math.hypot(rx, ry)
+    const q = Math.hypot(qx, qy) || 1e-9
+    tx = Math.min(1, Math.max(0, ((qx * r) / q + ex) / a))
+    ty = Math.min(1, Math.max(0, ((qy * r) / q + ey) / b))
+    const t = Math.hypot(tx, ty) || 1
+    tx /= t
+    ty /= t
+  }
+  return { x: Math.sign(px || 1) * a * tx, y: Math.sign(py || 1) * b * ty }
+}
+
+/**
+ * Circle versus a pillar (round or oval). The normal is the pillar's
+ * surface normal at the point the circle touches, pointing out.
+ */
+export function circlePillar(cx: number, cy: number, radius: number, p: PillarShape): CircleHit | null {
   const dx = cx - p.x
   const dy = cy - p.y
-  const reach = radius + p.r
-  const distSq = dx * dx + dy * dy
-  if (distSq >= reach * reach) return null
-  if (distSq < 1e-9) return { nx: 1, ny: 0, pen: reach }
-  const dist = Math.sqrt(distSq)
-  return { nx: dx / dist, ny: dy / dist, pen: reach - dist }
+  if (!isOval(p)) {
+    const reach = radius + p.r
+    const distSq = dx * dx + dy * dy
+    if (distSq >= reach * reach) return null
+    if (distSq < 1e-9) return { nx: 1, ny: 0, pen: reach }
+    const dist = Math.sqrt(distSq)
+    return { nx: dx / dist, ny: dy / dist, pen: reach - dist }
+  }
+  const a = p.r
+  const b = p.ry!
+  const far = radius + Math.max(a, b)
+  if (dx * dx + dy * dy >= far * far) return null
+  const cos = Math.cos(p.angle ?? 0)
+  const sin = Math.sin(p.angle ?? 0)
+  // Into the oval's own frame.
+  const lx = dx * cos + dy * sin
+  const ly = -dx * sin + dy * cos
+  const inside = (lx * lx) / (a * a) + (ly * ly) / (b * b) < 1
+  const q = closestOnEllipse(lx, ly, a, b)
+  const ox = lx - q.x
+  const oy = ly - q.y
+  const d = Math.hypot(ox, oy)
+  if (!inside && d >= radius) return null
+  // The surface normal at the closest point (the gradient), out of the oval.
+  let nx = q.x / (a * a)
+  let ny = q.y / (b * b)
+  const n = Math.hypot(nx, ny) || 1
+  nx /= n
+  ny /= n
+  return { nx: nx * cos - ny * sin, ny: nx * sin + ny * cos, pen: inside ? radius + d : radius - d }
 }
 
 export interface GlassHit {
@@ -180,30 +243,40 @@ export function circleGlass(
   return { nx, ny, pen: radius - Math.abs(side), solid: side >= 0 }
 }
 
-/** First point where a segment enters a pillar, or the original end if it does not. */
+/** First point where a segment enters a pillar (round or oval), or the original end if it does not. */
 export function clipToPillars(
   x1: number,
   y1: number,
   x2: number,
   y2: number,
-  pillars: readonly { x: number; y: number; r: number }[],
+  pillars: readonly PillarShape[],
 ): { x: number; y: number } {
-  const dx = x2 - x1
-  const dy = y2 - y1
   let best = 1
   for (const p of pillars) {
-    const fx = x1 - p.x
-    const fy = y1 - p.y
-    const a = dx * dx + dy * dy
-    if (a < 1e-9) continue
-    const b = 2 * (fx * dx + fy * dy)
-    const c = fx * fx + fy * fy - p.r * p.r
-    const disc = b * b - 4 * a * c
+    // In the pillar's frame, scaled so it is the unit circle.
+    const cos = Math.cos(p.angle ?? 0)
+    const sin = Math.sin(p.angle ?? 0)
+    const a = p.r
+    const b = p.ry ?? p.r
+    const loc = (x: number, y: number) => {
+      const dx = x - p.x
+      const dy = y - p.y
+      return { x: (dx * cos + dy * sin) / a, y: (-dx * sin + dy * cos) / b }
+    }
+    const s0 = loc(x1, y1)
+    const s1 = loc(x2, y2)
+    const dx = s1.x - s0.x
+    const dy = s1.y - s0.y
+    const qa = dx * dx + dy * dy
+    if (qa < 1e-12) continue
+    const qb = 2 * (s0.x * dx + s0.y * dy)
+    const qc = s0.x * s0.x + s0.y * s0.y - 1
+    const disc = qb * qb - 4 * qa * qc
     if (disc < 0) continue
-    const t = (-b - Math.sqrt(disc)) / (2 * a)
+    const t = (-qb - Math.sqrt(disc)) / (2 * qa)
     if (t > 0 && t < best) best = t
   }
-  return { x: x1 + dx * best, y: y1 + dy * best }
+  return { x: x1 + (x2 - x1) * best, y: y1 + (y2 - y1) * best }
 }
 
 /** First point where a segment hits the solid side of a glass pane, or the original end. */
