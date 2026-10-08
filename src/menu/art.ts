@@ -1,6 +1,6 @@
 import { cssHex, lerpColor, shade, sideColor, theme } from '../config/theme'
 import { SKIN_SHAPE, type SkinId } from '../config/skins'
-import { GLASS, GLASS_RIM, VOID_COLOURS } from '../config/obstacles'
+import { GLASS, GLASS_RIM, ROCK, VOID_COLOURS } from '../config/obstacles'
 
 /** Small inline SVGs for the menu (static strings, crisp at any DPI). */
 
@@ -108,8 +108,12 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
   const voidEdge = cssHex(VOID_COLOURS.edge)
   const voidRim = cssHex(VOID_COLOURS.rim)
   const voidSpark = cssHex(VOID_COLOURS.spark)
-  const wallFill = cssHex(theme.wall)
-  const wallEdge = cssHex(theme.wallEdge)
+  const rockEdge = cssHex(ROCK.edge)
+  const rockBase = cssHex(ROCK.base)
+  const rockMid = cssHex(ROCK.mid)
+  const rockCrack = cssHex(ROCK.crack)
+  const moss = cssHex(ROCK.moss)
+  const mossLight = cssHex(ROCK.mossLight)
   const glass = cssHex(GLASS)
   const glassRim = cssHex(GLASS_RIM)
   return [
@@ -165,10 +169,10 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
     ),
   },
   {
-    title: 'Round pillars',
-    text: 'Shots glance off a pillar like a ball off a post: the bounce follows the curve, so hitting it off-centre sends the shot off at a wide angle. Great for bank shots around a crowd.',
+    title: 'Rock pillars',
+    text: 'Shots glance off a rock’s curve, round or oval: hit it off-centre and the shot flies off at a wide angle, while a long flat side bounces almost like a wall. Great for bank shots around a crowd.',
     art: svg(
-      `${cannon(36, 66, gold, -0.32)}<polyline points="62,58 128,40 206,72" fill="none" stroke="${sel}" stroke-width="2.5" stroke-dasharray="6 5"/><circle cx="129" cy="22" r="15" fill="${wallFill}" stroke="${wallEdge}" stroke-width="3"/><ellipse cx="124" cy="16" rx="5" ry="3.5" fill="#fff" fill-opacity=".18"/>${cannon(212, 74, grey, Math.PI + 0.4, 12)}${label(120, 92, 'bounces off the curve')}`,
+      `${cannon(36, 66, gold, -0.32)}<polyline points="62,58 128,40 206,72" fill="none" stroke="${sel}" stroke-width="2.5" stroke-dasharray="6 5"/><polygon points="158.5,26.0 153.7,32.8 144.6,38.2 131.0,39.3 117.5,38.1 107.1,33.1 105.1,26.0 107.9,19.1 117.2,13.6 131.0,12.4 144.5,13.9 153.2,19.4" fill="#000" fill-opacity=".4"/><polygon points="156.0,23.0 151.2,29.6 142.4,35.0 129.0,36.0 115.8,34.9 105.6,30.0 103.6,23.0 106.3,16.2 115.5,10.9 129.0,9.7 142.2,11.1 150.7,16.5" fill="${rockEdge}"/><polygon points="152.2,23.0 148.1,28.7 140.5,33.3 129.0,34.2 117.6,33.2 108.9,29.0 107.2,23.0 109.5,17.2 117.4,12.6 129.0,11.6 140.4,12.8 147.7,17.4" fill="${rockBase}"/><polygon points="141.2,20.0 138.3,24.0 133.0,27.2 125.0,27.8 117.1,27.1 111.0,24.2 109.8,20.0 111.4,15.9 116.9,12.7 125.0,12.0 132.9,12.9 138.0,16.1" fill="${rockMid}"/><path d="M112 22l7 3 4 6M140 15l-4 6" stroke="${rockCrack}" stroke-width="1.5" fill="none"/><ellipse cx="146" cy="27" rx="4" ry="3" fill="${moss}"/><ellipse cx="141" cy="31" rx="3.5" ry="2.6" fill="${moss}"/><ellipse cx="145" cy="26" rx="2" ry="1.5" fill="${mossLight}"/>${cannon(212, 74, grey, Math.PI + 0.4, 12)}${label(120, 92, 'bounces off the curve')}`,
     ),
   },
   {

@@ -1399,11 +1399,11 @@ export class EditorScene extends Phaser.Scene {
         this.refreshPanel(true)
       }
       const presets: { name: string; r: number; ry: number; title: string }[] = [
-        ...PILLAR_SIZES.map((r, i) => ({ name: ['Small', 'Medium', 'Large'][i], r, ry: r, title: `Round, ${r * 2} px across` })),
+        ...PILLAR_SIZES.map((r, i) => ({ name: ['S', 'M', 'L'][i], r, ry: r, title: `${['Small', 'Medium', 'Large'][i]} round rock, ${r * 2} px across` })),
         ...PILLAR_OVALS.map((o) => ({ ...o, title: `Oval, ${o.r * 2}×${o.ry * 2} px` })),
       ]
       return [
-        h('span.cc-field', {}, dot(ROCK.light), h('b', {}, 'Pillar')),
+        h('span.cc-field', { title: 'A rock: shots glance off its curve. [ ] width · { } height · Q / E turn an oval' }, dot(ROCK.light), h('b', {}, 'Pillar')),
         h('span.cc-field', {},
           ...presets.map((o) =>
             h('button.cc-btn.xs', { className: `cc-btn xs${p.r === o.r && ry === o.ry ? ' on' : ''}`, title: o.title, onclick: () => shape(o.r, o.ry) }, o.name),
@@ -1428,7 +1428,6 @@ export class EditorScene extends Phaser.Scene {
             h('button.cc-btn.xs', { title: 'E', onclick: () => this.rotateSelected(1) }, '⟳'),
           )
           : null,
-        h('span.cc-note', { title: '[ ] width · { } height · Q / E turn an oval' }, 'Shots glance off its curve.'),
         remove,
       ].filter(Boolean) as HTMLElement[]
     }
