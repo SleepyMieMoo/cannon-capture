@@ -50,6 +50,8 @@ export interface SimEvents {
   wallHit?(index: number, x: number, y: number): void
   /** That breakable wall broke for good. */
   wallBroken?(index: number): void
+  /** A shot fell into a portal of `pair` at (x1, y1) and came out at (x2, y2). */
+  portal?(x1: number, y1: number, x2: number, y2: number, pair: number): void
 }
 
 /**
@@ -621,6 +623,7 @@ export class BattleSim {
       const near = this.near.at(shot.ball.x, shot.ball.y)
       const result = shot.step(dt, near.walls, this.fans, near.bodies, this.opts, barriers.length ? this.barriersFor(shot, shields, barriers, dt) : undefined, near.pillars, near.glass)
       if (result.bounced) this.events.bounce?.(shot.ball.x, shot.ball.y, result.surface ?? 'wall')
+      if (result.ported) this.events.portal?.(result.ported.x1, result.ported.y1, result.ported.x2, result.ported.y2, result.ported.pair)
       if (result.absorbed) this.events.absorbed?.(shot.ball.x, shot.ball.y, shot.side, shot.kind)
       if (result.wall && !this.ended && !frozen) {
         const index = this.wallIndex.get(result.wall)

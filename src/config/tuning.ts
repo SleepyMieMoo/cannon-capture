@@ -187,12 +187,15 @@ export const TUNING = {
    *   the shots actually come from and keeps turning to follow them.
    *   shieldShooters: how many different attackers it takes (fewer is
    *   rasher; Impossible then checks the idea in its look-ahead).
+   * - portalChance: the share of portal lanes it ever spots (each portal
+   *   also counts as a trick), so Easy never plans through portals, Normal
+   *   rarely, Hard and Impossible always.
    */
   aiLevels: {
-    easy: { aimError: 3.6, overshoot: 0.6, correct: 0.45, adjustMs: 1000, maxTricks: 0, trickChance: 0, misjudge: 0.15, reactMs: 1200, commitMs: 5000, margin: 1.4, lookahead: false, shieldAt: 6, shieldChance: 0.35, shieldAim: 'shooter', shieldShooters: 2 },
-    normal: { aimError: 1.8, overshoot: 0.6, correct: 0.45, adjustMs: 800, maxTricks: 1, trickChance: 0.35, misjudge: 0.07, reactMs: 600, commitMs: 4000, margin: 1.3, lookahead: false, shieldAt: 5, shieldChance: 0.75, shieldAim: 'shots', shieldShooters: 3 },
-    hard: { aimError: 1.1, overshoot: 0.6, correct: 0.45, adjustMs: 800, maxTricks: 99, trickChance: 1, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: false, shieldAt: 4, shieldChance: 1, shieldAim: 'shots', shieldShooters: 3 },
-    impossible: { aimError: 0, overshoot: 0.6, correct: 0, adjustMs: 0, maxTricks: 99, trickChance: 1, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: true, shieldAt: 4, shieldChance: 1, shieldAim: 'shots', shieldShooters: 2 },
+    easy: { aimError: 3.6, overshoot: 0.6, correct: 0.45, adjustMs: 1000, maxTricks: 0, trickChance: 0, misjudge: 0.15, reactMs: 1200, commitMs: 5000, margin: 1.4, lookahead: false, shieldAt: 6, shieldChance: 0.35, shieldAim: 'shooter', shieldShooters: 2, portalChance: 0 },
+    normal: { aimError: 1.8, overshoot: 0.6, correct: 0.45, adjustMs: 800, maxTricks: 1, trickChance: 0.35, misjudge: 0.07, reactMs: 600, commitMs: 4000, margin: 1.3, lookahead: false, shieldAt: 5, shieldChance: 0.75, shieldAim: 'shots', shieldShooters: 3, portalChance: 0.2 },
+    hard: { aimError: 1.1, overshoot: 0.6, correct: 0.45, adjustMs: 800, maxTricks: 99, trickChance: 1, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: false, shieldAt: 4, shieldChance: 1, shieldAim: 'shots', shieldShooters: 3, portalChance: 1 },
+    impossible: { aimError: 0, overshoot: 0.6, correct: 0, adjustMs: 0, maxTricks: 99, trickChance: 1, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: true, shieldAt: 4, shieldChance: 1, shieldAim: 'shots', shieldShooters: 2, portalChance: 1 },
   },
   /**
    * Impossible's look-ahead. When a cannon is free to pick a new job it

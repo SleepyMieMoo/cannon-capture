@@ -1,4 +1,5 @@
 import { TUNING } from '../config/tuning'
+import { portalMouths } from './portals'
 import { boardFor } from '../levels/board'
 import { FIRING_KINDS, laneKey, maxShotSpeedFor, shotRangeFor, shotSpeedFor } from '../config/kinds'
 import type { CannonKind, LevelDef } from '../types'
@@ -14,8 +15,10 @@ import { Broadphase, aimShot, stepBall, type BallisticsOpts, type Body, type Fan
  */
 
 /** Shot physics settings for a level (its board size sets the bounds). */
-export function shotOpts(level: Pick<LevelDef, 'size'>): BallisticsOpts {
+export function shotOpts(level: Pick<LevelDef, 'size'> & Partial<Pick<LevelDef, 'portals'>>): BallisticsOpts {
+  const portals = portalMouths(level.portals)
   return {
+    ...(portals.length ? { portals } : {}),
     radius: TUNING.shotRadius,
     maxSpeed: TUNING.shotSpeed * TUNING.shotSpeedCap,
     maxBounces: TUNING.maxBounces,
@@ -44,6 +47,8 @@ export interface Lane {
    * and where it hits. The AI checks it against enemy barriers.
    */
   path?: number[]
+  /** Portals a shot down the middle of the lane goes through (Easy and Normal mostly avoid these). */
+  portals?: number
   /** Other, narrower runs of angles to the same target (best first), to get round a barrier. */
   alts?: Lane[]
 }
@@ -108,6 +113,9 @@ interface FullTrace {
   hitId: string | null
   bounces: number
   pushed: boolean
+  /** Portals it went through. */
+  portals: number
+  /** The route; a portal jump is a NaN, NaN gap (no segment across it). */
   path: number[]
 }
 
@@ -132,6 +140,7 @@ function traceFull(ctx: TraceCtx, fromId: string, angle: number, kind: CannonKin
   // Range (path length) ends the flight, as in play; the time limit is only a safety net.
   const maxMs = TUNING.shotMaxFlightMs
   let pushed = false
+  let portals = 0
   let hitId: string | null = null
   for (let elapsed = 0; elapsed < maxMs && ball.alive && hitId === null; elapsed += 16) {
     const cell = ctx.near.at(ball.x, ball.y)
@@ -139,13 +148,17 @@ function traceFull(ctx: TraceCtx, fromId: string, angle: number, kind: CannonKin
     ball = step.ball
     if (step.pushed) pushed = true
     if (step.hitId) hitId = step.hitId
+    if (step.ported) {
+      portals += 1
+      if (withPath) path.push(Math.round(step.ported.x1), Math.round(step.ported.y1), NaN, NaN, Math.round(step.ported.x2), Math.round(step.ported.y2))
+    }
     if (withPath && (step.bounced || step.pushed)) {
       const n = path.length
       if (step.bounced || Math.hypot(ball.x - path[n - 2], ball.y - path[n - 1]) >= 24) path.push(Math.round(ball.x), Math.round(ball.y))
     }
   }
   if (withPath) path.push(Math.round(ball.x), Math.round(ball.y))
-  return { hitId, bounces: ball.bounces, pushed, path }
+  return { hitId, bounces: ball.bounces, pushed, portals, path }
 }
 
 export function traceAngle(level: LevelDef, fromId: string, angle: number, kind: CannonKind = 'normal'): string | null {
@@ -204,8 +217,8 @@ function lanesFor(ctx: TraceCtx, fromId: string, hits: (string | null)[], stepDe
   const lanes = new Map<string, Lane>()
   const laneOf = (targetId: string, run: Run, direct: boolean): Lane => {
     const mid = traceFull(ctx, fromId, run.angle, kind, true)
-    const tricks = (mid?.bounces ?? 0) + (mid?.pushed ? 1 : 0)
-    return { targetId, ...run, direct, tricks, path: mid?.path }
+    const tricks = (mid?.bounces ?? 0) + (mid?.pushed ? 1 : 0) + (mid?.portals ?? 0)
+    return { targetId, ...run, direct, tricks, path: mid?.path, ...(mid?.portals ? { portals: mid.portals } : {}) }
   }
   for (const [targetId, runs] of runsFromSweep(hits, stepDeg)) {
     if (targetId === fromId) continue
