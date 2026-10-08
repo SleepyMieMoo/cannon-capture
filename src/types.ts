@@ -74,7 +74,7 @@ export interface LevelDef {
    */
   par?: number
   /**
-   * Enemy AI overrides. retargetMs: how often it re-aims. fireMs: time between
+   * Enemy AI overrides. retargetMs: how often each of its cannons re-thinks its plan. fireMs: time between
    * enemy shots (yours are always TUNING.fireIntervalMs), to ease early levels.
    */
   ai?: { retargetMs?: number; fireMs?: number }

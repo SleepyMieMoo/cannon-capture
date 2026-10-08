@@ -1,6 +1,6 @@
 import type Phaser from 'phaser'
 import { AiController, aimViaLane } from '../ai/AiController'
-import { swapPolicy } from '../ai/towerChoice'
+import { aiDifficulty, swapPolicy } from '../ai/towerChoice'
 import { TUNING } from '../config/tuning'
 import { Cannon } from '../entities/Cannon'
 import { Shot } from '../entities/Shot'
@@ -72,7 +72,7 @@ export class BattleSim {
       this.lanes = lanes ?? new LaneBuilder(level, 1).runAll()
     }
     this.fans = levelFans(level)
-    this.ai.reset(this.lanes, level.ai?.retargetMs ?? TUNING.aiRetargetMs, this.board, swapPolicy(level))
+    this.ai.reset(this.lanes, level.ai?.retargetMs ?? TUNING.aiRetargetMs, this.board, swapPolicy(level), aiDifficulty(level))
     level.cannons.forEach((def, index) => {
       this.cannons.push(
         new Cannon(scene, def.id, def.name, def.x, def.y, def.side, (index % 3) * TUNING.fireStaggerMs, def.kind),
@@ -182,14 +182,16 @@ export class BattleSim {
   private onCaptured(cannon: Cannon): void {
     this.events.captured?.(cannon)
     if (this.isPuzzle) return // puzzles: every aim is yours to spend, nothing auto-aims
+    // Your cannons re-aim by themselves when their target falls; the AI's
+    // cannons are left to the AI, which reacts after its reaction time.
     for (const other of this.cannons) {
+      if (other.side === this.ai.side) continue
       if (other.target && other.target.side === other.side && other.target !== other.healing) other.setTarget(this.nearestFoe(other))
     }
-    if (!cannon.aim()) {
+    if (cannon.side !== this.ai.side && !cannon.aim()) {
       const foe = this.nearestFoe(cannon)
       if (foe) aimViaLane(cannon, foe, lanesOf(this.lanes, cannon)?.get(foe.id), this.board)
     }
-    this.ai.retarget(this.cannons)
   }
 
   /** Nearest foe it has a lane to, falling back to the nearest foe overall. */
