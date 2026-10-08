@@ -10,6 +10,7 @@ import { EventLog, encodeSnap, replayEvent } from '../src/net/snapshot'
 import { AiController } from '../src/ai/AiController'
 import { decodeShare, encodeShare, sanitizeLevel } from '../src/editor/maps'
 import type { LevelDef, PortalDef } from '../src/types'
+import { WARP_WORKS } from '../src/levels/examples'
 
 const FRAME = 1000 / 60
 const optsWith = (portals: PortalDef[]): BallisticsOpts => ({ ...shotOpts({ size: 'huge', portals }), bounds: { x: -1e5, y: -1e5, w: 2e5, h: 2e5 } })
@@ -185,4 +186,46 @@ describe('portals in a round', () => {
     expect(decodeShare(encodeShare(level))!.portals).toEqual(level.portals)
     expect(sanitizeLevel({ ...PORTAL_LEVEL, portals: undefined }).portals).toBeUndefined()
   })
+})
+
+describe('Warp Works (example map)', () => {
+  it('is fair: bricks and portals mirror left/right (lime is teal\'s mirror image)', () => {
+    const mx = (x: number) => 1200 - x
+    const mt = (a: number) => Math.atan2(Math.sin(Math.PI - a), Math.cos(Math.PI - a))
+    const same = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < 1e-9
+    for (const w of WARP_WORKS.walls) expect(WARP_WORKS.walls.some((v) => v.x === mx(w.x + w.w) && v.y === w.y && v.kind === w.kind && v.hp === w.hp)).toBe(true)
+    expect(WARP_WORKS.walls.some((w) => w.kind === 'breakable')).toBe(true)
+    const ps = WARP_WORKS.portals!
+    for (const p of ps) {
+      const twin = ps.find((q) => q.a.x === mx(p.a.x) && q.a.y === p.a.y && same(q.a.angle, mt(p.a.angle)) && q.b.x === mx(p.b.x) && q.b.y === p.b.y && same(q.b.angle, mt(p.b.angle)))
+      expect(twin).toBeTruthy()
+    }
+    // Share codes keep it (angles to 4 decimals).
+    const back = decodeShare(encodeShare(WARP_WORKS))!
+    back.portals!.forEach((p, i) => {
+      expect(p.a.x).toBe(ps[i].a.x)
+      expect(p.b.angle).toBeCloseTo(ps[i].b.angle, 3)
+    })
+  })
+
+  it('Hard AIs use the portals and break the bricks; Easy never plans through a portal', () => {
+    let ports = 0
+    let broke = 0
+    const level: LevelDef = { ...WARP_WORKS, ai: { difficulty: 'hard' } }
+    const lanes = levelLanes(level)
+    const sim = new BattleSim(level, null, { portal: () => ports++, wallBroken: () => broke++ }, lanes)
+    sim.addAi('player', 'hard')
+    while (!sim.ended && sim.clock < 150_000) sim.step(FRAME)
+    expect(sim.ended).toBeTruthy()
+    expect(ports).toBeGreaterThan(0)
+    expect(broke).toBeGreaterThan(0)
+    // Easy: no portal lane in its view at all.
+    const easy = new BattleSim({ ...WARP_WORKS, ai: { difficulty: 'easy' } }, null, {}, levelLanes(WARP_WORKS))
+    const ai = (easy as unknown as { ai: AiController }).ai
+    ;(ai as unknown as { refreshView(c: unknown): void }).refreshView(easy.cannons)
+    const view = (ai as unknown as { view: Map<string, Map<string, { portals?: number; alts?: { portals?: number }[] }>> }).view
+    const all = [...view.values()].flatMap((m) => [...m.values()]).flatMap((l) => [l, ...(l.alts ?? [])])
+    expect(all.length).toBeGreaterThan(0)
+    expect(all.some((l) => l.portals)).toBe(false)
+  }, 60_000)
 })
