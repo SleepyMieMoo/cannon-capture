@@ -2,7 +2,7 @@ import { TUNING } from '../config/tuning'
 import { boardFor } from '../levels/board'
 import { KIND_IDS, laneKey, maxShotSpeedFor, shotLifetimeFor, shotSpeedFor } from '../config/kinds'
 import type { CannonKind, LevelDef } from '../types'
-import { Broadphase, aimShot, traceShot, type BallisticsOpts, type Body, type FanField } from './ballistics'
+import { Broadphase, aimShot, traceShot, type BallisticsOpts, type Body, type FanField, type TraceResult } from './ballistics'
 
 /**
  * Lane finder: fires a test shot from a cannon at every angle (1° apart) and
@@ -30,6 +30,16 @@ export interface Lane {
   widthDeg: number
   /** True when aiming straight at the target lands the shot. */
   direct: boolean
+  /**
+   * Trick shots on the lane's middle angle: wall bounces plus one if a fan
+   * pushes it (0 for a straight line). Aiming straight (direct) needs none.
+   */
+  tricks?: number
+}
+
+/** Trick shots needed to use this lane as the AI would aim it (0 when it can aim straight). */
+export function laneTricks(lane: Lane): number {
+  return lane.direct ? 0 : (lane.tricks ?? 0)
 }
 
 /**
@@ -77,6 +87,10 @@ function traceCtx(level: LevelDef): TraceCtx {
 }
 
 function traceWith(ctx: TraceCtx, fromId: string, angle: number, kind: CannonKind = 'normal'): string | null {
+  return traceFull(ctx, fromId, angle, kind)?.hitId ?? null
+}
+
+function traceFull(ctx: TraceCtx, fromId: string, angle: number, kind: CannonKind = 'normal'): TraceResult | null {
   const from = ctx.level.cannons.find((c) => c.id === fromId)
   if (!from) return null
   const shot = aimShot(
@@ -87,7 +101,7 @@ function traceWith(ctx: TraceCtx, fromId: string, angle: number, kind: CannonKin
     fromId,
   )
   if (kind !== 'normal') shot.maxSpeed = maxShotSpeedFor(kind)
-  return traceShot(shot, ctx.level.walls, ctx.fans, ctx.bodies, ctx.opts, shotLifetimeFor(kind), ctx.near).hitId
+  return traceShot(shot, ctx.level.walls, ctx.fans, ctx.bodies, ctx.opts, shotLifetimeFor(kind), ctx.near)
 }
 
 export function traceAngle(level: LevelDef, fromId: string, angle: number, kind: CannonKind = 'normal'): string | null {
@@ -136,7 +150,9 @@ function lanesFor(ctx: TraceCtx, fromId: string, hits: (string | null)[], stepDe
     if (targetId === fromId) continue
     const target = ctx.level.cannons.find((c) => c.id === targetId)!
     const directAngle = Math.atan2(target.y - from.y, target.x - from.x)
-    lanes.set(targetId, { targetId, ...lane, direct: traceWith(ctx, fromId, directAngle, kind) === targetId })
+    const mid = traceFull(ctx, fromId, lane.angle, kind)
+    const tricks = (mid?.end.bounces ?? 0) + (mid?.pushed ? 1 : 0)
+    lanes.set(targetId, { targetId, ...lane, direct: traceWith(ctx, fromId, directAngle, kind) === targetId, tricks })
   }
   return lanes
 }

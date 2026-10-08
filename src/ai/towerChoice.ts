@@ -3,6 +3,7 @@ import { TUNING } from '../config/tuning'
 import type { Cannon } from '../entities/Cannon'
 import { MIN_LANE_DEG, type LaneTable } from '../sim/solver'
 import type { CannonKind, LevelDef } from '../types'
+import { levelDifficulty, type AiLevel } from './difficulty'
 
 /**
  * Tower type choice for the AI and the test bots: pick the type that finishes
@@ -11,7 +12,7 @@ import type { CannonKind, LevelDef } from '../types'
  * restraint (a cooldown and a required gain) so it never flip-flops.
  */
 
-export type AiDifficulty = 'easy' | 'normal' | 'hard'
+export type AiDifficulty = AiLevel
 
 export interface SwapPolicy {
   /** Minimum time between two swaps of the same cannon (ms). */
@@ -20,22 +21,14 @@ export interface SwapPolicy {
   gain: number
 }
 
-/**
- * The map's difficulty, read from how fast it makes pink fire (the same
- * thresholds as the editor's Difficulty menu). Levels without an ai block
- * count as Normal here.
- */
+/** The map's difficulty (see levelDifficulty). */
 export function aiDifficulty(level: Pick<LevelDef, 'ai'>): AiDifficulty {
-  const fire = level.ai?.fireMs
-  if (fire === undefined) return 'normal'
-  if (fire >= 1300) return 'easy'
-  if (fire >= 1100) return 'normal'
-  return 'hard'
+  return levelDifficulty(level)
 }
 
-export function swapPolicy(level: Pick<LevelDef, 'ai'>): SwapPolicy {
-  const d = aiDifficulty(level)
-  return { cooldownMs: TUNING.aiSwap.cooldownMs[d], gain: TUNING.aiSwap.gain[d] }
+/** Swap restraint: the same at every difficulty (difficulty is intelligence only). */
+export function swapPolicy(_level?: Pick<LevelDef, 'ai'>): SwapPolicy {
+  return { cooldownMs: TUNING.aiSwap.cooldownMs, gain: TUNING.aiSwap.gain }
 }
 
 /** Share of shots that land on a lane `widthDeg` wide, aimed at its middle. */
@@ -109,7 +102,7 @@ export class SwapGovernor {
   private now = 0
   private readonly last = new Map<string, number>()
 
-  constructor(public policy: SwapPolicy = { cooldownMs: TUNING.aiSwap.cooldownMs.normal, gain: TUNING.aiSwap.gain.normal }) {}
+  constructor(public policy: SwapPolicy = swapPolicy()) {}
 
   tick(dt: number): void {
     this.now += dt

@@ -5,7 +5,7 @@ import { TUNING } from '../config/tuning'
 import { Cannon } from '../entities/Cannon'
 import { Shot } from '../entities/Shot'
 import { boardFor } from '../levels/board'
-import type { CannonKind, LevelDef, Point, Rect, Side } from '../types'
+import type { AiLevel, CannonKind, LevelDef, Point, Rect, Side } from '../types'
 import { Broadphase, type BallisticsOpts, type Body } from './ballistics'
 import { LaneBuilder, lanesOf, levelFans, shotOpts, type LaneTable } from './solver'
 
@@ -45,7 +45,12 @@ export class BattleSim {
   private readonly builder: LaneBuilder | null = null
   readonly cannons: Cannon[] = []
   shots: Shot[] = []
+  /** Pink's AI. */
   readonly ai = new AiController('enemy')
+  /** Every AI playing this round (pink's, plus one for your side in AI-vs-AI tests). */
+  readonly ais: AiController[] = [this.ai]
+  /** Look-ahead copies run without any AI. */
+  private aiOff = false
   clock = 0
   aimsUsed = 0
   ended: Outcome | null = null
@@ -72,7 +77,7 @@ export class BattleSim {
       this.lanes = lanes ?? new LaneBuilder(level, 1).runAll()
     }
     this.fans = levelFans(level)
-    this.ai.reset(this.lanes, level.ai?.retargetMs ?? TUNING.aiRetargetMs, this.board, swapPolicy(level), aiDifficulty(level))
+    this.ai.reset(this.lanes, TUNING.aiRetargetMs, this.board, swapPolicy(level), aiDifficulty(level), this)
     level.cannons.forEach((def, index) => {
       this.cannons.push(
         new Cannon(scene, def.id, def.name, def.x, def.y, def.side, (index % 3) * TUNING.fireStaggerMs, def.kind),
@@ -87,6 +92,52 @@ export class BattleSim {
     this.bodies = this.cannons.map((c) => ({ id: c.id, x: c.x, y: c.y, radius: TUNING.cannonRadius }))
     // Steps are at most ~32ms at the capped shot speed (under 20px).
     this.near = new Broadphase(level.walls, this.bodies, TUNING.shotRadius, 48)
+  }
+
+  /**
+   * Let an AI play your side too (AI-vs-AI tests, the mirror bot). Returns
+   * it; it is updated every step like pink's.
+   */
+  addAi(side: Side, difficulty: AiLevel): AiController {
+    const ai = new AiController(side)
+    ai.reset(this.lanes, TUNING.aiRetargetMs, this.board, swapPolicy(this.level), difficulty, this)
+    this.ais.push(ai)
+    return ai
+  }
+
+  /**
+   * A headless copy of the round as it stands (cannons, meters, aims, reloads,
+   * shots in flight) that shares the level, lanes and collision grid. No AI
+   * runs in it and it reports no events: Impossible's look-ahead plays its
+   * candidate plans forward in copies like this.
+   */
+  fork(): BattleSim {
+    const f = Object.create(BattleSim.prototype) as BattleSim
+    const cannons = this.cannons.map((c) => c.copy())
+    const byId = (id: string) => cannons.find((c) => c.id === id)
+    cannons.forEach((c, i) => c.linkCopy(this.cannons[i], byId))
+    Object.assign(f, {
+      level: this.level,
+      lanes: this.lanes,
+      board: this.board,
+      opts: this.opts,
+      builder: null,
+      cannons,
+      shots: this.shots.map((s) => new Shot({ ...s.ball }, s.side, s.damage, s.kind)),
+      ai: this.ai,
+      ais: [],
+      aiOff: true,
+      clock: this.clock,
+      aimsUsed: this.aimsUsed,
+      ended: this.ended,
+      endReason: '',
+      lastPuzzleProgress: this.lastPuzzleProgress,
+      fans: this.fans,
+      bodies: this.bodies,
+      near: this.near,
+      events: {},
+    })
+    return f
   }
 
   get isPuzzle(): boolean {
@@ -120,7 +171,7 @@ export class BattleSim {
   step(dt: number): void {
     if (this.ended) return
     this.clock += dt
-    if (!this.isPuzzle) this.ai.update(dt, this.cannons)
+    if (!this.isPuzzle && !this.aiOff) for (const ai of this.ais) ai.update(dt, this.cannons)
     this.stepShots(dt)
     this.checkOutcome()
   }
@@ -153,9 +204,9 @@ export class BattleSim {
   }
 
   private stepShots(dt: number): void {
-    const enemyFire = this.level.ai?.fireMs ?? TUNING.fireIntervalMs
+    // Every side fires at the same rate: difficulty is intelligence only.
     for (const cannon of this.cannons) {
-      const spawned = cannon.update(dt, false, cannon.side === 'enemy' ? enemyFire : TUNING.fireIntervalMs)
+      const spawned = cannon.update(dt, false, TUNING.fireIntervalMs)
       if (spawned) this.shots.push(new Shot(spawned, cannon.side, cannon.damage, cannon.kind))
     }
 
@@ -174,7 +225,11 @@ export class BattleSim {
           if (hit.flipped) this.onCaptured(cannon)
         }
       }
-      if (!shot.ball.alive) this.shots.splice(i, 1)
+      if (!shot.ball.alive) {
+        // Let the AIs see where their shots went (Easy and Normal correct their aim after a miss).
+        for (const ai of this.ais) ai.shotLanded(shot.ball.ownerId, result.hitId)
+        this.shots.splice(i, 1)
+      }
     }
     if (this.shots.length > MAX_SHOTS) this.shots.splice(0, this.shots.length - MAX_SHOTS)
   }
@@ -184,11 +239,12 @@ export class BattleSim {
     if (this.isPuzzle) return // puzzles: every aim is yours to spend, nothing auto-aims
     // Your cannons re-aim by themselves when their target falls; the AI's
     // cannons are left to the AI, which reacts after its reaction time.
+    const aiSide = (side: Side) => this.ais.some((ai) => ai.side === side)
     for (const other of this.cannons) {
-      if (other.side === this.ai.side) continue
+      if (aiSide(other.side)) continue
       if (other.target && other.target.side === other.side && other.target !== other.healing) other.setTarget(this.nearestFoe(other))
     }
-    if (cannon.side !== this.ai.side && !cannon.aim()) {
+    if (!aiSide(cannon.side) && !cannon.aim()) {
       const foe = this.nearestFoe(cannon)
       if (foe) aimViaLane(cannon, foe, lanesOf(this.lanes, cannon)?.get(foe.id), this.board)
     }

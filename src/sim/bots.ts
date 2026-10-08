@@ -1,8 +1,9 @@
-import { AiController, aimViaLane, healViaLane, planCover, planHeals, pointAlong } from '../ai/AiController'
+import { type AiController, aimViaLane, healViaLane, planCover, planHeals, pointAlong } from '../ai/AiController'
 import { SwapGovernor, canReach, swapPolicy } from '../ai/towerChoice'
 import { TUNING } from '../config/tuning'
 import type { Cannon } from '../entities/Cannon'
 import type { BattleSim } from './BattleSim'
+import type { AiLevel } from '../types'
 import { lanesOf, planPuzzle } from './solver'
 
 /**
@@ -130,17 +131,19 @@ export class BattleBot implements Bot {
   }
 }
 
-/** Plays your side exactly like the enemy AI plays its own (spread fire, nearest weak foe). */
+/**
+ * Plays your side exactly like the enemy AI plays its own (spread fire,
+ * nearest weak foe), at the given difficulty (Hard by default: perfect aim).
+ * The AI is added to the round and runs with it, so update() has nothing to do.
+ */
 export class MirrorBot implements Bot {
-  private readonly ai = new AiController('player')
+  readonly ai: AiController
 
-  constructor(private readonly sim: BattleSim) {
-    this.ai.reset(sim.lanes, TUNING.aiRetargetMs, sim.board, swapPolicy({ ai: undefined }))
+  constructor(sim: BattleSim, difficulty: AiLevel = 'hard') {
+    this.ai = sim.addAi('player', difficulty)
   }
 
-  update(dt: number): void {
-    this.ai.update(dt, this.sim.cannons)
-  }
+  update(_dt?: number): void {}
 }
 
 /** Run a level headless with a bot until it ends or `maxMs` of game time passes. */

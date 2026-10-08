@@ -3,7 +3,7 @@ import { TUNING } from '../src/config/tuning'
 import { BattleSim } from '../src/sim/BattleSim'
 import { MirrorBot } from '../src/sim/bots'
 import { levelLanes } from '../src/sim/solver'
-import { SwapGovernor, aiDifficulty, bestKind, swapPolicy } from '../src/ai/towerChoice'
+import { aiDifficulty, bestKind, swapPolicy } from '../src/ai/towerChoice'
 import { listMaps, loadDraft, sanitizeLevel, withDifficulty } from '../src/editor/maps'
 import type { CannonKind, LevelDef } from '../src/types'
 
@@ -137,7 +137,7 @@ describe('tower type for the job', () => {
     }
     const total = [...log.values()].reduce((n, l) => n + l.length, 0)
     expect(total).toBeGreaterThan(0) // types do change during a game
-    const minGap = TUNING.aiSwap.cooldownMs.hard / 2
+    const minGap = TUNING.aiSwap.cooldownMs / 2
     let quickBounces = 0
     for (const swaps of log.values()) {
       // At most one swap every few seconds on average.
@@ -150,33 +150,13 @@ describe('tower type for the job', () => {
     expect(quickBounces).toBe(0)
   })
 
-  it('difficulty: Easy swaps slower and needs a bigger gain than Hard', () => {
-    const easy = swapPolicy(withDifficulty(open(), 'easy'))
-    const hard = swapPolicy(withDifficulty(open(), 'hard'))
+  it('difficulty: every level follows the same swap restraint (difficulty is intelligence only)', () => {
+    const policies = (['easy', 'normal', 'hard', 'impossible'] as const).map((d) => swapPolicy(withDifficulty(open(), d)))
+    for (const p of policies) expect(p).toEqual(policies[0])
     expect(aiDifficulty(withDifficulty(open(), 'easy'))).toBe('easy')
-    expect(aiDifficulty(open())).toBe('normal')
-    expect(easy.cooldownMs).toBeGreaterThan(hard.cooldownMs)
-    expect(easy.gain).toBeGreaterThan(hard.gain)
-
-    // Same cannon, two jobs in a row that each want a different type:
-    // a close one (a machine gun finishes it about 1.26x sooner, reload included)
-    // then, 3 s later, a far one (back to normal).
-    const normal = swapPolicy(withDifficulty(open(), 'normal'))
-    const run = (policy: typeof easy): boolean[] => {
-      const level = open()
-      const sim = new BattleSim(level, null, {}, levelLanes(level))
-      const e1 = sim.byId('e1')!
-      const gov = new SwapGovernor(policy)
-      const swap = (c: typeof e1, k: CannonKind) => c.setKind(k)
-      const first = gov.consider(e1, sim.byId('near')!, sim.lanes, swap)
-      e1.update(TUNING.swapLockMs + 10, true)
-      gov.tick(3000)
-      const second = gov.consider(e1, sim.byId('mid')!, sim.lanes, swap)
-      return [first, second]
-    }
-    expect(run(hard)).toEqual([true, true]) // Hard takes the small gain and may swap again after 2.5 s
-    expect(run(normal)).toEqual([true, false]) // Normal waits 3.5 s between swaps
-    expect(run(easy)).toEqual([false, false]) // Easy skips a gain that small
+    expect(aiDifficulty(withDifficulty(open(), 'impossible'))).toBe('impossible')
+    // No ai block: the old maps' default fire rate was Hard's.
+    expect(aiDifficulty(open())).toBe('hard')
   })
 })
 

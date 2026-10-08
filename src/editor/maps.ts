@@ -1,7 +1,8 @@
 import { isKind } from '../config/kinds'
 import { TUNING } from '../config/tuning'
 import { MAP_SIZE_IDS, boardFor } from '../levels/board'
-import type { CannonDef, FanDef, LevelDef, MapSize, Side, WallDef } from '../types'
+import { inferDifficulty, isAiLevel, levelDifficulty } from '../ai/difficulty'
+import type { AiLevel, CannonDef, FanDef, LevelDef, MapSize, Side, WallDef } from '../types'
 
 /**
  * Custom maps: validation, share codes and localStorage. A custom map is a
@@ -13,23 +14,21 @@ export const SHARE_PREFIX = 'CC1:'
 const STORE_KEY = 'cannon-capture:maps:v1'
 const DRAFT_KEY = 'cannon-capture:editor-draft:v1'
 
-export type Difficulty = 'easy' | 'normal' | 'hard'
-export const DIFFICULTY: Record<Difficulty, { label: string; retargetMs: number; fireMs: number }> = {
-  easy: { label: 'Easy', retargetMs: 2400, fireMs: 1400 },
-  normal: { label: 'Normal', retargetMs: 1800, fireMs: 1150 },
-  hard: { label: 'Hard', retargetMs: 1300, fireMs: 1000 },
+export type Difficulty = AiLevel
+/** The editor's Difficulty menu. Difficulty is how smart pink plays, never how fast. */
+export const DIFFICULTY: Record<Difficulty, { label: string; blurb: string }> = {
+  easy: { label: 'Easy', blurb: 'Misses about half its first shots, then corrects; straight shots only; slow to react' },
+  normal: { label: 'Normal', blurb: 'Lands about 3 in 4 first shots, then corrects; simple bank and fan shots' },
+  hard: { label: 'Hard', blurb: 'Perfect aim, every angle, quick reactions' },
+  impossible: { label: 'Impossible', blurb: 'Perfect aim, and tries out its best plans a few seconds ahead before choosing' },
 }
 
 export function difficultyOf(level: LevelDef): Difficulty {
-  const fire = level.ai?.fireMs ?? TUNING.fireIntervalMs
-  if (fire >= 1300) return 'easy'
-  if (fire >= 1100) return 'normal'
-  return 'hard'
+  return levelDifficulty(level)
 }
 
 export function withDifficulty(level: LevelDef, d: Difficulty): LevelDef {
-  const { retargetMs, fireMs } = DIFFICULTY[d]
-  return { ...level, ai: { retargetMs, fireMs } }
+  return { ...level, ai: { difficulty: d } }
 }
 
 export function blankMap(size: MapSize = 'small'): LevelDef {
@@ -142,12 +141,11 @@ export function sanitizeLevel(raw: unknown): LevelDef {
   if (typeof r.hint === 'string' && r.hint.trim()) level.hint = r.hint.trim().slice(0, 160)
   if (level.kind === 'puzzle' && r.aims !== undefined && r.aims !== null) level.aims = Math.round(num(r.aims, 3, 1, 99))
   if (typeof r.par === 'number') level.par = Math.round(num(r.par, 0, 1, 999))
-  if (r.ai && typeof r.ai === 'object') {
-    const ai = r.ai as Record<string, unknown>
-    level.ai = {
-      retargetMs: Math.round(num(ai.retargetMs, TUNING.aiRetargetMs, 600, 6000)),
-      fireMs: Math.round(num(ai.fireMs, TUNING.fireIntervalMs, 600, 4000)),
-    }
+  if (level.kind === 'battle' || r.ai) {
+    // Older maps stored a fire rate instead of a difficulty: read it once, keep only the difficulty.
+    const ai = r.ai && typeof r.ai === 'object' ? (r.ai as Record<string, unknown>) : {}
+    const fireMs = typeof ai.fireMs === 'number' && Number.isFinite(ai.fireMs) ? ai.fireMs : undefined
+    level.ai = { difficulty: isAiLevel(ai.difficulty) ? ai.difficulty : inferDifficulty(fireMs) }
   }
   return level
 }
