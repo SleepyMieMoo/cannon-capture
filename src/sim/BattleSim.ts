@@ -473,7 +473,7 @@ export class BattleSim {
         }
       }
       if (!shot.ball.alive) {
-        // Let the AIs see where their shots went (Easy and Normal correct their aim after a miss).
+        // Let the AIs see where their shots went (every level but Impossible corrects its aim after a miss).
         for (const ai of this.ais) ai.shotLanded(shot.ball.ownerId, result.hitId, result.blockedBy)
         this.shots.splice(i, 1)
       }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { perfectAim } from './helpers/aim'
 import { TUNING } from '../src/config/tuning'
 import { KINDS, KIND_IDS, laneKey, turnSpeedDegFor } from '../src/config/kinds'
 import { BattleSim } from '../src/sim/BattleSim'
@@ -317,7 +318,8 @@ function attack(bank: boolean) {
 
 describe('AI and shields', () => {
   it('goes round an enemy barrier when there is another lane (a bank shot here)', () => {
-    const { lanes, sim, broke, p2At, blocked } = attack(true)
+    // Perfect aim: this is about the route, not about stray misses that clip the barrier.
+    const { lanes, sim, broke, p2At, blocked } = perfectAim('hard', () => attack(true))
     // Aiming straight at P2 runs into the barrier; the bank lane is kept as a way round.
     const main = lanes.get(laneKey('e1', 'normal'))!.get('p2')!
     expect(main.direct).toBe(true)

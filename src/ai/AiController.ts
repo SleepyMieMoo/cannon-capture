@@ -157,10 +157,11 @@ function nowMs(): number {
  *   pays).
  *
  * Difficulty is intelligence only (TUNING.aiLevels): its cannons fire, turn,
- * think and swap exactly like yours. Easy and Normal aim a little off (they
- * aim at an offset point; shots follow the same rules) and correct after a
- * miss, and skip trick shots beyond their level. Impossible plays its best
- * few options forward in a copy of the round before choosing.
+ * think and swap exactly like yours. Easy, Normal and Hard aim a little off
+ * (they aim at an offset point; shots follow the same rules) and correct a
+ * moment after they see a miss; Easy uses no trick shots and Normal only
+ * spots some simple ones. Impossible aims perfectly and plays its best few
+ * options forward in a copy of the round before choosing.
  */
 export class AiController {
   private now = 0
@@ -188,6 +189,8 @@ export class AiController {
   private readonly byId = new Map<string, Cannon>()
   /** Aim error per cannon for its current job, in lane half-widths (0 = perfect). */
   private readonly aimErr = new Map<Cannon, { job: Job; err: number }>()
+  /** Cannons working out a correction after a miss: when they re-aim, for which job. */
+  private readonly adjusting = new Map<Cannon, { job: Job; at: number }>()
   private rng: () => number = Math.random
   private seed = ''
   private readonly deliberating: Deliberation[] = []
@@ -229,6 +232,7 @@ export class AiController {
     this.viewOf = -1
     this.byId.clear()
     this.aimErr.clear()
+    this.adjusting.clear()
     this.deliberating.length = 0
     this.threats.clear()
     this.foeShields = []
@@ -275,7 +279,21 @@ export class AiController {
         this.think(c, cannons, this.reassess.has(c) ? 'after pause' : 'tick')
       }
     }
+    if (this.adjusting.size) this.adjust()
     if (this.deliberating.length) this.deliberate(cannons)
+  }
+
+  /** Corrections that are worked out: shrink the error and re-aim (if the cannon is still on that job). */
+  private adjust(): void {
+    for (const [c, a] of this.adjusting) {
+      if (this.now < a.at) continue
+      this.adjusting.delete(c)
+      const known = this.aimErr.get(c)
+      if (c.side !== this.side || this.jobs.get(c) !== a.job || !known || known.job !== a.job) continue
+      known.err *= this.skill.correct
+      if (Math.abs(known.err) < 0.05) known.err = 0
+      this.aim(c, a.job)
+    }
   }
 
   /** When `c` next thinks on its own tick (ms of controller time), if scheduled. */
@@ -324,7 +342,8 @@ export class AiController {
    */
   private refreshView(cannons: Cannon[]): void {
     const max = this.skill.maxTricks
-    if (max >= 99) {
+    const chance = this.skill.trickChance
+    if (max >= 99 && chance >= 1) {
       this.view = this.lanes
       return
     }
@@ -336,15 +355,22 @@ export class AiController {
       const hash = key.indexOf('#')
       const from = pos.get(hash < 0 ? key : key.slice(0, hash))
       const kept = new Map<string, Lane>()
-      for (const [id, lane] of lanes) {
+      // A trick lane this level can use, if it ever spots it (fixed per cannon, target and lane).
+      const spots = (l: Lane, n: number): boolean => {
+        const tricks = laneTricks(l)
+        return tricks === 0 || (tricks <= max && (chance >= 1 || hash01(`${this.seed}:trick:${key}>${id}:${n}`) < chance))
+      }
+      let id = ''
+      for (const [laneId, lane] of lanes) {
+        id = laneId
         const to = pos.get(id)
-        const alts = lane.alts?.filter((a) => laneTricks(a) <= max)
+        const alts = lane.alts?.filter((a, i) => spots(a, i + 1))
         const extra = alts?.length ? { alts } : {}
         if (lane.direct && from && to) {
           const angle = Math.atan2(to.y - from.y, to.x - from.x)
           const width = Math.min(lane.widthDeg, directWidthDeg(Math.hypot(to.x - from.x, to.y - from.y)))
           kept.set(id, { targetId: id, angle, widthDeg: Math.max(width, MIN_LANE_DEG), direct: true, tricks: 0, ...extra })
-        } else if (laneTricks(lane) <= max) {
+        } else if (spots(lane, 0)) {
           kept.set(id, { ...lane, alts })
         } else if (alts?.length) {
           // The best lane is too tricky for this level, but a simpler one exists.
@@ -365,6 +391,7 @@ export class AiController {
       this.jobs.delete(c)
       this.react.delete(c)
       this.aimErr.delete(c)
+      this.adjusting.delete(c)
       this.threats.delete(c)
       this.routes.delete(c)
       this.reassess.delete(c)
@@ -583,6 +610,11 @@ export class AiController {
     const known = this.aimErr.get(c)
     if (!job || !known || known.job !== job || known.err === 0) return
     if (hitId === job.target.id) return
+    // It sees the miss and works out a correction (adjustMs); more misses meanwhile teach it nothing new.
+    if (this.skill.adjustMs > 0) {
+      if (!this.adjusting.has(c)) this.adjusting.set(c, { job, at: this.now + this.skill.adjustMs })
+      return
+    }
     known.err *= this.skill.correct
     if (Math.abs(known.err) < 0.05) known.err = 0
     this.aim(c, job)
