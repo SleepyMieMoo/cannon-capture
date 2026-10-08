@@ -103,7 +103,7 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
   },
   {
     title: 'Capture',
-    text: 'Hits fill a cannon’s outer ring in your colour; eight flip it. The solid ring is the owner right now: light = yours, red = theirs. Take every cannon to win; your shots heal your own.',
+    text: 'Hits fill a cannon’s outer ring in your colour; eight flip it. The solid ring is the owner right now: light = yours, red = theirs. Take every cannon to win; your shots heal your own. The bar up top shows who holds how many; Surrender (it asks first) gives up the round.',
     art: svg(
       `${cannon(40, 50, gold)}${own(40, 50, ringYou)}<circle cx="96" cy="50" r="4" fill="${gold}"/><circle cx="124" cy="50" r="4" fill="${gold}"/><circle cx="152" cy="50" r="4" fill="${gold}"/>${cannon(196, 50, tinted, Math.PI)}${own(196, 50, ringEnemy)}<circle cx="196" cy="50" r="23.5" fill="none" stroke="${edge}" stroke-width="3.5"/><path d="M196 26.5 A23.5 23.5 0 1 1 173.2 55.9" fill="none" stroke="${gold}" stroke-width="3.5" stroke-linecap="round"/>${label(120, 90, '8 hits flip it')}`,
     ),
@@ -126,7 +126,7 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
   },
   {
     title: 'Pause',
-    text: 'Space (or Pause) freezes the round. Aim and swap as much as you like; it all happens at once when you resume. Online, the room’s host can turn pauses off.',
+    text: 'Space (or the Pause button) freezes the round. Aim and swap as much as you like; it all happens at once when you resume. Online, the room’s host can turn pauses off.',
     art: svg(
       `<rect x="28" y="30" width="10" height="34" rx="3" fill="${gold}"/><rect x="44" y="30" width="10" height="34" rx="3" fill="${gold}"/>${cannon(100, 64, gold, -0.35)}<line x1="124" y1="56" x2="200" y2="30" stroke="${sel}" stroke-width="2.5" stroke-dasharray="6 6"/><circle cx="104" cy="64" r="22" fill="none" stroke="${sel}" stroke-width="1.5" stroke-dasharray="5 5"/>${key(178, 76, 'Space', 56)}`,
     ),

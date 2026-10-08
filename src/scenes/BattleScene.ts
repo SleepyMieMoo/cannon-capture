@@ -3,13 +3,14 @@ import { loadSkin } from '../menu/skinPref'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import type { MapView } from '../editor/maps'
-import { applyTeamColours, cssHex, ownerRing, sideColor, theme } from '../config/theme'
+import { applyTeamColours, cssHex, sideColor, theme } from '../config/theme'
 import { DEFAULT_COLOUR, flipColours, readColours, TEAM_COLOUR, vsAiColours, type SideColours } from '../config/teamColours'
 import { loadColour } from '../menu/colourPref'
 import { TUNING } from '../config/tuning'
 import { DEBUG } from '../debug'
-import { BRAND } from '../config/brand'
 import { BattleMenu } from '../ui/battleMenu'
+import { BattleHud, type HudButton } from '../ui/battleHud'
+import type { ClientMsg } from '../net/online'
 import { ICONS } from '../menu/art'
 import { nextPuzzle } from '../menu/menuModel'
 import { PauseHold } from '../menu/pauseHold'
@@ -31,7 +32,7 @@ import { BattleSim, type Outcome } from '../sim/BattleSim'
 import { MirrorBot, makeBot, type Bot } from '../sim/bots'
 import { clipToWalls } from '../sim/geometry'
 import { starsFor } from '../sim/stars'
-import type { LevelDef, Point, Rect, Side } from '../types'
+import type { LevelDef, Point, Rect } from '../types'
 import { drawStar, makeButton } from '../ui/button'
 import { SwapMenu, type AutoState } from '../ui/swapMenu'
 import { SettingsPanel } from '../ui/settingsPanel'
@@ -103,12 +104,13 @@ const NO_HOLD = { paused: false, ended: null, pause: () => false, resume: () => 
 /** The world viewport: everything under the HUD band. */
 /** Slim HUD band on top (same info as before, less height). */
 const HUD_H = 54
-const HUD_ROW = 18
 /** How long "Go!" shows after the countdown (ms). */
 const GO_MS = 850
 const WORLD_VIEW = { x: 0, y: HUD_H + 2, w: GAME_WIDTH, h: GAME_HEIGHT - HUD_H - 2 }
 /** Hold a press this long on one of your cannons to open its type menu (touch). */
 const LONG_PRESS_MS = 450
+/** How-to hints show for this long after Go (until your first aim, if that's sooner). */
+const GUIDE_MS = 10_000
 
 /** Renders a BattleSim round and turns clicks into aim orders. */
 export class BattleScene extends Phaser.Scene {
@@ -154,8 +156,8 @@ export class BattleScene extends Phaser.Scene {
   private tags: NameTags | null = null
   /** Each team's side of the board, washed in its colour. */
   private glow: SideGlow | null = null
-  /** The HUD legend (null before the HUD is made). */
-  private legend: { g: Phaser.GameObjects.Graphics; groups: { side: Side; x: number }[] } | null = null
+  /** The top bar (HTML over the canvas: buttons, the tug-of-war cannon bar, the online clock). */
+  hud: BattleHud | null = null
   private restarting = false
   /** The in-battle menu (HUD "Menu" or Esc); the round is paused while it is open. */
   private battleMenu!: BattleMenu
@@ -179,12 +181,27 @@ export class BattleScene extends Phaser.Scene {
   private me: 0 | 1 | null = null
   private sawPlaying = false
   private endRoot: Phaser.GameObjects.Container | null = null
-  private clockText: Phaser.GameObjects.Text | null = null
-  private netText: Phaser.GameObjects.Text | null = null
+  /** The online clock's shown second (-1: not yet) and when the ping line is next rebuilt (it changes slowly). */
+  private clockShown = -1
+  private netAt = 0
   /** When each side's player dropped (for the AI countdown). */
   private dropAt: [number | null, number | null] = [null, null]
+  /** The hint pill under the top bar (start of a round, the type menu, connection news). */
   private hint!: Phaser.GameObjects.Text
-  private pauseLink!: Phaser.GameObjects.Text
+  private hintBg!: Phaser.GameObjects.Graphics
+  private hintBox!: Phaser.GameObjects.Container
+  private hintK = 0
+  /** When the hint text is next worked out again, and what it depended on (it only changes with these). */
+  private hintAt = 0
+  private hintKey: [Cannon | null, Cannon | null, string | null, boolean] = [null, null, null, false]
+  /** The aims-left count on the bar (-1: not yet shown). */
+  private aimsShown = -1
+  /** This kind of round has a Surrender button (worked out once in createHud: it doesn't change). */
+  private surrenderHere = false
+  /** You aimed this round: the how-to hints stop. */
+  private aimedOnce = false
+  /** You surrendered this round (vs the AI: the result screen says so). */
+  private surrendered = false
   /** Online: the host turned pauses off for this match (no Pause button, Space does nothing). */
   private pausesOff = false
   /** Paused: a frame round the board and a label at its top (UI camera; never blocks the board). */
@@ -192,10 +209,6 @@ export class BattleScene extends Phaser.Scene {
   private pausedLabel!: Phaser.GameObjects.Text
   /** Paused: "→ Sniper" over cannons with a queued type swap (board layer). */
   private queuedLabels = new Map<Cannon, Phaser.GameObjects.Text>()
-  private counts!: Partial<Record<Side, Phaser.GameObjects.Text>>
-  private aimsText: Phaser.GameObjects.Text | null = null
-  /** Playtest: the top bar's "Editor (E)" button (null when not launched from the editor). */
-  editorButton: Phaser.GameObjects.Container | null = null
   private banner: Phaser.GameObjects.Container | null = null
   private swapMenu!: SwapMenu
   private settings!: SettingsPanel
@@ -298,8 +311,14 @@ export class BattleScene extends Phaser.Scene {
     this.goLeft = 0
     this.countNoteLeft = 0
     this.restarting = false
-    this.aimsText = null
-    this.editorButton = null
+    this.hud = null
+    this.hintK = 0
+    this.hintAt = 0
+    this.hintKey = [null, null, null, false]
+    this.aimedOnce = false
+    this.surrendered = false
+    this.aimsShown = -1
+    this.surrenderHere = false
     this.banner = null
     this.pressOnUi = false
     this.pointerLayout = null
@@ -324,12 +343,11 @@ export class BattleScene extends Phaser.Scene {
     this.me = null
     this.sawPlaying = false
     this.endRoot = null
-    this.clockText = null
-    this.legend = null
+    this.clockShown = -1
+    this.netAt = 0
     this.tags = null
     this.glow = null
     this.pausesOff = false
-    this.netText = null
     this.dropAt = [null, null]
     this.steps.reset()
     const pvp = this.pvp
@@ -400,7 +418,8 @@ export class BattleScene extends Phaser.Scene {
         ? new MirrorBot(this.sim)
         : makeBot(this.sim)
 
-    this.uiBlock(() => this.createHud())
+    this.createHud()
+    this.uiBlock(() => this.createHint())
     this.swapMenu = new SwapMenu(this, (obj) => this.ui(obj), (c) => this.autoState(c), (c) => this.sim.queuedKind(c))
     this.pausedFx = this.ui(this.add.graphics().setDepth(30))
     this.pausedLabel = this.ui(
@@ -627,11 +646,15 @@ export class BattleScene extends Phaser.Scene {
     this.selected = null
     this.hover = null
     this.hideBanner()
+    this.hud?.closeConfirm()
+    this.syncButtons()
     this.showEnd(this.sim.ended!)
   }
 
   private playerAim(cannon: Cannon, aim: Cannon | Point): boolean {
-    return this.order({ t: 'aim', cannon: cannon.id, at: aim instanceof Cannon ? { cannon: aim.id } : { x: aim.x, y: aim.y } }).ok
+    const ok = this.order({ t: 'aim', cannon: cannon.id, at: aim instanceof Cannon ? { cannon: aim.id } : { x: aim.x, y: aim.y } }).ok
+    if (ok) this.aimedOnce = true
+    return ok
   }
 
   /**
@@ -734,28 +757,20 @@ export class BattleScene extends Phaser.Scene {
   private setColours(c: SideColours): void {
     this.colours = c
     applyTeamColours(c)
-    this.paintLegend()
+    this.paintHud()
     this.glow?.paint(glowColours(c))
   }
 
-  /** The HUD legend's dots and counts in the team colours (again when they change: a LAN joiner's colour arrives late). */
-  private paintLegend(): void {
-    if (!this.legend) return
-    const { g, groups } = this.legend
-    g.clear()
-    for (const group of groups) {
-      g.fillStyle(sideColor(group.side), 1)
-      g.fillCircle(group.x, HUD_ROW, 6)
-      const ring = ownerRing(group.side)
-      if (ring !== null) {
-        // The same ownership ring the cannons wear.
-        g.lineStyle(4.5, theme.ringEdge, 0.85)
-        g.strokeCircle(group.x, HUD_ROW, 8)
-        g.lineStyle(2.5, ring, 1)
-        g.strokeCircle(group.x, HUD_ROW, 8)
-      }
-      this.counts[group.side]?.setColor(cssHex(sideColor(group.side)))
-    }
+  /**
+   * The top bar's cannon bar in the team colours (again when they change: a
+   * LAN joiner's colour arrives late). Segments use the side glow's colours,
+   * so on a colour clash the enemy's is the same red as its glow; the dots
+   * at the ends wear the cannons' own colours and ownership rings.
+   */
+  private paintHud(): void {
+    if (!this.hud) return
+    const g = glowColours(this.colours)
+    this.hud.setColours(g.player, g.enemy, sideColor('player'), sideColor('enemy'), theme.ringYou, theme.ringEnemy)
   }
 
   /**
@@ -979,7 +994,8 @@ export class BattleScene extends Phaser.Scene {
 
   /** Esc: close what is open (Settings, the type menu, a selection), else open the menu. */
   private onCancelKey(): void {
-    if (this.settings.open) this.settings.hide()
+    if (this.hud?.confirmOpen) this.hud.closeConfirm()
+    else if (this.settings.open) this.settings.hide()
     else if (this.swapMenu.open) this.swapMenu.hide()
     else if (this.selected) this.selected = null
     else this.openMenu()
@@ -1000,18 +1016,62 @@ export class BattleScene extends Phaser.Scene {
       return
     }
     this.order({ t: this.sim.paused ? 'resume' : 'pause' })
-    this.syncPauseLink()
+    this.syncPauseButton()
   }
 
-  /** The HUD's Pause / Resume link (online with pauses off: a muted "No pauses"). */
-  private syncPauseLink(): void {
-    const link = this.pauseLink
-    if (!link) return
-    if (this.pausesOff) {
-      if (link.text !== 'No pauses') link.setText('No pauses').setFontStyle('normal').setAlpha(0.55).disableInteractive()
-      return
-    }
-    link.setText(this.sim.paused ? 'Resume' : 'Pause').setFontStyle(this.sim.paused ? 'bold' : 'normal')
+  /** The top bar's Pause / Resume button (pressed look while paused). */
+  private syncPauseButton(): void {
+    this.hud?.setButton('pause', this.sim.paused ? 'Resume' : 'Pause', this.sim.paused)
+  }
+
+  /**
+   * Which top-bar buttons apply right now: no Pause when the room turned
+   * pauses off (the line under the clock says so) or once the round is over,
+   * Surrender only while it can be used. Cheap: show() returns at once when
+   * nothing changed, so this runs every frame.
+   */
+  private syncButtons(): void {
+    const hud = this.hud
+    if (!hud) return
+    const live = !this.ended && !this.restarting
+    hud.show('pause', live && !this.pausesOff)
+    hud.show('settings', live)
+    hud.show('surrender', this.surrenderAllowed())
+    if (!live || !this.surrenderAllowed()) hud.closeConfirm()
+  }
+
+  /**
+   * Surrender: against the AI (levels, quick battles, custom maps) and online
+   * for a seated player on a server that takes it. Not in puzzles (Restart is
+   * the way out), playtests, or the same-browser PvP test.
+   */
+  private surrenderAllowed(): boolean {
+    if (this.ended || this.restarting) return false
+    if (this.online) return this.me !== null && this.online.info?.surrender === true && this.online.status === 'open'
+    return this.surrenderHere
+  }
+
+  /** Does this kind of round have a Surrender button at all (whether or not it works this moment)? */
+  private surrenderApplies(): boolean {
+    if (this.online) return this.me !== null
+    return !this.pvp && !this.isPuzzle && !editorReturn(this.ctx)
+  }
+
+  /** The Surrender button (or the Menu's): ask first, so a stray tap never gives the round away. */
+  private askSurrender(): void {
+    if (!this.surrenderAllowed() || !this.hud) return
+    const note = this.online
+      ? `${nameOnSide(this.online.info, (1 - this.me!) as 0 | 1)} wins the match. You can still rematch after.`
+      : 'The AI wins this round. It counts as a loss.'
+    this.hud.confirm('Surrender?', note, 'Surrender', () => this.surrender())
+  }
+
+  private surrender(): void {
+    if (!this.surrenderAllowed()) return
+    // Online the server decides: the other player wins and everyone sees why.
+    if (this.online) return this.online.send({ t: 'surrender' } satisfies ClientMsg)
+    this.surrendered = true
+    this.sim.endMatch('lose', 'The AI takes this round.')
   }
 
   private onLoseFocus(): void {
@@ -1319,6 +1379,7 @@ export class BattleScene extends Phaser.Scene {
       { id: 'resume', label: this.ended ? 'Back to the board' : 'Resume', run: () => this.closeMenu(), primary: true, icon: ICONS.play },
       { id: 'restart', label: 'Restart', run: () => (this.closeMenu(), this.restart()) },
     ]
+    this.foldedItems(items)
     if (route.scene !== 'title' || route.data?.screen) items.push({ id: 'back', label: this.backLabel(false), run: () => this.go(route) })
     items.push({ id: 'main', label: 'Main menu', run: () => this.go(MAIN_MENU) })
     const where = this.levelIndex >= 0 ? `${this.levelIndex + 1}. ${this.level.name}` : this.level.name
@@ -1331,16 +1392,23 @@ export class BattleScene extends Phaser.Scene {
       { id: 'resume', label: this.ended ? 'Back to the board' : 'Back to the match', run: () => this.closeMenu(), primary: true, icon: ICONS.play },
     ]
     if (this.ended && this.me !== null) items.push({ id: 'rematch', label: 'Rematch', run: () => (this.closeMenu(), this.voteRematch()) })
+    this.foldedItems(items)
     if (this.ended || this.me === null) items.push({ id: 'lobby', label: 'Back to the room', run: () => this.go(LOBBY) })
     items.push({ id: 'leave', label: this.ended || this.me === null ? 'Leave the room' : 'Leave the match (an AI takes your side)', run: () => this.go(MAIN_MENU) })
     this.battleMenu.show('Menu', `Room ${this.online!.code}  ·  ${this.level.name}  ·  the match keeps going while this is open`, items)
+  }
+
+  /** Menu items for top-bar buttons that didn't fit (Settings), and Surrender (always here too, when it applies). */
+  private foldedItems(items: { id: string; label: string; run: () => void; primary?: boolean; icon?: string }[]): void {
+    if (this.hud?.folded.has('settings') && !this.ended) items.push({ id: 'settings', label: 'Settings', run: () => (this.closeMenu(), this.settings.toggle()) })
+    if (this.surrenderAllowed()) items.push({ id: 'surrender', label: 'Surrender…', run: () => (this.closeMenu(), this.askSurrender()) })
   }
 
   closeMenu(): void {
     if (!this.battleMenu?.open) return
     this.battleMenu.hide()
     this.menuHold.release()
-    this.syncPauseLink()
+    this.syncPauseButton()
     // Turn keys back on after this frame, so the Esc that closed the menu doesn't reopen it.
     this.events.once(Phaser.Scenes.Events.POST_UPDATE, () => {
       if (this.input.keyboard) this.input.keyboard.enabled = true
@@ -1359,180 +1427,220 @@ export class BattleScene extends Phaser.Scene {
     hud.fillRect(0, HUD_H, GAME_WIDTH, 2)
   }
 
+  /**
+   * The top bar: compact title, the cannon bar, the online clock, and the
+   * buttons. The title is just the map (the level number in the campaign);
+   * the room code and the rest live in the Menu's header.
+   */
   private createHud(): void {
     const title = this.online
-      ? `Online  ·  ${this.level.name}  ·  room ${this.online.code}`
+      ? this.level.name
       : this.pvp
-      ? `PvP test  ·  ${this.level.name}  ·  ${this.host ? 'host' : 'player 2'}`
-      : this.levelIndex >= 0
-        ? `${this.levelIndex + 1}. ${this.level.name}${this.isPuzzle ? '  ·  Puzzle' : ''}`
-        : this.custom
-          ? this.from === 'editor'
-            ? `${this.level.name}  ·  ${this.isPuzzle ? 'Puzzle playtest' : 'Playtest'}`
-            : `${this.level.name}  ·  ${this.isPuzzle ? 'Puzzle' : 'Battle'}`
-          : `${BRAND.title}  ·  ${this.level.name}`
-    // Playtest: "← Editor (E)" first in the bar, always on top (paused, result screen); the title moves over for it.
+        ? `PvP test  ·  ${this.level.name}`
+        : this.levelIndex >= 0
+          ? `${this.levelIndex + 1}. ${this.level.name}`
+          : this.level.name
     const toEditor = editorReturn(this.ctx)
-    let left = 24
-    if (toEditor) {
-      const w = 124
-      this.editorButton = makeButton(this, 14 + w / 2, HUD_H / 2, `← Editor (${EDITOR_KEY})`, () => this.go(toEditor), { width: w, height: 34, primary: false, fontSize: 14 })
-        .setDepth(25)
-        .setName('editor-back')
-      left = 14 + w + 14
-    }
-    const titleText = this.add
-      .text(left, 8, title, {
-        fontFamily: theme.font,
-        fontSize: '18px',
-        fontStyle: 'bold',
-        color: theme.text,
-      })
-      .setDepth(10)
-    // Never run into the cannon counts (long map names get an ellipsis).
-    const maxTitle = 504 - 28 - left
-    if (titleText.width > maxTitle) {
-      let name = this.level.name
-      while (name.length > 1 && titleText.width > maxTitle) {
-        name = name.slice(0, -1)
-        titleText.setText(title.replace(this.level.name, name.trimEnd() + '…'))
-      }
-    }
+    const buttons: HudButton[] = []
+    if (toEditor) buttons.push({ id: 'editor', label: `← Editor (${EDITOR_KEY})`, title: `Back to the editor (${EDITOR_KEY})`, keep: 6, left: true, onPress: () => this.go(toEditor) })
+    this.surrenderHere = this.surrenderApplies()
+    if (this.surrenderHere) buttons.push({ id: 'surrender', label: 'Surrender', title: this.online ? 'Surrender: give this match to the other player (asks first)' : 'Surrender: give up this round (asks first)', keep: 3, danger: true, onPress: () => this.askSurrender() })
+    // Watchers can't pause.
+    if (!(this.online && this.me === null)) buttons.push({ id: 'pause', label: 'Pause', title: 'Pause or resume (Space)', keep: 5, onPress: () => this.togglePause() })
+    buttons.push({ id: 'settings', label: 'Settings', title: 'Settings: auto-target, sound, performance', keep: 2, onPress: () => this.settings.toggle() })
+    if (!this.online) buttons.push({ id: 'restart', label: 'Restart', title: 'Restart the round (R)', keep: 1, onPress: () => this.restart() })
+    buttons.push({ id: 'menu', label: 'Menu', title: 'Menu (Esc)', keep: Infinity, onPress: () => this.openMenu() })
+    // Your segment on your side of the board (watchers: the gold seat's side), like the side glow.
+    const edges = glowEdges(this.cannons, this.board)
+    const mineOn = edges.player ?? (edges.enemy === 'left' ? 'right' : 'left')
+    this.hud = new BattleHud(this, {
+      title,
+      buttons,
+      counts: { mineOn, enemy: !this.isPuzzle },
+      clock: !!this.online,
+      aims: this.isPuzzle && this.level.aims !== undefined,
+    })
+    if (DEBUG.enabled) this.hud.el.dataset.mineOn = mineOn
+    this.paintHud()
+    this.syncPauseButton()
+    this.syncButtons()
+  }
 
+  /** The hint pill under the top bar (UI camera, never takes a click). */
+  private createHint(): void {
+    this.hintBg = this.add.graphics()
     this.hint = this.add
-      .text(left, 32, '', { fontFamily: theme.font, fontSize: '13px', color: theme.textMuted })
-      .setDepth(10)
+      .text(0, 0, '', { fontFamily: theme.font, fontSize: '14px', color: theme.text, align: 'center', wordWrap: { width: 860 } })
+      .setOrigin(0.5)
+    this.hintBox = this.add.container(GAME_WIDTH / 2, HUD_H + 24, [this.hintBg, this.hint]).setDepth(29).setVisible(false)
+  }
 
-    const legend = this.add.graphics().setDepth(10)
-    const groups: { side: Side; x: number; label: string }[] = [
-      { side: 'player', x: 504, label: this.online && this.me === null ? this.colourName('player') : 'You' },
-      // Watchers see colour names ("Strawberry") instead of "You": room for the longest.
-      { side: 'neutral', x: this.online && this.me === null ? 638 : 616, label: 'Neutral' },
-    ]
-    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 756, label: this.online ? (this.me === null ? this.colourName('enemy') : 'Them') : 'Enemy' })
-    const counts: Partial<Record<Side, Phaser.GameObjects.Text>> = {}
-    this.counts = counts
-    this.legend = { g: legend, groups }
-    this.paintLegend()
-    for (const group of groups) {
-      counts[group.side] = this.add
-        .text(group.x + 14, HUD_ROW, '0', {
-          fontFamily: theme.font,
-          fontSize: '15px',
-          fontStyle: 'bold',
-          color: cssHex(sideColor(group.side)),
-        })
-        .setOrigin(0, 0.5)
-        .setDepth(10)
-      this.add
-        .text(group.x + 40, HUD_ROW, group.label, { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
-        .setOrigin(0, 0.5)
-        .setDepth(10)
-    }
-    if (this.isPuzzle && this.level.aims !== undefined) {
-      this.aimsText = this.add
-        .text(756, HUD_ROW, '', { fontFamily: theme.font, fontSize: '15px', fontStyle: 'bold', color: theme.text })
-        .setOrigin(0, 0.5)
-        .setDepth(10)
-    }
-
-    const link = (x: number, label: string, onClick: () => void): Phaser.GameObjects.Text => {
-      const text = this.add
-        .text(x, HUD_ROW, label, { fontFamily: theme.font, fontSize: '14px', color: theme.textMuted })
-        .setOrigin(1, 0.5)
-        .setDepth(10)
-        .setInteractive({ useHandCursor: true })
-      text.on('pointerover', () => text.setColor(theme.text))
-      text.on('pointerout', () => text.setColor(theme.textMuted))
-      text.on('pointerdown', onClick)
-      return text
-    }
-    if (this.online) {
-      // Online: the match clock where Restart was, pauses left and ping under it.
-      this.clockText = this.add
-        .text(GAME_WIDTH - 28, HUD_ROW, clock(PVP_RULES.matchMs), { fontFamily: theme.font, fontSize: '16px', fontStyle: 'bold', color: theme.text })
-        .setOrigin(1, 0.5)
-        .setDepth(10)
-      this.netText = this.add
-        .text(GAME_WIDTH - 28, HUD_ROW + 21, '', { fontFamily: theme.font, fontSize: '12px', color: theme.textMuted })
-        .setOrigin(1, 0.5)
-        .setDepth(10)
-    } else link(GAME_WIDTH - 28, 'Restart', () => this.restart())
-    link(GAME_WIDTH - 112, 'Menu', () => this.openMenu())
-    link(GAME_WIDTH - 196, 'Settings', () => this.settings.toggle())
-    this.pauseLink = link(GAME_WIDTH - 276, 'Pause', () => this.togglePause())
-    this.syncPauseLink()
+  /** Words for the cannon bar's tooltip and screen readers. */
+  private readonly countsLabel = (mine: number, neutral: number, theirs: number): string => {
+    const watching = this.online !== null && this.me === null
+    const a = watching ? `${nameOnSide(this.online!.info, 0)} (${this.colourName('player')})` : 'You'
+    const b = watching ? `${nameOnSide(this.online!.info, 1)} (${this.colourName('enemy')})` : this.pvp ? 'Them' : 'Enemy'
+    return this.isPuzzle ? `Cannons: ${a} ${mine}, neutral ${neutral}` : `Cannons: ${a} ${mine}, neutral ${neutral}, ${b} ${theirs}`
   }
 
   private refreshHud(): void {
-    const tally: Record<Side, number> = { player: 0, enemy: 0, neutral: 0 }
-    for (const cannon of this.cannons) tally[cannon.side] += 1
-    for (const side of Object.keys(this.counts) as Side[]) {
-      const next = String(tally[side])
-      const text = this.counts[side]
-      if (text && text.text !== next) text.setText(next)
+    // Counted without allocating (this runs every frame).
+    let mine = 0
+    let neutral = 0
+    let theirs = 0
+    for (const cannon of this.cannons) {
+      if (cannon.side === 'player') mine++
+      else if (cannon.side === 'enemy') theirs++
+      else neutral++
     }
-    if (this.aimsText) {
-      const next = `${this.aimsLeft} aim${this.aimsLeft === 1 ? '' : 's'} left`
-      if (this.aimsText.text !== next) {
-        this.aimsText.setText(next)
-        this.aimsText.setColor(this.aimsLeft === 0 ? cssHex(theme.enemy) : theme.text)
+    const hud = this.hud
+    if (hud) {
+      hud.setCounts(mine, neutral, theirs, this.countsLabel)
+      const left = this.aimsLeft
+      if (this.isPuzzle && this.level.aims !== undefined && left !== this.aimsShown) {
+        this.aimsShown = left
+        hud.setAims(`${left} aim${left === 1 ? '' : 's'} left`, left === 0)
       }
+      this.syncButtons()
     }
     if (this.online) this.refreshOnlineHud()
-    const hint = this.hintLine()
-    if (this.hint.text !== hint) this.hint.setText(hint)
+    this.refreshHint()
   }
 
   private refreshOnlineHud(): void {
     const x = this.client?.latest?.x
     const t = performance.now()
     if (x) {
-      for (const i of [0, 1] as const) {
+      for (let i = 0; i < 2; i++) {
         if (x.on[i] || x.ai[i]) this.dropAt[i] = null
         else this.dropAt[i] ??= t
       }
     }
-    const time = clock(x ? x.tl : PVP_RULES.matchMs)
-    if (this.clockText && this.clockText.text !== time) {
-      this.clockText.setText(time)
-      this.clockText.setColor(x && x.tl < 30_000 ? cssHex(theme.enemy) : theme.text)
+    // The clock text only when its second changes; the ping line a few times a second.
+    const tl = x ? x.tl : PVP_RULES.matchMs
+    const sec = Math.max(0, Math.ceil(tl / 1000))
+    if (sec !== this.clockShown) {
+      this.clockShown = sec
+      this.hud?.setClock(clock(tl), tl < 30_000)
     }
-    const net = netLine(x, this.me, this.online!.rttAvg, this.pausesOff)
-    if (this.netText && this.netText.text !== net) this.netText.setText(net)
-    if (this.sim.paused) {
-      const label = pauseLabel(x, this.me, this.online!.info)
-      if (this.pausedLabel.text !== label) this.pausedLabel.setText(label)
+    if (t >= this.netAt) {
+      this.netAt = t + 250
+      this.hud?.setNet(netLine(x, this.me, this.online!.rttAvg, this.pausesOff))
+      if (this.sim.paused) {
+        const label = pauseLabel(x, this.me, this.online!.info)
+        if (this.pausedLabel.text !== label) this.pausedLabel.setText(label)
+      }
     }
   }
 
-  private hintLine(): string {
+  /** How far the top bar reaches below the canvas's HUD band, in layout px (it can on landscape phones). */
+  private barCover(): number {
+    return this.hud ? this.hud.coverBelow(HUD_H) : 0
+  }
+
+  /**
+   * The hint pill. It is worked out again only when what it depends on
+   * changed (hover, selection, the type menu's pill, pause), or a few times a
+   * second for the timed lines, so it doesn't build strings every frame.
+   */
+  private refreshHint(): void {
+    const lp = this.pointerLayout
+    const pill = lp && this.swapMenu.open ? this.swapMenu.pillAt(lp.x, lp.y) : null
+    const key = this.hintKey
+    const now = performance.now()
+    if (key[0] === this.hover && key[1] === this.selected && key[2] === pill && key[3] === this.sim.paused && now < this.hintAt) return
+    key[0] = this.hover
+    key[1] = this.selected
+    key[2] = pill
+    key[3] = this.sim.paused
+    this.hintAt = now + 200
+    if (this.sim.paused && !this.online && !this.ended) {
+      const label = this.pausedHint()
+      if (this.pausedLabel.text !== label) this.pausedLabel.setText(label)
+    }
+    this.setHint(this.hintLine())
+  }
+
+  private setHint(text: string): void {
+    const box = this.hintBox
+    if (!text) {
+      box.setVisible(false)
+      return
+    }
+    // Readable on a phone: at least ~12 CSS px, like the countdown's hint.
+    const cssPerLayout = this.uiCam.zoom / (this.scale.displayScale.x || 1)
+    const k = Math.min(2.2, Math.max(1, 12 / (14 * cssPerLayout)))
+    if (this.hint.text !== text || k !== this.hintK) {
+      this.hint.setText(text)
+      this.hint.setWordWrapWidth((GAME_WIDTH - 80) / k)
+      const w = this.hint.width + 28
+      const h = this.hint.height + 12
+      const g = this.hintBg
+      g.clear()
+      g.fillStyle(theme.panel, 0.9)
+      g.fillRoundedRect(-w / 2, -h / 2, w, h, Math.min(16, h / 2))
+      g.lineStyle(1.5, theme.boardEdge, 1)
+      g.strokeRoundedRect(-w / 2, -h / 2, w, h, Math.min(16, h / 2))
+      box.setScale(k)
+      this.hintK = k
+    }
+    box.setY(HUD_H + this.barCover() + 8 + ((this.hint.height + 12) * k) / 2)
+    box.setVisible(true)
+  }
+
+  /** News that always shows: the connection, the other player dropping, waiting for player 2. */
+  private statusLine(): string | null {
     if (this.online && !this.ended) {
       const room = this.online
       if (room.closed) return room.error?.msg ?? 'Disconnected from the room.'
       if (room.status !== 'open') return `Connection lost: reconnecting… (after ${PVP_RULES.graceMs / 1000} s an AI plays your side until you are back)`
-      if (this.me === null) return `Watching ${nameOnSide(room.info, 0)} (${this.colourName('player')}) vs ${nameOnSide(room.info, 1)} (${this.colourName('enemy')}).`
+      if (this.me === null) return null
       const them = (1 - this.me) as 0 | 1
-      const line = opponentLine(this.client?.latest?.x, this.me, room.info, this.dropAt[them], performance.now())
-      if (line) return line
+      return opponentLine(this.client?.latest?.x, this.me, room.info, this.dropAt[them], performance.now())
     }
-    if (this.online && this.ended) return endTexts(this.ended, this.me, this.online.info, this.client?.latest?.x?.why, this.tally()).headline
     if (this.pvp && !this.ended) {
       if (this.host && !this.peerHere) return `Waiting for player 2 to join room ${this.pvp.room}…`
       if (this.client && !this.peerHere) return 'The host has left (or stopped answering).'
     }
-    if (this.ended) return this.pvp ? (this.ended === 'win' ? 'You win!' : 'You lost.') : this.ended === 'win' ? 'You hold every cannon.' : 'Not this time.'
-    if (this.sim.paused) {
-      const lp0 = this.pointerLayout
-      const pill0 = lp0 && this.swapMenu.open ? this.swapMenu.pillAt(lp0.x, lp0.y) : null
-      const c0 = this.swapMenu.cannon
-      if (pill0 && pill0 !== 'auto' && c0) {
-        if (pill0 === c0.kind) return this.sim.queuedKind(c0) ? `Cancel ${c0.name}'s queued swap (it stays a ${kindLabel(c0.kind)}).` : `${c0.name} is a ${kindLabel(c0.kind)}.`
-        return `Queue: ${c0.name} → ${kindLabel(pill0)} when you resume (its reload starts then, not now).`
-      }
-      if (!pill0 && !this.selected) return 'Paused: select cannons, aim them, swap types. Everything happens at once when you resume (Space).'
-      if (!pill0 && this.selected) return `Paused: click where ${this.selected.name} should aim; it happens when you resume (Space).`
+    return null
+  }
+
+  /**
+   * The hint pill's text ('' hides it). How-to lines show only at the start
+   * of a round: through the countdown, then until your first aim or 10 s in
+   * (puzzles: until your first aim, they're about planning). After that the
+   * board speaks for itself and the line would only be noise. The type
+   * menu's explanations still show while it is open (it is the only place
+   * the types are explained), and so does connection news. Paused hints are
+   * in the "Paused" pill instead.
+   */
+  private hintLine(): string {
+    if (this.ended || this.restarting) return ''
+    const status = this.statusLine()
+    if (status) return status
+    if (this.sim.paused || (this.online && this.me === null)) return ''
+    const pillOpen = !!this.pointerLayout && this.swapMenu.open && this.swapMenu.pillAt(this.pointerLayout.x, this.pointerLayout.y) !== null
+    const early = this.sim.countdown > 0 || (!this.aimedOnce && (this.isPuzzle || this.sim.clock < GUIDE_MS))
+    if (!pillOpen && !early) return ''
+    return this.guideLine()
+  }
+
+  /** The "Paused" pill's text: what you're doing while paused (single player; online it says who paused). */
+  private pausedHint(): string {
+    const lp = this.pointerLayout
+    const pill = lp && this.swapMenu.open ? this.swapMenu.pillAt(lp.x, lp.y) : null
+    const c = this.swapMenu.cannon
+    if (pill === 'auto') return this.guideLine()
+    if (pill && c) {
+      if (pill === c.kind) return this.sim.queuedKind(c) ? `Cancel ${c.name}'s queued swap (it stays a ${kindLabel(c.kind)}).` : `${c.name} is a ${kindLabel(c.kind)}.`
+      return `Queue: ${c.name} → ${kindLabel(pill)} when you resume (its reload starts then, not now).`
     }
+    if (this.selected) return `Paused: click where ${this.selected.name} should aim; it happens when you resume (Space).`
+    return 'Paused: select cannons, aim them, swap types. Everything happens at once when you resume (Space).'
+  }
+
+  /** How-to lines for what's under the pointer and what's selected. */
+  private guideLine(): string {
     const lp = this.pointerLayout
     const pill = lp && this.swapMenu.open ? this.swapMenu.pillAt(lp.x, lp.y) : null
     if (pill === 'auto') {
@@ -1695,6 +1803,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.pvp) headline = result === 'win' ? 'You win' : 'You lost'
     if (campaign && result === 'win') headline = next ? 'Level complete' : 'Campaign complete!'
     if (result === 'lose' && this.isPuzzle) headline = 'Puzzle failed'
+    if (this.surrendered) headline = 'You surrendered'
     let y = top + 50
     root.add(
       this.add
@@ -1862,8 +1971,10 @@ export class BattleScene extends Phaser.Scene {
     g.lineStyle(3, theme.select, 0.55 + 0.25 * Math.sin(time / 300))
     g.strokeRect(v.x + 2, v.y + 2, v.w - 4, v.h - 4)
     const w = this.pausedLabel.width + 28
+    const top = HUD_H + 10 + this.barCover()
+    this.pausedLabel.setY(top + 14)
     g.fillStyle(theme.select, 0.95)
-    g.fillRoundedRect(GAME_WIDTH / 2 - w / 2, HUD_H + 10, w, 28, 14)
+    g.fillRoundedRect(GAME_WIDTH / 2 - w / 2, top, w, 28, 14)
   }
 
   private drawFx(time: number): void {

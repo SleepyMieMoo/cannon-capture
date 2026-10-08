@@ -63,8 +63,8 @@ export interface SnapExtra {
   ai: [0 | 1, 0 | 1]
   /** This side's player is connected. */
   on: [0 | 1, 0 | 1]
-  /** Once over: 'wipe' (no cannons left), 'time' (time limit), 'empty' (everyone left). */
-  why?: 'wipe' | 'time' | 'empty'
+  /** Once over: 'wipe' (no cannons left), 'time' (time limit), 'empty' (everyone left), 'surrender' (the loser gave up). */
+  why?: 'wipe' | 'time' | 'empty' | 'surrender'
 }
 
 const EV = { fired: 1, bounce: 2, hit: 3, blocked: 4, shieldBroken: 5, shieldBack: 6, captured: 7, healed: 8, swapped: 9 } as const
