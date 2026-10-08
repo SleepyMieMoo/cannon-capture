@@ -72,6 +72,8 @@ export class BattleSim {
   intactWalls: WallDef[] = []
   /** Lanes being rebuilt after a wall broke (swapped in whole once done). */
   private relanes: LaneBuilder | null = null
+  /** A scene pumps lane building each frame on a time budget; otherwise (server, tests) steps pump a fixed number of traces. */
+  private framePumped = false
   private wallIndex = new Map<WallDef, number>()
   readonly cannons: Cannon[] = []
   shots: Shot[] = []
@@ -150,6 +152,7 @@ export class BattleSim {
     this.opts = shotOpts(level)
     if (lanes === 'progressive') {
       // Rendering: build lanes a few ms per frame (see pumpLanes).
+      this.framePumped = true
       this.builder = new LaneBuilder(level)
       this.lanes = this.builder.table
     } else {
@@ -245,9 +248,14 @@ export class BattleSim {
     return out
   }
 
-  /** Rebuild lanes after a wall broke, a fixed amount per step; swap them in once whole. */
+  /** Rebuild lanes after a wall broke, a fixed number of traces per step (no scene pumping it). */
   private pumpRelanes(): void {
-    if (!this.relanes || !this.relanes.pumpTraces(TUNING.breakable.relaneTraces)) return
+    if (this.relanes && this.relanes.pumpTraces(TUNING.breakable.relaneTraces)) this.swapRelanes()
+  }
+
+  /** The rebuilt lanes are whole: swap them in and let the AIs see them. */
+  private swapRelanes(): void {
+    if (!this.relanes) return
     const table = this.relanes.table
     this.relanes = null
     this.lanes.clear()
@@ -475,6 +483,8 @@ export class BattleSim {
   /** Spend up to `budgetMs` building lanes (progressive mode only). */
   pumpLanes(budgetMs: number): void {
     if (this.builder && !this.builder.done) this.builder.pump(budgetMs)
+    // Lanes after a wall broke: a smaller slice, mid-round.
+    if (this.relanes && this.relanes.pump(Math.min(budgetMs, TUNING.breakable.relaneMs))) this.swapRelanes()
   }
 
   get lanesReady(): boolean {
@@ -493,7 +503,7 @@ export class BattleSim {
         this.aiMs += performance.now() - t0
       } else for (const ai of this.ais) ai.update(dt, this.cannons)
     }
-    if (this.relanes) this.pumpRelanes()
+    if (this.relanes && !this.framePumped) this.pumpRelanes()
     this.stepShots(dt, counting)
     if (counting) {
       this.countdown -= dt
