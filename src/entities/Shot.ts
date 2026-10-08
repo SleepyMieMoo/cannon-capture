@@ -20,6 +20,9 @@ export class Shot {
   readonly kind: CannonKind
   /** Set by the sim when it is fired (network views follow shots by id). 0 for copies. */
   id = 0
+  /** Drawing only (effects): the bank count last seen, and the shot's age then (its trail starts there). */
+  fxBounces = 0
+  fxSince = 0
 
   constructor(ball: Ball, side: Side, damage = 1, kind: CannonKind = 'normal') {
     this.ball = ball

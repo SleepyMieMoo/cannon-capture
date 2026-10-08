@@ -1,3 +1,5 @@
+import { currentFx, onFxChange, saveFxChoice } from '../render/vfx/fxPrefs'
+import type { FxQuality } from '../render/vfx/fxQuality'
 import { CONTRAST, SKINS, SKIN_LABEL, type SkinId } from '../config/skins'
 import { loadSkin, saveSkin } from './skinPref'
 import { CONTRAST_COLOUR, TEAM_COLOUR, TEAM_COLOURS, vsAiColours, type TeamColourId } from '../config/teamColours'
@@ -570,7 +572,33 @@ export class MainMenu {
     }
     update()
     this.teardown.push(onMotionChange(update))
-    return [h('div.mm-h', {}, 'Display'), row]
+    return [h('div.mm-h', {}, 'Display'), row, this.effectsSetting()]
+  }
+
+  /** Settings → Display → Effects quality: High, Low or Off (chosen for the device until you pick). */
+  private effectsSetting(): HTMLElement {
+    const choices: { id: FxQuality; label: string }[] = [
+      { id: 'high', label: 'High' },
+      { id: 'low', label: 'Low' },
+      { id: 'off', label: 'Off' },
+    ]
+    const segs = choices.map((c) =>
+      h('button.mm-seg', { type: 'button', dataset: { id: 'fx-' + c.id }, onclick: () => saveFxChoice(c.id) }, c.label),
+    )
+    const helpText = (): string => {
+      const fx = currentFx()
+      const now = fx.auto ? ` Until you pick one it’s chosen for this device (${fx.quality === 'high' ? 'High' : 'Low'} now).` : ''
+      return `Battle effects: team glows under cannons, muzzle flashes, shot trails, sparks and capture bursts. Low keeps the glows and trims the rest; Off is the plain look. Reduce motion stills shakes and moving effects.${now}`
+    }
+    const row = settingRow({ id: 'fx', label: 'Effects quality', help: helpText(), layout: 'wide', control: [h('div.mm-segs', { role: 'group', 'aria-label': 'Effects quality' }, ...segs)] })
+    const update = (): void => {
+      const q = currentFx().quality
+      segs.forEach((b, i) => b.setAttribute('aria-pressed', String(choices[i].id === q)))
+      if (row.help) setHelpText(row.help, helpText())
+    }
+    update()
+    this.teardown.push(onFxChange(update))
+    return row
   }
 
   /** Settings → Music: on/off, its own volume, and the way to the jukebox. */

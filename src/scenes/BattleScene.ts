@@ -29,6 +29,9 @@ import { bindSceneResolution } from '../render/resolution'
 import { WorldCamera } from '../render/WorldCamera'
 import { drawBoardSurface } from '../render/boardSurface'
 import { crosshair, dash, drawShots } from '../render/battleMarks'
+import { Vfx } from '../render/vfx/Vfx'
+import { SlowWatch } from '../render/vfx/fxQuality'
+import { currentFx, currentFxConfig, fxLabel, noteSlowDevice, onFxChange } from '../render/vfx/fxPrefs'
 import { clampPoint } from '../sim/aim'
 import { BattleSim, type Outcome } from '../sim/BattleSim'
 import { MirrorBot, makeBot, type Bot } from '../sim/bots'
@@ -142,6 +145,12 @@ export class BattleScene extends Phaser.Scene {
   private walls: Wall[] = []
   private fans: Fan[] = []
   private sparks: Spark[] = []
+  /** Gameplay effects (auras, flashes, trails, bursts): render/vfx/Vfx.ts. */
+  private vfx: Vfx | null = null
+  private endFxDone = false
+  private lastFrameAt = 0
+  /** Automatic Effects quality: drops to Low if battles keep running slowly at High. */
+  private readonly slowWatch = new SlowWatch()
   private heals = new Map<Cannon, HealTally>()
   private pings: Ping[] = []
   /** Last pointer position on the board, for the aim preview (null off-board or on touch). */
@@ -336,6 +345,10 @@ export class BattleScene extends Phaser.Scene {
     this.walls = []
     this.fans = []
     this.sparks = []
+    this.vfx = null
+    this.endFxDone = false
+    this.lastFrameAt = 0
+    this.slowWatch.reset()
     this.heals = new Map()
     this.pings = []
     this.pointer = null
@@ -400,23 +413,34 @@ export class BattleScene extends Phaser.Scene {
     this.steps.reset()
     const pvp = this.pvp
     let events: SimEvents = {
-        fired: (cannon) => this.sfx.shot(cannon),
-      bounce: (x, y) => this.sparks.push({ x, y, life: 1, color: theme.spark }),
-      hit: (x, y, side, kind) => this.sparks.push({ x, y, life: 1, color: sideColor(side), size: kind === 'machinegun' ? 0.45 : 1 }),
+      fired: (cannon) => {
+        this.sfx.shot(cannon)
+        this.vfx?.fired(cannon)
+      },
+      // Effects off: the plain sparks; otherwise the effects' own.
+      bounce: (x, y) => (this.plainSparks ? this.sparks.push({ x, y, life: 1, color: theme.spark }) : this.vfx?.bounce(x, y)),
+      hit: (x, y, side, kind) =>
+        this.plainSparks ? this.sparks.push({ x, y, life: 1, color: sideColor(side), size: kind === 'machinegun' ? 0.45 : 1 }) : this.vfx?.hit(x, y, side, kind),
       blocked: (x, y, shield, _side, kind) => {
+        if (!this.plainSparks) return this.vfx?.blocked(x, y, shield, kind)
         this.sparks.push({ x, y, life: 1, color: sideColor(shield.side), size: kind === 'machinegun' ? 0.5 : 1.1 })
         this.sparks.push({ x, y, life: 0.7, color: 0xffffff, size: kind === 'machinegun' ? 0.3 : 0.6 })
       },
       shieldBroken: (shield) => {
         this.popup(shield.x, shield.y - 8, 'Shield down', cssHex(sideColor(shield.side)))
         this.sfx.shieldBroken(shield)
+        this.vfx?.shieldBroken(shield)
       },
       shieldBack: (shield) => this.popup(shield.x, shield.y - 8, 'Shield up', cssHex(sideColor(shield.side))),
       captured: (cannon) => {
         this.popup(cannon.x, cannon.y, 'Captured', cssHex(sideColor(cannon.side)))
         this.sfx.captured(cannon)
+        this.vfx?.captured(cannon)
       },
-      healed: (cannon, amount) => this.tallyHeal(cannon, amount),
+      healed: (cannon, amount) => {
+        this.tallyHeal(cannon, amount)
+        this.vfx?.healed(cannon)
+      },
       noAims: (cannon) => this.popup(cannon.x, cannon.y, 'No aims left', theme.textMuted),
       swapped: (cannon) => this.popup(cannon.x, cannon.y, kindLabel(cannon.kind), cssHex(sideColor(cannon.side))),
       aimed: (point) => {
@@ -451,6 +475,16 @@ export class BattleScene extends Phaser.Scene {
     // Side glow, from where each side's cannons start (this view's sides, so a flipped view glows its own side in its colour).
     this.glow = new SideGlow(this, this.board, glowEdges(this.cannons, this.board), DEBUG.glow ?? GLOW.alpha)
     this.glow.paint(glowColours(this.colours))
+    // Gameplay effects (Settings → Display → Effects quality). Purely drawn here, from the round's events.
+    const vfx = new Vfx(this, this.cannons, this.fans, currentFxConfig('battle'), {
+      register: (o) => this.world(o),
+      board: this.board,
+      edges: glowEdges(this.cannons, this.board),
+      view: () => (this.wc ? this.wc.visibleRect() : null),
+    })
+    this.vfx = vfx
+    const offFx = onFxChange(() => vfx.setConfig(currentFxConfig('battle')))
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, offFx)
     // Name tags: two-player rounds only (they show while the looks clash), or forced with ?debug&tags=1.
     if (pvp || DEBUG.tags) {
       this.tags = new NameTags(this, this.cannons, () => {})
@@ -573,6 +607,7 @@ export class BattleScene extends Phaser.Scene {
       cannons: () => this.sim.cannons.length,
       shots: () => this.sim.shots.length,
       sounds: () => this.sfx.voices,
+      fx: () => ({ label: fxLabel(), particles: this.vfx?.particles ?? 0 }),
       net: () => this.netSummary(),
     }
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -620,6 +655,7 @@ export class BattleScene extends Phaser.Scene {
     for (const ping of this.pings) ping.life -= dt / 420
     this.pings = this.pings.filter((ping) => ping.life > 0)
     this.drawFx(time)
+    this.updateVfx(delta, time)
     this.drawPaused(time)
     this.updateSwapMenu(dt, time)
     if (this.ended) this.settings.hide()
@@ -637,7 +673,7 @@ export class BattleScene extends Phaser.Scene {
       cannon.hovered = cannon === this.hover
       cannon.selected = cannon === this.selected
       cannon.manualBadge = cannon.side === 'player' && !this.sim.isPuzzle && !this.sim.autoTargets(cannon)
-      cannon.draw(time)
+      cannon.draw(time, this.vfx?.cannonFx ?? null)
     }
     this.drawCountdown(delta)
     this.refreshHud()
@@ -668,6 +704,7 @@ export class BattleScene extends Phaser.Scene {
       if (this.countShown > 0 && !this.ended) {
         this.goLeft = GO_MS
         this.sfx.cue('go')
+        this.vfx?.go()
       }
       this.countShown = 0
       if (this.goLeft > 0) {
@@ -2181,6 +2218,37 @@ export class BattleScene extends Phaser.Scene {
     this.pausedLabel.setY(top + 14)
     g.fillStyle(theme.select, 0.95)
     g.fillRoundedRect(GAME_WIDTH / 2 - w / 2, top, w, 28, 14)
+  }
+
+  /** Effects off: the old plain spark circles stand in for the effects' sparks. */
+  private get plainSparks(): boolean {
+    return !this.vfx || this.vfx.cfg.particles === 0
+  }
+
+  /**
+   * Effects: move and draw them; the end-of-round sweep once, only when the
+   * end is seen as it happens (never after a hidden tab or a catch-up); and,
+   * with automatic quality at High, drop to Low if frames keep running slow.
+   */
+  private updateVfx(delta: number, time: number): void {
+    const vfx = this.vfx
+    if (!vfx) return
+    const now = performance.now()
+    const gap = this.lastFrameAt ? now - this.lastFrameAt : 0
+    this.lastFrameAt = now
+    // Real time (up to 100 ms a frame), so effects keep their timing on a slow device.
+    vfx.update(Math.min(delta, 100), time, this.cannons, this.sim.shots, this.fans)
+    const ended = this.sim.ended
+    if (ended && !this.endFxDone) {
+      this.endFxDone = true
+      if (gap < 400 && !this.catchUp.active && !document.hidden) vfx.end(ended === 'win' ? 'player' : ended === 'lose' ? 'enemy' : null)
+    }
+    const fx = currentFx()
+    if (!fx.auto || fx.quality !== 'high' || ended || this.sim.paused || this.sim.countdown > 0 || gap > 250) {
+      if (gap > 250) this.slowWatch.reset()
+      return
+    }
+    if (this.slowWatch.push(delta)) noteSlowDevice()
   }
 
   private drawFx(time: number): void {
