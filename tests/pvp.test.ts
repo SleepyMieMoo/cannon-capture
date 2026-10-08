@@ -229,7 +229,9 @@ describe('host and second player over a fake network', () => {
     expect(start).not.toBeNull()
     expect(start!.side).toBe('enemy')
 
-    const client = new PvpClient(clientEnd, start!, true)
+    // The client's clock follows the simulated time (snapshot timing is measured against it).
+    let fakeNow = 0
+    const client = new PvpClient(clientEnd, start!, true, true, () => fakeNow)
     const view = pvpSim(flipLevel(start!.level))
     const seen = { fired: 0, captured: 0 }
     const handlers: SimEvents = { fired: () => seen.fired++, captured: () => seen.captured++ }
@@ -250,6 +252,7 @@ describe('host and second player over a fake network', () => {
     const bytes0 = hostEnd.bytesSent
     const run = (steps: number) => {
       for (let i = 0; i < steps && !sim.ended; i++) {
+        fakeNow += SIM_STEP_MS
         if (!sim.paused) {
           sim.step(SIM_STEP_MS)
           host.stepped()
@@ -266,9 +269,9 @@ describe('host and second player over a fake network', () => {
     console.log(`pvp snapshot traffic: ${Math.round(perSecond)} bytes/s (JSON, ${sim.cannons.length} cannons)`)
     expect(perSecond).toBeLessThan(40_000)
 
-    // The picture is 100 ms behind the host, and matches it (sides swapped).
+    // The picture is a little behind the host (about one snapshot gap on a perfect line), and matches it (sides swapped).
     const map = sideMapper(true)
-    expect(sim.clock - view.clock).toBeGreaterThan(50)
+    expect(sim.clock - view.clock).toBeGreaterThan(30)
     expect(sim.clock - view.clock).toBeLessThan(200)
     for (const c of sim.cannons) expect(view.byId(c.id)!.side).toBe(map(c.side))
     expect(seen.fired).toBeGreaterThan(5)
@@ -323,11 +326,13 @@ describe('host and second player over a fake network', () => {
     hostEnd.flush()
     clientEnd.flush()
     cancel()
-    const client = new PvpClient(clientEnd, start!, true, false)
+    let fakeNow = 0
+    const client = new PvpClient(clientEnd, start!, true, false, () => fakeNow)
     const view = pvpSim(flipLevel(start!.level))
     let replayed = 0
     const handlers: SimEvents = { fired: () => replayed++, bounce: () => replayed++, hit: () => replayed++, captured: () => replayed++ }
     const hostStep = () => {
+      fakeNow += SIM_STEP_MS
       sim.step(SIM_STEP_MS)
       host.stepped()
     }

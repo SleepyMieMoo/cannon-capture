@@ -1,5 +1,5 @@
 import { PVP_LIMITS, PVP_RULES } from '../../src/config/pvpRules'
-import { DEFAULT_SETTINGS, PVP_MAPS, parseClientMsg, pvpLevel, pvpMap, readSettings, type ClientMsg, type RoomSettings, type MatchResult, type RoomInfo, type SeatInfo, type ServerMsg } from '../../src/net/online'
+import { DEFAULT_SETTINGS, PVP_MAPS, parseClientMsg, pvpLevel, pvpMap, readSettings, type ClientMsg, type RoomSettings, type MatchResult, type RoomInfo, type SeatInfo, type ServerMsg, type ServerRegion } from '../../src/net/online'
 import { EventLog, encodeSnap, type SnapExtra } from '../../src/net/snapshot'
 import { BattleSim } from '../../src/sim/BattleSim'
 import { applyOrder, parseOrder } from '../../src/sim/orders'
@@ -75,6 +75,9 @@ export interface RoomState {
   settings?: RoomSettings
   /** The seat on the left side next match (null/missing: the host's). */
   left?: 0 | 1 | null
+  /** The region the room was placed in, and the data centre it runs in once known. */
+  region?: ServerRegion
+  colo?: string
 }
 
 interface Match {
@@ -131,8 +134,8 @@ export class RoomCore {
     this.state = state && state.v === 1 ? state : null
   }
 
-  /** A new room with this code. False if it already exists. */
-  init(code: string): boolean {
+  /** A new room with this code (placed in `region`). False if it already exists. */
+  init(code: string, region?: ServerRegion): boolean {
     if (this.state) return false
     const now = this.host.now()
     this.state = {
@@ -150,10 +153,19 @@ export class RoomCore {
       sides: ['player', 'enemy'],
       settings: { ...DEFAULT_SETTINGS },
       left: null,
+      ...(region ? { region } : {}),
     }
     this.host.save(this.state)
     this.host.setAlarm(now + PVP_LIMITS.emptyRoomMs)
     return true
+  }
+
+  /** The data centre the room runs in (the Durable Object finds out once, after it is created). */
+  setColo(colo: string): void {
+    const st = this.state
+    if (!st || !/^[A-Z]{3}$/.test(colo) || st.colo === colo) return
+    st.colo = colo
+    this.changed()
   }
 
   // ---------------------------------------------------------------- connections
@@ -710,6 +722,7 @@ export class RoomCore {
       settings: this.settings(),
       left: this.leftSeat(),
       surrender: true,
+      ...(st.region ? { server: { region: st.region, ...(st.colo ? { colo: st.colo } : {}) } } : {}),
     }
   }
 

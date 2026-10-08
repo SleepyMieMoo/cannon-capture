@@ -347,6 +347,18 @@ export class Cannon {
     return true
   }
 
+  /**
+   * Network views: show a tower swap made `sinceMs` ago (your own, predicted
+   * before the server's picture has it), mid-reload like setKind leaves it.
+   */
+  showNetSwap(kind: CannonKind, sinceMs: number): void {
+    if (kind === this.kind || !KINDS[kind]) return
+    const lock = Math.max(TUNING.swapLockMs, fireMsFor(kind, this.sideMs))
+    this.kind = kind
+    this.swapTotal = lock
+    this.swapLeft = Math.max(0, lock - sinceMs)
+  }
+
   /** True while it fires shots (every type but the shield). */
   get fires(): boolean {
     return firesAs(this.kind)

@@ -5,7 +5,7 @@ import { aiDifficulty } from '../ai/towerChoice'
 import { discord } from '../platform/runtime'
 import { loadPerfShown, isPerfKey, savePerfShown } from './perfPrefs'
 import { copyText } from '../ui/copyText'
-import { avgMax, browserLabel, fpsLevel, fpsOf, frameLevel, perfReport, plural, Series, summarize, type PerfLevel, type PerfSnapshot } from './perfStats'
+import { avgMax, browserLabel, fpsLevel, fpsOf, frameLevel, netText, perfReport, pingLevel, plural, Series, summarize, type PerfLevel, type PerfNet, type PerfSnapshot } from './perfStats'
 
 /** Stats cover this much recent time; FPS itself uses the last second. */
 const WINDOW_MS = 5000
@@ -25,6 +25,8 @@ export interface PerfBattle {
   cannons: () => number
   shots: () => number
   sounds: () => number
+  /** Online battles: the connection. */
+  net?: () => PerfNet | null
 }
 
 const LEVEL_COLOUR: Record<PerfLevel, string> = { good: cssHex(theme.fan), ok: cssHex(theme.player), bad: cssHex(theme.enemy) }
@@ -135,6 +137,7 @@ export class PerfMonitor {
       look: b ? recent(this.look) : null,
       counts: b ? { cannons: b.cannons(), shots: b.shots(), sounds: b.sounds() } : null,
       context: this.context(),
+      net: b?.net?.() ?? null,
     }
   }
 
@@ -234,6 +237,7 @@ export class PerfMonitor {
       <div class="pf-row pf-sim"></div>
       <div class="pf-row pf-gfx"></div>
       <div class="pf-row pf-count"></div>
+      <div class="pf-row pf-net" hidden></div>
       <div class="pf-row pf-env"></div>
       <textarea class="pf-manual" readonly hidden rows="3"></textarea>
       <div class="pf-msg" aria-live="polite"></div>`
@@ -274,6 +278,12 @@ export class PerfMonitor {
     this.q('pf-sim').innerHTML = s.sim ? `sim ${am(s.sim)} · AI ${am(s.ai)} · look-ahead ${am(s.look)} ms` : 'sim – (no battle running)'
     this.q('pf-gfx').innerHTML = `update ${am(s.logic)} · render ${am(s.render)} ms`
     this.q('pf-count').textContent = s.counts ? `${plural(s.counts.cannons, 'cannon')} · ${plural(s.counts.shots, 'shot')} · ${plural(s.counts.sounds, 'sound')}` : '–'
+    const net = this.q('pf-net')
+    net.hidden = !s.net
+    if (s.net) {
+      const rtt = s.net.rtt
+      net.innerHTML = escapeHtml(netText(s.net)).replace(/^ping (\S+) ms/, (_m, v) => `ping <b style="color:${rtt === null ? 'inherit' : LEVEL_COLOUR[pingLevel(rtt)]}">${v}</b> ms`)
+    }
     this.q('pf-env').textContent = `${s.canvas.w}×${s.canvas.h} @${+s.canvas.dpr.toFixed(2)}x · ${s.renderer} · ${s.platform} · ${s.build}`
     this.q('pf-env').title = [s.gpu, s.browser].filter(Boolean).join(' · ')
     this.spark(now)
@@ -394,3 +404,7 @@ function injectStyles(): void {
 export const perf = new PerfMonitor()
 
 export { copyText }
+
+function escapeHtml(t: string): string {
+  return t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
+}

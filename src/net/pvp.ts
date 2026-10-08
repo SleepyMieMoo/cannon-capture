@@ -3,6 +3,8 @@ import type { BattleSim, SimEvents } from '../sim/BattleSim'
 import { applyOrder, parseOrder, type Order, type OrderResult } from '../sim/orders'
 import type { LevelDef, Side } from '../types'
 import { applySnap, encodeSnap, EventLog, replayEvent, sideMapper, type EventRow, type Snap } from './snapshot'
+import { RenderClock, type RenderClockStats } from './renderClock'
+import { Predictor } from './predict'
 import type { Transport } from './transport'
 import { isSkin, pvpSkins, type SideSkins, type SkinId } from '../config/skins'
 import { isTeamColour, pvpColours, type SideColours, type TeamColourId } from '../config/teamColours'
@@ -196,19 +198,32 @@ export class PvpHost {
   }
 }
 
+/** Swapped events carry the cannon index and the new kind. */
+const EV_SWAPPED = 9
+
 /**
- * The second player: keeps the last snapshots, draws the round a little
- * behind the newest one (blending between the two around that time), replays
- * the host's events (sparks, sounds, popups) when the view reaches them, and
- * sends orders.
+ * The second player (and every online player): keeps the last snapshots,
+ * draws the round a little behind the newest one (blending between the two
+ * around that time; how far behind adapts to the connection, see
+ * RenderClock), replays the server's events (sparks, sounds, popups) when the
+ * picture reaches them, and sends orders, showing their effect at once (see
+ * Predictor) until the server's picture includes them.
  */
 export class PvpClient {
   private snaps: Snap[] = []
+  /** Each snapshot's arrival number and local arrival time. */
+  private readonly meta = new WeakMap<Snap, { n: number; at: number }>()
+  private received = 0
   private renderTick = -1
   private renderClock = 0
   private events: EventRow[] = []
   private seq = 0
-  private heard = now()
+  private heard: number
+  readonly clockFn: () => number
+  readonly timing = new RenderClock()
+  readonly predictor = new Predictor()
+  /** Own swaps shown early: their replayed event shows nothing (cannon id, kind, when). */
+  private shownSwaps: { id: string; kind: string; at: number }[] = []
   private readonly off: () => void
   private readonly stopBeat: () => void
   /** A new round started (restart): the screen should start over with it. */
@@ -228,14 +243,18 @@ export class PvpClient {
     readonly flip = true,
     /** Ping the host and watch for silence (Phase 0). Online, the room's connection does that. */
     beat = true,
+    /** The local clock (tests pass a fake one). */
+    clock: () => number = now,
   ) {
+    this.clockFn = clock
+    this.heard = clock()
     this.off = transport.onMessage((msg) => this.handle(msg as HostMsg))
     this.stopBeat = beat ? heartbeat(() => this.beat()) : () => {}
   }
 
   private beat(): void {
     this.transport.send({ t: 'ping' } satisfies ClientMsg)
-    if (!this.lost && now() - this.heard > PVP.timeoutMs) {
+    if (!this.lost && this.clockFn() - this.heard > PVP.timeoutMs) {
       this.lost = true
       this.onLost?.()
     }
@@ -247,7 +266,7 @@ export class PvpClient {
 
   private handle(msg: HostMsg): void {
     if (!msg || typeof msg !== 'object') return
-    this.heard = now()
+    this.heard = this.clockFn()
     if (this.lost && msg.t !== 'bye') {
       this.lost = false
       this.onBack?.()
@@ -255,15 +274,22 @@ export class PvpClient {
     if (msg.t === 'snap') {
       if (msg.match !== this.start.match) return
       const last = this.latest
+      // Late or out of order (never over one WebSocket, but a relay might): the newer one stands.
       if (last && msg.s.tick < last.tick) return
+      const at = this.clockFn()
+      this.received += 1
+      this.meta.set(msg.s, { n: this.received, at })
+      this.timing.arrive(at, msg.s.tick * this.start.stepMs, !msg.s.paused && msg.s.winner === null)
       this.snaps.push(msg.s)
-      if (this.snaps.length > 12) this.snaps.shift()
+      if (this.snaps.length > 30) this.snaps.shift()
       for (const ev of msg.s.ev) this.events.push(ev)
       // A hidden tab draws nothing for a while: keep only the newest (the rest are stale by then).
       if (this.events.length > PVP.maxQueuedEvents) this.events.splice(0, this.events.length - PVP.maxQueuedEvents / 2)
     } else if (msg.t === 'start') {
       if (msg.match !== this.start.match) this.onStart?.(msg)
     } else if (msg.t === 'ack') {
+      // Every snapshot after this answer includes the order.
+      this.predictor.ack(Number(msg.seq), !!msg.ok, this.received + 1)
       if (!msg.ok) this.onRefused?.()
     } else if (msg.t === 'bye') {
       this.lost = true
@@ -271,10 +297,24 @@ export class PvpClient {
     }
   }
 
-  /** Send an order for this player's side. */
-  send(order: Order): void {
+  /**
+   * Send an order for this player's side; aims, swaps and auto toggles show
+   * at once (`on`: the value a toggle now shows) until the server's picture has them.
+   */
+  send(order: Order, on?: boolean): void {
     this.seq += 1
+    const t = this.clockFn()
+    this.predictor.add(this.seq, order, t, on)
+    if (order.t === 'swap') {
+      this.shownSwaps = this.shownSwaps.filter((s) => t - s.at < 5000)
+      this.shownSwaps.push({ id: order.cannon, kind: order.kind, at: t })
+    }
     this.transport.send({ t: 'order', seq: this.seq, o: order } satisfies ClientMsg)
+  }
+
+  /** Connection numbers for the HUD and the performance panel. */
+  get netStats(): RenderClockStats & { predicted: number; refused: number } {
+    return { ...this.timing.stats, predicted: this.predictor.shown, refused: this.predictor.refused }
   }
 
   private restartAt = -Infinity
@@ -287,22 +327,20 @@ export class PvpClient {
   }
 
   /**
-   * Every frame: move the render time on by `frameMs` (kept about
-   * interpDelayMs behind the newest snapshot) and show the round at that time.
+   * Every frame: move the draw time on by `frameMs` (RenderClock keeps it a
+   * little behind the newest snapshot), show the round at that time, lay your
+   * predicted orders over it, and replay the events it has reached.
    */
   update(view: BattleSim, handlers: SimEvents, frameMs: number): void {
     const latest = this.latest
     if (!latest) return
     const stepMs = this.start.stepMs
-    const target = latest.tick - PVP.interpDelayMs / stepMs
-    if (this.renderTick < 0 || Math.abs(this.renderTick - target) > 30) this.renderTick = target
-    else {
-      this.renderTick += frameMs / stepMs
-      // Drift gently toward the target so lag changes don't jump.
-      this.renderTick += (target - this.renderTick) * 0.05
-    }
-    if (this.renderTick > latest.tick) this.renderTick = latest.tick
-    // The two snapshots around the render time.
+    const t = this.clockFn()
+    const latestMeta = this.meta.get(latest)!
+    const held = latest.paused || latest.winner !== null
+    const drawMs = this.timing.frame(t, frameMs, latest.tick * stepMs, latestMeta.at, held)
+    this.renderTick = drawMs / stepMs
+    // The two snapshots around the draw time (past the newest: the newest, flown on).
     let a = this.snaps[0]
     let b = latest
     for (let i = 0; i < this.snaps.length; i++) {
@@ -313,9 +351,15 @@ export class PvpClient {
       }
     }
     if (a.tick > this.renderTick) b = a
+    let ahead = 0
+    if (this.renderTick > latest.tick) {
+      a = b = latest
+      ahead = (this.renderTick - latest.tick) * stepMs
+    }
     const span = b.tick - a.tick
     const k = span > 0 ? Math.min(1, Math.max(0, (this.renderTick - a.tick) / span)) : 1
-    applySnap(view, a, b, k, latest, this.flip, stepMs)
+    applySnap(view, a, b, k, latest, this.flip, stepMs, held ? 0 : ahead)
+    this.predictor.apply(view, this.meta.get(a)?.n ?? 0, latestMeta.n, t, frameMs)
     this.renderClock = view.clock
     // Events whose time has come (all of them once the round is paused or over).
     const all = latest.paused || latest.winner !== null
@@ -323,7 +367,25 @@ export class PvpClient {
     while (n < this.events.length && (all || Number(this.events[n][0]) <= this.renderClock)) n++
     // Long past ones (the picture jumped ahead after a hidden tab) are dropped: the snapshot shows their result.
     const stale = this.renderClock - PVP.staleEventMs
-    if (n > 0) for (const ev of this.events.splice(0, n)) if (Number(ev[0]) >= stale) replayEvent(ev, view, handlers, this.flip)
+    if (n > 0) {
+      const own = this.ownSwapFilter(handlers, t)
+      for (const ev of this.events.splice(0, n)) if (Number(ev[0]) >= stale) replayEvent(ev, view, Number(ev[1]) === EV_SWAPPED ? own : handlers, this.flip)
+    }
+  }
+
+  /** Handlers for a replayed swap: your own swap already showed when you made it, so its echo shows nothing. */
+  private ownSwapFilter(handlers: SimEvents, t: number): SimEvents {
+    return {
+      ...handlers,
+      swapped: (c) => {
+        const i = this.shownSwaps.findIndex((s) => s.id === c.id && s.kind === c.kind && t - s.at < 5000)
+        if (i >= 0 && c.side === 'player') {
+          this.shownSwaps.splice(i, 1)
+          return
+        }
+        handlers.swapped?.(c)
+      },
+    }
   }
 
   /**
@@ -334,6 +396,7 @@ export class PvpClient {
   resync(): void {
     this.events.length = 0
     this.renderTick = -1
+    this.timing.reset()
   }
 
   /** Events waiting for the picture to reach them (tests). */

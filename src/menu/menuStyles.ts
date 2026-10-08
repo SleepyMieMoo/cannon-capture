@@ -247,6 +247,8 @@ export function injectMenuStyles(): void {
 .mm-switch:checked::after { left: 24px; background: ${cssHex(theme.hud)}; }
 .mm-friends { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: clamp(12px, 2.4vmin, 24px); }
 .mm-input { font: inherit; font-size: 16px; color: ${theme.text}; background: ${rgba(theme.panel, 0.95)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 10px; padding: 8px 10px; min-height: 42px; min-width: 0; width: 100%; box-sizing: border-box; }
+.mm-select { cursor: pointer; appearance: auto; }
+.mm-select option { color: ${theme.text}; background: ${cssHex(theme.panel)}; }
 .mm-input:focus { outline: none; border-color: ${gold}; }
 .mm-code-in { text-transform: uppercase; letter-spacing: .3em; font-weight: bold; font-size: 20px; text-align: center; flex: 1; }
 .mm-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

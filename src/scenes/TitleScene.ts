@@ -113,8 +113,8 @@ export class TitleScene extends Phaser.Scene {
           saveName(name)
           if (online.room && online.room.name !== name) online.room.setName(name)
         },
-        create: async (name) => {
-          const code = await createRoom()
+        create: async (name, region) => {
+          const code = await createRoom(region)
           const room = online.join(code, name)
           watch(room)
           return room

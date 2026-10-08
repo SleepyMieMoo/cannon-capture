@@ -5,9 +5,10 @@ import { TEAM_COLOUR } from '../config/teamColours'
 import { PVP_RULES } from '../config/pvpRules'
 import { drawThumb } from '../editor/thumb'
 import { MAP_SIZES } from '../levels/board'
-import { COUNTDOWN_CHOICES, DEFAULT_SETTINGS, PVP_MAPS, cleanName, normaliseCode, isRoomCode, pvpLevel, type RoomInfo, type RoomSettings, type SeatInfo } from '../net/online'
+import { COUNTDOWN_CHOICES, DEFAULT_SETTINGS, PVP_MAPS, SERVER_REGIONS, cleanName, isServerRegion, normaliseCode, isRoomCode, pvpLevel, type RoomInfo, type RoomSettings, type SeatInfo, type ServerRegion } from '../net/online'
 import type { OnlineRoom } from '../net/onlineClient'
 import { h } from '../ui/overlay'
+import { serverLine } from '../net/onlineView'
 import { ICONS } from './art'
 
 /** What the online screens ask the game for (the menu itself never opens sockets). */
@@ -15,8 +16,8 @@ export interface OnlineMenu {
   room(): OnlineRoom | null
   name(): string
   setName(name: string): void
-  /** New room on the server, then join it. */
-  create(name: string): Promise<OnlineRoom>
+  /** New room on the server (near you, or in `region`), then join it. */
+  create(name: string, region?: ServerRegion | null): Promise<OnlineRoom>
   join(code: string, name: string): OnlineRoom
   leave(): void
   inviteLink(code: string): string
@@ -108,7 +109,7 @@ export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
     create.lastChild!.textContent = 'Creating…'
     err.textContent = ''
     online
-      .create(nameNow())
+      .create(nameNow(), isServerRegion(region.value) ? region.value : null)
       .then(() => kit.open('lobby', 'create'))
       .catch((e: unknown) => {
         create.disabled = false
@@ -116,6 +117,11 @@ export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
         err.textContent = `Could not reach the game server (${e instanceof Error ? e.message : String(e)}). Try again in a moment.`
       })
   }, { icon: ICONS.friends, cls: 'big.primary', autofocus: true })
+  // Where the room runs: near you unless you pick (far-apart friends: somewhere between keeps it fair).
+  const region = h('select.mm-input.mm-select', { id: 'mm-region', dataset: { id: 'region' }, 'aria-label': 'Server region' },
+    h('option', { value: '' }, 'Near me (automatic)'),
+    ...SERVER_REGIONS.map((r) => h('option', { value: r.id }, r.label)),
+  ) as HTMLSelectElement
   const code = h('input.mm-input.mm-code-in', { id: 'mm-code', type: 'text', maxLength: 4, placeholder: 'ABCD', autocomplete: 'off', spellcheck: false, dataset: { id: 'code' }, 'aria-label': 'Room code' }) as HTMLInputElement
   const join = (): void => {
     const c = normaliseCode(code.value)
@@ -141,6 +147,9 @@ export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
         h('div.mm-h', {}, 'New room'),
         create,
         h('div.mm-note', {}, 'You get a 4-letter code and a link to send to a friend.'),
+        h('label.mm-h', { htmlFor: 'mm-region', style: 'margin-top:12px' }, 'Server'),
+        region,
+        h('div.mm-note', {}, 'Playing someone far away? Pick a region between you so the delay is shared (Europe and Southeast Asia: try Middle East). The room shows where it landed.'),
         h('div.mm-note', { dataset: { id: 'skin-note' } }, `Your cannons wear ${SKIN_LABEL[loadSkin()]} in ${TEAM_COLOUR[loadColour()].label} (change them in Settings before you join).`),
       ),
       h('div.mm-side', {},
@@ -174,9 +183,11 @@ export function lobbyScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
   }
   const r = room.info
   const status = h('span', { id: 'mm-ping' })
+  const where = r?.server ? h('div.mm-note', { dataset: { id: 'server' } }, serverLine(r.server, room.rttAvg)) : null
   const showStatus = (): void => {
     status.textContent =
       room.status === 'open' ? `Connected${room.rttAvg !== null ? ` · ${room.rttAvg} ms` : ''}` : room.status === 'reconnecting' ? 'Reconnecting…' : room.status === 'connecting' ? 'Connecting…' : 'Closed'
+    if (where && r?.server) where.textContent = serverLine(r.server, room.rttAvg)
   }
   showStatus()
   const t = setInterval(showStatus, 1000)
@@ -240,6 +251,7 @@ export function lobbyScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
         seatCard(0, r.seats[0], room),
         seatCard(1, r.seats[1], room),
         h('div.mm-note', {}, r.spectators ? `${r.spectators} watching` : 'Anyone else with the code can watch.'),
+        where,
         last,
         err,
       ),

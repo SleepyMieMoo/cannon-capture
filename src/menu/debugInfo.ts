@@ -26,6 +26,8 @@ export interface DebugEnv {
   switches: string[]
   /** Current settings, already as text. */
   settings: Record<string, string>
+  /** In an online room: the ping and where the room runs (no room code). */
+  online?: { rtt: number | null; server: string | null } | null
 }
 
 /** Settings that are fine to share (the menu builds this). */
@@ -73,5 +75,6 @@ export function debugInfo(env: DebugEnv): string {
     `Renderer: ${env.renderer}${env.gpu ? ` (${env.gpu})` : ''}${env.fps !== null ? `, ${Math.round(env.fps)} FPS` : ''}`,
     `Discord Activity: ${env.discord ? 'yes' : 'no'}${env.switches.length ? ` | switches: ${env.switches.join(', ')}` : ''}`,
     `Settings: ${set}`,
+    ...(env.online ? [`Online: ping ${env.online.rtt === null ? 'unknown' : `${env.online.rtt} ms`}${env.online.server ? `, server ${env.online.server}` : ''}`] : []),
   ].join('\n')
 }

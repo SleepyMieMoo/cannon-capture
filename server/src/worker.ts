@@ -1,12 +1,12 @@
 import { DurableObject } from 'cloudflare:workers'
-import { isRoomCode, randomCode } from '../../src/net/online'
+import { isRoomCode, pickRegion, randomCode, type ServerRegion } from '../../src/net/online'
 import { RoomCore, type Conn, type ConnData, type RoomHost, type RoomState } from './room'
 
 /**
  * Cannon Capture online server: one Durable Object per room (named by its
  * code). The Worker creates rooms and passes WebSockets to them.
  *
- *   POST /api/rooms              -> { code }   a new room, placed near the creator
+ *   POST /api/rooms[?region=me]  -> { code }   a new room, placed near the creator (or in the region asked for)
  *   GET  /api/rooms/ABCD/ws      WebSocket to that room (the protocol is src/net/online.ts)
  *   GET  /health
  */
@@ -16,9 +16,6 @@ export interface Env {
   /** Comma-separated origins allowed to use the server ("*" for any port: http://localhost:*). */
   ALLOWED_ORIGINS: string
 }
-
-/** Rooms start near whoever creates them (Cloudflare's coarse location hints). */
-const HINTS: Record<string, DurableObjectLocationHint> = { AS: 'apac', OC: 'oc', EU: 'weur', NA: 'enam', SA: 'sam', AF: 'afr' }
 
 function originAllowed(origin: string | null, env: Env): boolean {
   // Non-browser clients send no Origin (tests, tools); browsers always do.
@@ -53,12 +50,14 @@ export default {
     if (!allowed) return json({ error: 'origin not allowed' }, 403)
 
     if (url.pathname === '/api/rooms' && req.method === 'POST') {
-      const continent = (req as Request & { cf?: { continent?: string } }).cf?.continent ?? ''
-      const locationHint = HINTS[continent] ?? 'apac'
+      // Placed once, here: Durable Objects stay where they are first created.
+      const cf = (req as Request & { cf?: { continent?: string; latitude?: string; longitude?: string } }).cf
+      const region = pickRegion(url.searchParams.get('region'), cf)
+      const locationHint = region as DurableObjectLocationHint
       for (let i = 0; i < 6; i++) {
         const code = randomCode()
         const stub = env.ROOMS.get(env.ROOMS.idFromName(code), { locationHint })
-        if (await stub.create(code)) return withCors(json({ code, near: locationHint }), origin, allowed)
+        if (await stub.create(code, region)) return withCors(json({ code, near: locationHint }), origin, allowed)
       }
       return withCors(json({ error: 'no free code, try again' }, 503), origin, allowed)
     }
@@ -155,8 +154,21 @@ export class RoomDO extends DurableObject<Env> {
   }
 
   /** The Worker asks for a new room with this code; false if the code is taken. */
-  async create(code: string): Promise<boolean> {
-    return this.core.init(code)
+  async create(code: string, region?: ServerRegion): Promise<boolean> {
+    const ok = this.core.init(code, region)
+    if (ok) this.ctx.waitUntil(this.learnColo())
+    return ok
+  }
+
+  /** Which data centre this room runs in (a request from here says), for the lobby and bug reports. */
+  private async learnColo(): Promise<void> {
+    try {
+      const res = await fetch('https://cloudflare.com/cdn-cgi/trace', { signal: AbortSignal.timeout(4000) })
+      const colo = (await res.text()).match(/^colo=([A-Z]{3})$/m)?.[1]
+      if (colo) this.core.setColo(colo)
+    } catch {
+      // Unknown is fine.
+    }
   }
 
   async fetch(req: Request): Promise<Response> {

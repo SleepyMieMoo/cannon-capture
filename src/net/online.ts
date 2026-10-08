@@ -104,6 +104,8 @@ export interface RoomInfo {
   left?: 0 | 1
   /** The server takes `surrender` (older servers leave it out: the game shows no Surrender button). */
   surrender?: boolean
+  /** Where the room runs: the region asked for, and the data centre it landed in (older servers leave it out). */
+  server?: { region: ServerRegion; colo?: string }
 }
 
 /** Server to game. */
@@ -141,6 +143,70 @@ export const pvpMap = (id: string): LevelDef | undefined => PVP_MAPS.find((l) =>
 export function pvpLevel(map: LevelDef): LevelDef {
   const { hint: _h, par: _p, ai: _a, aims: _aims, ...rest } = map
   return { ...rest, kind: 'battle' as const }
+}
+
+// ------------------------------------------------------------------ where a room runs
+
+/**
+ * Cloudflare's location hints for a room (a Durable Object). A room is placed
+ * once, when it is created, and stays there: near whoever creates it, unless
+ * they pick a region (between two far-apart players, the Middle East keeps
+ * both pings about equal). Centres are rough, for picking the nearest.
+ */
+export const SERVER_REGIONS = [
+  { id: 'weur', label: 'Western Europe', lat: 50.5, lon: 4 },
+  { id: 'eeur', label: 'Eastern Europe', lat: 52.2, lon: 21 },
+  { id: 'me', label: 'Middle East', lat: 25.2, lon: 55.3 },
+  { id: 'apac', label: 'Asia-Pacific', lat: 1.35, lon: 103.8 },
+  { id: 'oc', label: 'Oceania', lat: -33.9, lon: 151.2 },
+  { id: 'enam', label: 'North America (east)', lat: 39, lon: -77.5 },
+  { id: 'wnam', label: 'North America (west)', lat: 37.3, lon: -121.9 },
+  { id: 'sam', label: 'South America', lat: -23.5, lon: -46.6 },
+  { id: 'afr', label: 'Africa', lat: -26.2, lon: 28 },
+] as const
+
+export type ServerRegion = (typeof SERVER_REGIONS)[number]['id']
+
+export const isServerRegion = (v: unknown): v is ServerRegion => SERVER_REGIONS.some((r) => r.id === v)
+
+export function regionLabel(id: ServerRegion): string {
+  return SERVER_REGIONS.find((r) => r.id === id)?.label ?? id
+}
+
+/** Distance between two points on the globe (km). */
+function km(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const rad = Math.PI / 180
+  const a = Math.sin(((lat2 - lat1) * rad) / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(((lon2 - lon1) * rad) / 2) ** 2
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(a)))
+}
+
+/** The region nearest a place. */
+export function nearestRegion(lat: number, lon: number): ServerRegion {
+  let best: ServerRegion = 'apac'
+  let bestKm = Infinity
+  for (const r of SERVER_REGIONS) {
+    const d = km(lat, lon, r.lat, r.lon)
+    if (d < bestKm) {
+      bestKm = d
+      best = r.id
+    }
+  }
+  return best
+}
+
+const BY_CONTINENT: Record<string, ServerRegion> = { AS: 'apac', OC: 'oc', EU: 'weur', NA: 'enam', SA: 'sam', AF: 'afr' }
+
+/**
+ * Where to put a new room: the region asked for, else the one nearest the
+ * creator (Cloudflare tells the server roughly where a request comes from),
+ * else by continent, else Asia-Pacific.
+ */
+export function pickRegion(asked: unknown, where: { latitude?: unknown; longitude?: unknown; continent?: unknown } | undefined): ServerRegion {
+  if (isServerRegion(asked)) return asked
+  const lat = Number(where?.latitude)
+  const lon = Number(where?.longitude)
+  if (where?.latitude !== undefined && where?.longitude !== undefined && Number.isFinite(lat) && Number.isFinite(lon)) return nearestRegion(lat, lon)
+  return BY_CONTINENT[String(where?.continent ?? '')] ?? 'apac'
 }
 
 // ------------------------------------------------------------------ codes and names
