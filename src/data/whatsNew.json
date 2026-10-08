@@ -5,7 +5,7 @@
       "date": "2026-10-08",
       "entries": [
         { "kind": "fix", "title": "Version 0.2.2: smoother online play", "text": "Online over long distances feels much smoother: your aims, tower swaps and auto toggles show the moment you click, and the board no longer freezes and jumps when the connection hiccups. Your ping now shows in the top bar." },
-        { "kind": "new", "title": "Pick where an online room runs", "text": "When you create a room you can choose the server region. Playing someone far away? Pick a region between you so the delay is shared fairly. The room shows where it landed." },
+        { "kind": "new", "title": "Pick where an online room runs", "text": "When you create a room you can choose the server region, so a friend far away doesn’t carry all the delay. The lobby shows where the room landed and your ping." },
         { "kind": "fix", "title": "Version 0.2.1: switching away is safe", "text": "Coming back to the tab no longer sets off a burst of sounds, and the You win / You lose panel always shows, even if the round ended while you were away." },
         { "kind": "new", "title": "When tabbed out settings", "text": "Two new switches in Settings: keep the music playing while you’re in another tab (on by default), and choose whether a round against the AI pauses or keeps going while you’re away." },
         { "kind": "new", "title": "Version 0.2.0: the jukebox", "text": "Music! Three songs by Reganati play from the menu straight into your battles and loop. Open the Jukebox (top left) to switch songs, star the one the game starts with, and set the music volume, apart from sound effects." },

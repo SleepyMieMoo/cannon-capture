@@ -120,7 +120,7 @@ export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
   // Where the room runs: near you unless you pick (far-apart friends: somewhere between keeps it fair).
   const region = h('select.mm-input.mm-select', { id: 'mm-region', dataset: { id: 'region' }, 'aria-label': 'Server region' },
     h('option', { value: '' }, 'Near me (automatic)'),
-    ...SERVER_REGIONS.map((r) => h('option', { value: r.id }, r.label)),
+    ...SERVER_REGIONS.filter((r) => !('pick' in r)).map((r) => h('option', { value: r.id }, r.label)),
   ) as HTMLSelectElement
   const code = h('input.mm-input.mm-code-in', { id: 'mm-code', type: 'text', maxLength: 4, placeholder: 'ABCD', autocomplete: 'off', spellcheck: false, dataset: { id: 'code' }, 'aria-label': 'Room code' }) as HTMLInputElement
   const join = (): void => {
@@ -149,7 +149,7 @@ export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
         h('div.mm-note', {}, 'You get a 4-letter code and a link to send to a friend.'),
         h('label.mm-h', { htmlFor: 'mm-region', style: 'margin-top:12px' }, 'Server'),
         region,
-        h('div.mm-note', {}, 'Playing someone far away? Pick a region between you so the delay is shared (Europe and Southeast Asia: try Middle East). The room shows where it landed.'),
+        h('div.mm-note', {}, 'A room runs near whoever creates it. Playing someone far away? Pick a region in between if there is one, or take turns hosting near each of you. The lobby shows where it landed.'),
         h('div.mm-note', { dataset: { id: 'skin-note' } }, `Your cannons wear ${SKIN_LABEL[loadSkin()]} in ${TEAM_COLOUR[loadColour()].label} (change them in Settings before you join).`),
       ),
       h('div.mm-side', {},
