@@ -126,14 +126,22 @@ export const TUNING = {
    * swaps exactly like you. What differs:
    * - aimError: how far off its first shot at a new job is, in half-widths
    *   of the lane (the spread of a half-normal; under 1 lands, before the
-   *   type's own spread). 1.9 gives about 50% first-shot hits, 1.0 about
-   *   75% (measured, see tests/difficulty.test.ts), 0 is perfect. The AI just aims at an offset point; shots follow
-   *   the same rules as yours. overshoot: share of errors past the target in
-   *   the direction it was turning (the rest stop short).
+   *   type's own spread). The aimError values give the first-shot hit
+   *   rates 25% / 50% / 75% / 100% (measured, see tests/difficulty.test.ts).
+   *   The AI just aims at an offset point; shots follow the same rules as
+   *   yours. overshoot: share of errors past the target in the direction it
+   *   was turning (the rest stop short).
    * - correct: after it sees a miss, the error is multiplied by this (it
    *   recalculates), so a target it keeps shooting gets hit more and more.
+   * - adjustMs: how long that recalculation takes after it sees a miss. It
+   *   keeps its old (wrong) aim meanwhile, so a shot already on its way, or
+   *   fired before the barrel comes round, can miss too. Misses seen while
+   *   it is still adjusting count as the same lesson.
    * - maxTricks: bank shots and fan curves it will use (each bounce or fan
    *   counts one; straight shots count 0).
+   * - trickChance: the share of trick lanes (within maxTricks) it ever
+   *   spots, fixed per cannon and target, so some bank shots it knows and
+   *   others it never sees (1 = all of them). Straight shots are always seen.
    * - misjudge: up to this share of error in how quick it thinks each job
    *   is (fixed per cannon and target, so it doesn't make it twitchy).
    * - reactMs: how soon it responds to events (a friend under attack, a job
@@ -149,10 +157,10 @@ export const TUNING = {
    *   rasher; Impossible then checks the idea in its look-ahead).
    */
   aiLevels: {
-    easy: { aimError: 1.9, overshoot: 0.6, correct: 0.45, maxTricks: 0, misjudge: 0.15, reactMs: 1200, commitMs: 5000, margin: 1.4, lookahead: false, shieldAt: 6, shieldChance: 0.35, shieldAim: 'shooter', shieldShooters: 2 },
-    normal: { aimError: 1.0, overshoot: 0.6, correct: 0.45, maxTricks: 1, misjudge: 0.07, reactMs: 600, commitMs: 4000, margin: 1.3, lookahead: false, shieldAt: 5, shieldChance: 0.75, shieldAim: 'shots', shieldShooters: 3 },
-    hard: { aimError: 0, overshoot: 0.6, correct: 0, maxTricks: 99, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: false, shieldAt: 4, shieldChance: 1, shieldAim: 'shots', shieldShooters: 3 },
-    impossible: { aimError: 0, overshoot: 0.6, correct: 0, maxTricks: 99, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: true, shieldAt: 4, shieldChance: 1, shieldAim: 'shots', shieldShooters: 2 },
+    easy: { aimError: 3.6, overshoot: 0.6, correct: 0.45, adjustMs: 1000, maxTricks: 0, trickChance: 0, misjudge: 0.15, reactMs: 1200, commitMs: 5000, margin: 1.4, lookahead: false, shieldAt: 6, shieldChance: 0.35, shieldAim: 'shooter', shieldShooters: 2 },
+    normal: { aimError: 1.8, overshoot: 0.6, correct: 0.45, adjustMs: 800, maxTricks: 1, trickChance: 0.35, misjudge: 0.07, reactMs: 600, commitMs: 4000, margin: 1.3, lookahead: false, shieldAt: 5, shieldChance: 0.75, shieldAim: 'shots', shieldShooters: 3 },
+    hard: { aimError: 1.1, overshoot: 0.6, correct: 0.45, adjustMs: 800, maxTricks: 99, trickChance: 1, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: false, shieldAt: 4, shieldChance: 1, shieldAim: 'shots', shieldShooters: 3 },
+    impossible: { aimError: 0, overshoot: 0.6, correct: 0, adjustMs: 0, maxTricks: 99, trickChance: 1, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: true, shieldAt: 4, shieldChance: 1, shieldAim: 'shots', shieldShooters: 2 },
   },
   /**
    * Impossible's look-ahead. When a cannon is free to pick a new job it

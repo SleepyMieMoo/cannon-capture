@@ -133,7 +133,7 @@ export class BattleBot implements Bot {
 
 /**
  * Plays your side exactly like the enemy AI plays its own (spread fire,
- * nearest weak foe), at the given difficulty (Hard by default: perfect aim).
+ * nearest weak foe), at the given difficulty (Hard by default).
  * The AI is added to the round and runs with it, so update() has nothing to do.
  */
 export class MirrorBot implements Bot {

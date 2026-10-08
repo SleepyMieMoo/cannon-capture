@@ -160,11 +160,12 @@ describe('AI commits to a plan', () => {
     const s = sim(TWO)
     run(s, 1000)
     const e1 = s.byId('e1')!
-    const target = e1.target!
+    // Its job, not e1.target: with Hard's aim error it aims at a point beside the target.
+    const target = s.ai.jobs.get(e1)!.target
     while (target.side !== 'enemy') target.receiveHit('enemy', 1)
     run(s, TUNING.aiLevels.hard.reactMs + 50)
-    expect(e1.target).not.toBe(null)
-    expect(e1.target).not.toBe(target)
+    expect(s.ai.jobs.get(e1)).toBeTruthy()
+    expect(s.ai.jobs.get(e1)!.target).not.toBe(target)
   })
 
   it('never changes its mind mid-turn, even after the commitment is over', () => {

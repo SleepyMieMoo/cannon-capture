@@ -17,9 +17,9 @@ const DRAFT_KEY = 'cannon-capture:editor-draft:v1'
 export type Difficulty = AiLevel
 /** The editor's Difficulty menu. Difficulty is how smart pink plays, never how fast. */
 export const DIFFICULTY: Record<Difficulty, { label: string; blurb: string }> = {
-  easy: { label: 'Easy', blurb: 'Misses about half its first shots, then corrects; straight shots only; slow to react' },
-  normal: { label: 'Normal', blurb: 'Lands about 3 in 4 first shots, then corrects; simple bank and fan shots' },
-  hard: { label: 'Hard', blurb: 'Perfect aim, every angle, quick reactions' },
+  easy: { label: 'Easy', blurb: 'Lands about 1 in 4 first shots, slowly corrects; straight shots only; slow to react' },
+  normal: { label: 'Normal', blurb: 'Lands about half its first shots, then corrects; the odd simple bank shot' },
+  hard: { label: 'Hard', blurb: 'Lands about 3 in 4 first shots, takes a moment to correct; every angle; quick reactions' },
   impossible: { label: 'Impossible', blurb: 'Perfect aim, and tries out its best plans a few seconds ahead before choosing' },
 }
 

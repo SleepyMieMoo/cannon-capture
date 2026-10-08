@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { TUNING } from '../src/config/tuning'
 import { BattleSim } from '../src/sim/BattleSim'
+import { BattleBot } from '../src/sim/bots'
 import { laneTricks, levelLanes, type LaneTable } from '../src/sim/solver'
 import { boardFor } from '../src/levels/board'
 import { CAMPAIGN } from '../src/levels/campaign'
 import { levelDifficulty } from '../src/ai/difficulty'
 import { DIFFICULTY, decodeShare, encodeShare, loadDraft, listMaps, sanitizeLevel, withDifficulty } from '../src/editor/maps'
-import type { AiLevel, CannonDef, LevelDef, Side } from '../src/types'
+import { AI_LEVELS, type AiLevel, type CannonDef, type LevelDef, type Side } from '../src/types'
 import { match, mirrored } from './helpers/arena'
 
 const FRAME = 1000 / 60
@@ -113,23 +114,56 @@ describe('difficulty is intelligence only', () => {
     expect(sims.map((s) => s.ai.difficulty)).toEqual(['easy', 'normal', 'hard', 'impossible'])
   })
 
-  it('first-shot accuracy: Easy about 50%, Normal about 75%, Hard and Impossible every time; Easy and Normal improve on a target they keep shooting', () => {
-    const easy = hitRates('easy')
-    const normal = hitRates('normal')
-    const hard = hitRates('hard', 40)
+  it('first-shot accuracy ladder: Easy 25%, Normal 50%, Hard 75%, Impossible every time; the misses improve on a target it keeps shooting', () => {
+    const easy = hitRates('easy', 400)
+    const normal = hitRates('normal', 400)
+    const hard = hitRates('hard', 400)
     const impossible = hitRates('impossible', 40)
     console.log('first-shot hit rates', JSON.stringify({ easy, normal, hard, impossible }))
-    expect(easy.n).toBeGreaterThan(60)
-    expect(easy.first).toBeGreaterThan(0.4)
-    expect(easy.first).toBeLessThan(0.6)
-    expect(normal.first).toBeGreaterThan(0.65)
-    expect(normal.first).toBeLessThan(0.85)
-    expect(hard.first).toBeGreaterThan(0.97)
+    expect(easy.n).toBeGreaterThan(300)
+    expect(easy.first).toBeGreaterThan(0.19)
+    expect(easy.first).toBeLessThan(0.31)
+    expect(normal.first).toBeGreaterThan(0.44)
+    expect(normal.first).toBeLessThan(0.56)
+    expect(hard.first).toBeGreaterThan(0.69)
+    expect(hard.first).toBeLessThan(0.81)
     expect(impossible.first).toBeGreaterThan(0.97)
-    // Shots 4 and 5, after it has seen where the first ones went.
-    expect(easy.later).toBeGreaterThan(easy.first + 0.1)
-    expect(normal.later).toBeGreaterThan(normal.first)
-  }, 60_000)
+    // Shots 4 and 5, after it has seen where the first ones went (and taken a moment to correct).
+    expect(easy.later).toBeGreaterThan(easy.first + 0.08)
+    expect(normal.later).toBeGreaterThan(normal.first + 0.05)
+    expect(hard.later).toBeGreaterThan(hard.first)
+  }, 120_000)
+
+  it('the ladder in the settings: aim error rises step by step, Impossible is perfect, only Impossible looks ahead', () => {
+    const err = AI_LEVELS.map((d) => TUNING.aiLevels[d].aimError)
+    expect(err[3]).toBe(0)
+    for (let i = 1; i < 4; i++) expect(err[i]).toBeLessThan(err[i - 1])
+    expect(AI_LEVELS.map((d) => TUNING.aiLevels[d].lookahead)).toEqual([false, false, false, true])
+    // Every level that misses takes a moment to correct (a sloppy person adjusting, not instant).
+    for (const d of ['easy', 'normal', 'hard'] as const) expect(TUNING.aiLevels[d].adjustMs).toBeGreaterThan(0)
+  })
+
+  it('after a miss it keeps its old aim for a moment, then corrects once', () => {
+    const level = { ...withDifficulty(DUEL, 'hard'), id: 'adjust' }
+    const sim = new BattleSim(level, null, {}, DUEL_LANES)
+    sim.byId('p1')!.update = () => null
+    const e1 = sim.byId('e1')!
+    while (sim.clock < 3000 && !sim.ai.jobs.get(e1)) sim.step(FRAME)
+    const job = sim.ai.jobs.get(e1)!
+    // Force a known error, then report a miss.
+    ;(sim.ai as unknown as { aimErr: Map<unknown, { job: unknown; err: number }> }).aimErr.set(e1, { job, err: 2 })
+    const before = e1.aimPoint ? { ...e1.aimPoint } : null
+    sim.ai.shotLanded('e1', null)
+    sim.ai.shotLanded('e1', null)
+    const errNow = () => (sim.ai as unknown as { aimErr: Map<unknown, { err: number }> }).aimErr.get(e1)!.err
+    expect(errNow()).toBe(2)
+    expect(e1.aimPoint).toEqual(before)
+    const t0 = sim.clock
+    while (sim.clock - t0 < TUNING.aiLevels.hard.adjustMs - 50) sim.step(FRAME)
+    expect(errNow()).toBe(2)
+    while (sim.clock - t0 < TUNING.aiLevels.hard.adjustMs + 50) sim.step(FRAME)
+    expect(errNow()).toBeCloseTo(2 * TUNING.aiLevels.hard.correct)
+  })
 
   it('misses look human: errors fall on both sides, more often past the target than short', () => {
     let over = 0
@@ -212,6 +246,53 @@ describe('trick shots by level', () => {
     expect(hard.aimedAtN1).toBe(true)
     expect(hard.trick).toBe(true)
   })
+})
+
+describe('trick shots in real matches', () => {
+  // A player proxy plays gold against pink's AI on mirrored maps; count pink's
+  // shots that go down a lane with a bank or fan in it.
+  const trickShots = (d: AiLevel, maps: number): { shots: number; tricks: number } => {
+    const out = { shots: 0, tricks: 0 }
+    for (let seed = 0; seed < maps; seed++) {
+      const level = withDifficulty({ ...mirrored(seed), kind: 'battle', id: `tricks-${seed}` }, d)
+      let sim: BattleSim | null = null
+      sim = new BattleSim(level, null, {
+        fired: (c) => {
+          if (!sim || c.side !== 'enemy') return
+          out.shots += 1
+          const job = sim.ai.jobs.get(c)
+          const lane = job ? sim.ai.lanesInUse().get(c.id + (c.kind === 'normal' ? '' : '#' + c.kind))?.get(job.target.id) : undefined
+          if (lane && laneTricks(lane) > 0) out.tricks += 1
+        },
+      }, levelLanes(level))
+      const bot = new BattleBot(sim)
+      while (!sim.ended && sim.clock < 40_000) {
+        bot.update(FRAME)
+        sim.step(FRAME)
+      }
+    }
+    return out
+  }
+
+  it('Easy never banks or fans on any map; Normal only now and then, less than Hard', () => {
+    const easy = trickShots('easy', 8)
+    const normal = trickShots('normal', 8)
+    const hard = trickShots('hard', 8)
+    console.log('trick shots', JSON.stringify({ easy, normal, hard }))
+    expect(easy.shots).toBeGreaterThan(50)
+    expect(easy.tricks).toBe(0)
+    expect(normal.tricks / normal.shots).toBeLessThan(hard.tricks / hard.shots)
+    expect(hard.tricks).toBeGreaterThan(0)
+    // Easy does not even see trick lanes; Normal sees at most one bounce or fan.
+    for (const d of ['easy', 'normal'] as const) {
+      for (let seed = 0; seed < 8; seed++) {
+        const level = withDifficulty({ ...mirrored(seed), kind: 'battle', id: `view-${seed}` }, d)
+        const sim = new BattleSim(level, null, {}, levelLanes(level))
+        sim.step(FRAME)
+        for (const table of sim.ai.lanesInUse().values()) for (const lane of table.values()) expect(laneTricks(lane)).toBeLessThanOrEqual(d === 'easy' ? 0 : 1)
+      }
+    }
+  }, 120_000)
 })
 
 // ------------------------------------------------------------ old maps

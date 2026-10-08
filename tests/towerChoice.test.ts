@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { perfectAim } from './helpers/aim'
 import { TUNING } from '../src/config/tuning'
 import { BattleSim } from '../src/sim/BattleSim'
 import { MirrorBot } from '../src/sim/bots'
@@ -90,15 +91,19 @@ describe('tower type for the job', () => {
         'normal',
       ),
     )
-    const sim = new BattleSim(level, null, {}, levelLanes(level))
-    const e2 = sim.byId('e2')!
-    let gunAt = -1
-    let healedAsGun = false
-    while (sim.clock < 8000 && !sim.ended) {
-      sim.step(1000 / 60)
-      if (gunAt < 0 && e2.kind === 'machinegun') gunAt = sim.clock
-      if (e2.kind === 'machinegun' && e2.healing) healedAsGun = true
-    }
+    // Perfect aim: this is about the swap; Normal's sloppy heals could let E1 fall before it.
+    const { gunAt, healedAsGun } = perfectAim('normal', () => {
+      const sim = new BattleSim(level, null, {}, levelLanes(level))
+      const e2 = sim.byId('e2')!
+      let gunAt = -1
+      let healedAsGun = false
+      while (sim.clock < 8000 && !sim.ended) {
+        sim.step(1000 / 60)
+        if (gunAt < 0 && e2.kind === 'machinegun') gunAt = sim.clock
+        if (e2.kind === 'machinegun' && e2.healing) healedAsGun = true
+      }
+      return { gunAt, healedAsGun }
+    })
     expect(gunAt).toBeGreaterThan(0)
     expect(gunAt).toBeLessThan(5000)
     expect(healedAsGun).toBe(true)
