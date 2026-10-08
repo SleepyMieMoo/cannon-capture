@@ -14,7 +14,9 @@ import { stepTrack, trackById, type MusicTrack, type TrackId } from './musicTrac
  *   when picked. Nothing loads until boot() (after the first menu paint).
  * - Browsers (and Discord) keep audio locked until the first click, tap or
  *   key: the player waits for that gesture and then starts.
- * - The music pauses while the tab is hidden and carries on when it is back.
+ * - By default the music keeps playing while the tab is hidden; with
+ *   "Keep music playing when tabbed out" off it pauses and carries on when
+ *   the tab is back.
  * - A file that can't be downloaded or decoded marks that song as missing;
  *   the game never breaks over it.
  */
@@ -214,6 +216,13 @@ export class MusicPlayer {
     this.emit()
   }
 
+  /** Settings → When tabbed out: keep playing while the tab is hidden (saved). */
+  setKeepHidden(on: boolean): void {
+    this.settings.keepHidden = on
+    this.save()
+    this.onVisibility()
+  }
+
   /** Read the saved settings again (after Profile → Reset all preferences). */
   reload(): void {
     const wasOn = this.settings.on
@@ -294,7 +303,7 @@ export class MusicPlayer {
   /** Resume the context now if the browser allows it, else on the first gesture. */
   private unlock(): void {
     const ctx = this.ctx
-    if (!ctx || this.hidden() || ctx.state === 'running') return
+    if (!ctx || (this.hidden() && !this.settings.keepHidden) || ctx.state === 'running') return
     void ctx.resume().then(
       () => this.emit(),
       () => {},
@@ -314,7 +323,7 @@ export class MusicPlayer {
   private readonly onGesture = (): void => {
     const ctx = this.ctx
     if (!ctx || ctx.state === 'running') return this.stopUnlock()
-    if (!this.settings.on || this.hidden()) return
+    if (!this.settings.on || (this.hidden() && !this.settings.keepHidden)) return
     void ctx.resume().then(
       () => {
         if (ctx.state === 'running') this.stopUnlock()
@@ -327,7 +336,7 @@ export class MusicPlayer {
   private readonly onVisibility = (): void => {
     const ctx = this.ctx
     if (!ctx) return
-    if (this.hidden()) {
+    if (this.hidden() && !this.settings.keepHidden) {
       if (ctx.state === 'running') void ctx.suspend().catch(() => {})
     } else if (this.settings.on) this.unlock()
     this.emit()

@@ -20,6 +20,7 @@ import { settingsText } from '../menu/debugInfo'
 import { debugReport } from '../perf/debugEnv'
 import { DemoWatch, keepDemoRunning, type DemoScenes } from './demoWatch'
 import { music } from '../audio/music'
+import { loadTabPrefs } from '../menu/tabPrefs'
 
 let launchedFromUrl = false
 let joinedFromUrl = false
@@ -187,6 +188,7 @@ export class TitleScene extends Phaser.Scene {
               colour: loadColour(),
               difficulty: loadMenuPrefs().difficulty,
               music: { on: music.playing, volume: music.settings.volume, track: music.current, default: music.settings.track },
+              tabbed: { music: music.settings.keepHidden, pauseVsAi: loadTabPrefs().pauseVsAi },
             }),
           )
         },

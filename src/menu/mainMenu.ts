@@ -24,6 +24,7 @@ import { KEPT_KEYS, PREF_KEYS } from './prefs'
 import type { MusicPlayer } from '../audio/music'
 import { MUSIC_ARTIST, TRACKS } from '../audio/musicTracks'
 import { jukeboxPanel } from '../ui/jukebox'
+import { loadTabPrefs, saveTabPrefs } from './tabPrefs'
 
 /** What the menu asks the game to do. */
 export interface MenuActions {
@@ -501,7 +502,8 @@ export class MainMenu {
             : []),
         ),
         h('div', {},
-          h('div.mm-h', {}, 'Your looks and name'),
+          ...this.tabbedSettings(),
+          h('div.mm-h', { style: 'margin-top:16px' }, 'Your looks and name'),
           h('div.mm-note', {}, 'Cannon skin, team colour, online name and the Play vs AI difficulty are in Profile.'),
           h('div.mm-row', {}, this.button('to-profile', 'Open Profile', () => this.open('profile', 'to-profile'), { icon: ICONS.profile, cls: 'small' })),
           h('div.mm-h', { style: 'margin-top:16px' }, 'Bug reports'),
@@ -512,6 +514,34 @@ export class MainMenu {
         ),
       ),
     ])
+  }
+
+  /** Settings → When tabbed out: music, and whether a round against the AI pauses. */
+  private tabbedSettings(): HTMLElement[] {
+    const music = this.actions.music
+    const musicSw = h('input.mm-switch', { type: 'checkbox', role: 'switch', id: 'mm-tab-music', dataset: { id: 'tab-music' }, checked: music?.settings.keepHidden ?? true }) as HTMLInputElement
+    if (!music) musicSw.disabled = true
+    musicSw.addEventListener('change', () => music?.setKeepHidden(musicSw.checked))
+    const pauseSw = h('input.mm-switch', { type: 'checkbox', role: 'switch', id: 'mm-tab-pause', dataset: { id: 'tab-pause' }, checked: loadTabPrefs().pauseVsAi }) as HTMLInputElement
+    const pauseNote = h('div.mm-note')
+    const note = (): void => {
+      pauseNote.textContent = pauseSw.checked
+        ? 'Against the AI (and in puzzles and levels) the round pauses when you switch away, with Resume when you’re back. Online matches always keep going.'
+        : 'The round keeps going while you’re away (up to a minute is played back when you return, silently). Online matches always keep going.'
+    }
+    note()
+    pauseSw.addEventListener('change', () => {
+      saveTabPrefs({ pauseVsAi: pauseSw.checked })
+      note()
+    })
+    if (music) this.teardown.push(music.onChange(() => (musicSw.checked = music.settings.keepHidden)))
+    return [
+      h('div.mm-h', {}, 'When tabbed out'),
+      h('div.mm-row', {}, musicSw, h('label', { htmlFor: 'mm-tab-music' }, 'Keep music playing when tabbed out')),
+      h('div.mm-row', {}, pauseSw, h('label', { htmlFor: 'mm-tab-pause' }, 'Pause vs AI when tabbed out')),
+      pauseNote,
+      h('div.mm-note', {}, 'Sound effects are always silent while the game is in the background.'),
+    ]
   }
 
   /** Settings → Music: on/off, its own volume, and the way to the jukebox. */

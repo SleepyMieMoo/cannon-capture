@@ -5,6 +5,8 @@ import type { Rect } from '../types'
 import { loadAudioSettings, saveAudioSettings, type AudioSettings } from './audioSettings'
 import { PopPlanner, type PopPlan } from './popPlanner'
 
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+
 /** Queue the pop sample for loading (once per game). */
 export function preloadSfx(scene: Phaser.Scene): void {
   if (scene.cache.audio.exists(SFX.key)) return
@@ -44,7 +46,7 @@ export function previewPop(scene: Phaser.Scene): void {
 export interface SfxLogEntry extends Partial<PopPlan> {
   kind: PopKind
   side: string
-  /** played | skipped | muted | locked | no-audio */
+  /** played | skipped | muted | locked | no-audio | away (hidden tab, suspended audio, just back) | quiet (catch-up) */
   result: string
 }
 
@@ -60,6 +62,10 @@ export class Sfx {
   readonly log: SfxLogEntry[] = []
   private readonly playing = new Map<number, Phaser.Sound.BaseSound>()
   settings: AudioSettings = loadAudioSettings()
+  /** Catching up after a hidden tab: nothing plays (the board just shows the result). */
+  silent = false
+  /** performance.now() until which nothing plays (right after coming back to the tab). */
+  private quietUntil = 0
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -106,9 +112,34 @@ export class Sfx {
     this.pop('shieldBreak', c, c.id + ':shield')
   }
 
+  /**
+   * Can a pop be heard right now? Not while the tab is hidden, not while the
+   * browser has the audio paused (Phaser suspends it when the window loses
+   * focus), and not just after coming back. A pop started on a paused audio
+   * clock isn't dropped by the browser: it waits, and every one of them plays
+   * at once when the clock runs again (the burst after alt-tab).
+   */
+  get audible(): boolean {
+    if (typeof document !== 'undefined' && document.hidden) return false
+    const sm = this.scene.sound
+    if (sm instanceof Phaser.Sound.WebAudioSoundManager && sm.context.state !== 'running') return false
+    return now() >= this.quietUntil
+  }
+
+  /**
+   * Back from a hidden tab (or the window): stop whatever is still sounding,
+   * forget the rate limits, and stay quiet a moment, so nothing that was due
+   * while away (or is replayed as catch-up) comes out as a burst.
+   */
+  dropPending(quietMs: number = SFX.quietAfterReturnMs): void {
+    this.stopAll()
+    this.planner.reset()
+    this.quietUntil = Math.max(this.quietUntil, now() + quietMs)
+  }
+
   /** The countdown's tick (3, 2, 1) or Go. Not spatial and not rate-limited; muted and volume apply. */
   cue(kind: 'tick' | 'go'): void {
-    if (this.settings.muted || this.settings.volume <= 0 || !this.available || this.scene.sound.locked) return
+    if (this.settings.muted || this.settings.volume <= 0 || !this.available || this.scene.sound.locked || this.silent || !this.audible) return
     const spec = SFX.countdown[kind]
     this.scene.sound.play(SFX.key, { volume: spec.volume, rate: spec.rate })
   }
@@ -135,6 +166,8 @@ export class Sfx {
     if (this.settings.muted || this.settings.volume <= 0) return note('muted')
     if (!this.available) return note('no-audio')
     if (this.scene.sound.locked) return note('locked')
+    if (this.silent) return note('quiet')
+    if (!this.audible) return note('away')
     const { rect, zoom } = this.view()
     const plan = this.planner.plan({ kind, source, side: c.side, x: c.x, y: c.y, now: this.scene.time.now, view: rect, zoom })
     if (!plan) return note('skipped')

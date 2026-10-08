@@ -54,6 +54,14 @@ export const SFX = {
   sourceGapMs: 150,
   /** All pops of one kind at least this far apart (ms): many machine guns merge into a steady patter. */
   kindGapMs: { normal: 25, sniper: 0, machinegun: 50, capture: 0, shieldBreak: 0 } satisfies Record<PopKind, number>,
+  /**
+   * Burst cap: at most `perKind` pops of one kind and `total` pops overall in
+   * any `windowMs`. Many shots landing in one frame (a slow frame, the online
+   * view catching up) can never become a wall of sound.
+   */
+  burst: { windowMs: 250, perKind: 3, total: 6 },
+  /** After coming back to the tab, no pops for this long (ms): anything due then is catch-up, not news. */
+  quietAfterReturnMs: 400,
   /** Shots from the other sides (pink, and gold's AI opponent) are quieter than yours. */
   otherSideGain: 0.6,
   /** Off-screen pops fade from full at the view's edge down to `gain` at `fadePx` world px beyond it. */

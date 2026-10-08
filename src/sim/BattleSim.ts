@@ -292,6 +292,9 @@ export class BattleSim {
    * would only hold up the other player (and spend one of three).
    */
   pause(): boolean {
+    // A round that is already decided ends instead of pausing (e.g. the last
+    // capture landed in the same moment the tab was hidden).
+    if (!this.ended) this.checkOutcome()
     if (this.ended || (this.pvp && this.countdown > 0)) return false
     this.paused = true
     return true
