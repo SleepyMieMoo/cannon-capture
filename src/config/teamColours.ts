@@ -188,14 +188,14 @@ export function vsAiColours(mine: TeamColourId): SideColours {
 }
 
 /**
- * Two players: each keeps their own pick unless the two fail the compat
- * matrix; then the pink seat wears the best contrast to gold's. Deterministic,
- * so the server and every client agree.
+ * Two players: each always wears their own pick, even when the two clash
+ * (name tags tell them apart then; see config/looks.ts). Only a seat that
+ * sent no colour (an older game) gets one: gold's default, or the contrast to
+ * gold's. Deterministic, so the server and every client agree.
  */
 export function pvpColours(gold: TeamColourId | undefined, pink: TeamColourId | undefined): SideColours {
   const g = gold ?? DEFAULT_COLOUR
-  const p = pink ?? CONTRAST_COLOUR[g]
-  return { player: g, enemy: compatible(g, p) ? p : CONTRAST_COLOUR[g] }
+  return { player: g, enemy: pink ?? CONTRAST_COLOUR[g] }
 }
 
 /** The same colours seen from the other side (a flipped view). */

@@ -44,7 +44,9 @@ import type { SimEvents } from '../sim/BattleSim'
 import { PvpClient, PvpHost, flipLevel, type StartMsg } from '../net/pvp'
 import { randomId, type Transport } from '../net/transport'
 import type { OnlineRoom, OnlineStart } from '../net/onlineClient'
-import { clock, endTexts, nameOnSide, netLine, opponentLine, pauseCheck, pauseLabel, rematchLine, sideIndex } from '../net/onlineView'
+import { looksClash } from '../config/looks'
+import { NameTags } from '../render/nameTags'
+import { clock, endTexts, nameOnSide, tagNames, netLine, opponentLine, pauseCheck, pauseLabel, rematchLine, sideIndex } from '../net/onlineView'
 import { PVP_RULES } from '../config/pvpRules'
 
 interface Spark {
@@ -145,6 +147,10 @@ export class BattleScene extends Phaser.Scene {
   private countNoteLeft = 0
   /** The colours each side wears in this view. */
   private colours: SideColours = vsAiColours(DEFAULT_COLOUR)
+  /** What each side wears this round (this view's sides). */
+  private skinsNow: SideSkins = vsAiSkins(DEFAULT_SKIN)
+  /** Owners' names on the cannons, when two players' looks clash (null: not a two-player round). */
+  private tags: NameTags | null = null
   /** The HUD legend (null before the HUD is made). */
   private legend: { g: Phaser.GameObjects.Graphics; groups: { side: Side; x: number }[] } | null = null
   private restarting = false
@@ -315,6 +321,7 @@ export class BattleScene extends Phaser.Scene {
     this.endRoot = null
     this.clockText = null
     this.legend = null
+    this.tags = null
     this.netText = null
     this.dropAt = [null, null]
     this.steps.reset()
@@ -357,11 +364,17 @@ export class BattleScene extends Phaser.Scene {
       this.host.localSkin = loadSkin()
       this.host.localColour = loadColour()
     }
-    this.sim.setSkins(this.roundSkins(pvp))
+    this.skinsNow = this.roundSkins(pvp)
+    this.sim.setSkins(this.skinsNow)
     this.setColours(this.roundColours(pvp))
     // 3-2-1-Go before every round this screen runs (a network view shows the host's or server's countdown instead).
     if (!pvp || pvp.role === 'host') this.sim.startCountdown(DEBUG.countdown ?? TUNING.countdownMs)
     if (pvp) this.startPvp(pvp)
+    // Name tags: two-player rounds only (they show while the looks clash), or forced with ?debug&tags=1.
+    if (pvp || DEBUG.tags) {
+      this.tags = new NameTags(this, this.cannons, () => {})
+      this.refreshTags()
+    }
     // Everything created so far is board content.
     this.children.list.forEach((obj) => this.world(obj))
     this.wc = new WorldCamera(this, this.board, WORLD_VIEW, undefined, 1)
@@ -497,6 +510,7 @@ export class BattleScene extends Phaser.Scene {
       perf: perf.shown,
     })
     setRingScale(this.wc.cssPerWorld())
+    this.tags?.update(this.wc.cssPerWorld())
     for (const cannon of this.cannons) {
       cannon.hovered = cannon === this.hover
       cannon.selected = cannon === this.selected
@@ -733,6 +747,34 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Name tags on: two players whose looks clash (config/looks.ts), or forced
+   * with ?debug&tags. Then each owned cannon carries its owner's name.
+   */
+  private refreshTags(): void {
+    const tags = this.tags
+    if (!tags) return
+    tags.setEnabled(DEBUG.tags ?? (!!this.pvp && looksClash(this.colours, this.skinsNow)))
+    if (!tags.shown) return
+    const [player, enemy] = this.tagNamesNow()
+    tags.setNames(player, enemy)
+  }
+
+  /** The owners' names for the tags, in this view's sides ('player' is you; watchers: the gold seat). */
+  private tagNamesNow(): [string, string] {
+    if (this.online) {
+      const info = this.online.info
+      const [gold, pink] = tagNames(nameOnSide(info, 0), nameOnSide(info, 1))
+      return this.me === 1 ? [pink, gold] : [gold, pink]
+    }
+    if (this.pvp) {
+      // The same-browser test mode has no names.
+      const [host, guest] = tagNames('Host', 'Player 2')
+      return this.host ? [host, guest] : [guest, host]
+    }
+    return ['You', 'AI']
+  }
+
   /** A side's colour name in this view ("Blueberry"). */
   private colourName(side: 'player' | 'enemy'): string {
     return TEAM_COLOUR[this.colours[side]].label
@@ -746,8 +788,10 @@ export class BattleScene extends Phaser.Scene {
       host.onPeer = (joined) => {
         this.peerHere = joined
         // The joiner's skin and colour arrive with them.
-        this.sim.setSkins(host.skins)
+        this.skinsNow = host.skins
+        this.sim.setSkins(this.skinsNow)
         this.setColours(host.colours)
+        this.refreshTags()
         this.pvpBanner()
       }
       host.onRestart = () => this.restart()
@@ -801,6 +845,8 @@ export class BattleScene extends Phaser.Scene {
         this.time.delayedCall(3000, () => this.go(LOBBY))
       })
     }
+    // Names can change mid-match (and arrive with the room).
+    this.refreshTags()
     if (room.closed && !this.sim.ended) this.showBanner(room.error?.msg ?? 'Disconnected from the room.')
     if (this.shownEnd) this.showEnd(this.sim.ended!)
   }
@@ -819,8 +865,8 @@ export class BattleScene extends Phaser.Scene {
       const mins = clock(PVP_RULES.matchMs)
       this.showBanner(
         this.me === null
-          ? `Watching room ${this.online.code}: ${nameOnSide(info, 0)} (${this.colourName('player')}) vs ${nameOnSide(info, 1)} (${this.colourName('enemy')}).`
-          : `Online · room ${this.online.code} · you are ${this.colourName('player')} (light rings)${this.colours.player !== loadColour() ? `: ${TEAM_COLOUR[loadColour()].label} was too close to theirs` : ''}. Take every cannon, or hold the most when the ${mins} clock runs out.`,
+          ? `Watching room ${this.online.code}: ${nameOnSide(info, 0)} (${this.colourName('player')}) vs ${nameOnSide(info, 1)} (${this.colourName('enemy')}).${this.tags?.shown ? ' Their looks are alike, so names are on the cannons.' : ''}`
+          : `Online · room ${this.online.code} · you are ${this.colourName('player')} (light rings). ${this.tags?.shown ? 'Your looks are alike, so names are on the cannons (white: yours). ' : ''}Take every cannon, or hold the most when the ${mins} clock runs out.`,
       )
       return
     }

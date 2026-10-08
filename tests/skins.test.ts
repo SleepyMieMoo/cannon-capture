@@ -18,15 +18,11 @@ describe('skins: rules', () => {
     expect(CONTRAST[DEFAULT_SKIN]).toBe('spiked')
   })
 
-  it('two players keep their picks unless equal; then pink changes (deterministically)', () => {
+  it('two players always keep their own picks, even the same one (name tags tell them apart)', () => {
     for (const g of SKINS)
-      for (const p of SKINS) {
-        const r = pvpSkins(g, p)
-        expect(r.player).toBe(g)
-        expect(r.enemy).toBe(g === p ? CONTRAST[g] : p)
-        expect(r.enemy).not.toBe(r.player)
-        expect(pvpSkins(g, p)).toEqual(r)
-      }
+      for (const p of SKINS) expect(pvpSkins(g, p)).toEqual({ player: g, enemy: p, neutral: 'classic' })
+    // A seat that sent no skin (an older game) gets the default / the contrast to gold's.
+    expect(pvpSkins('hex', undefined)).toEqual({ player: 'hex', enemy: 'spiked', neutral: 'classic' })
     expect(pvpSkins(undefined, undefined)).toEqual({ player: 'plated', enemy: 'spiked', neutral: 'classic' })
     expect(flipSkins(pvpSkins('hex', 'plated'))).toEqual({ player: 'plated', enemy: 'hex', neutral: 'classic' })
   })
@@ -80,13 +76,13 @@ describe('skins: two tabs (LAN test mode)', () => {
     return [t, (msg, from) => handler?.(msg, from)]
   }
 
-  it('the host sends both skins (pink differs on a tie); the joiner says its skin in hello', () => {
+  it('the host sends both skins (kept on a tie); the joiner says its skin in hello', () => {
     const [t, deliver] = pair()
     const host = new PvpHost(t, mirrored(1), 'm1')
     host.localSkin = 'spiked'
     deliver({ t: 'hello', skin: 'spiked' }, 'peer-1')
     const start = t.out.find((m) => (m as HostMsg).t === 'start') as Extract<HostMsg, { t: 'start' }>
-    expect(start.skins).toEqual({ player: 'spiked', enemy: 'plated', neutral: 'classic' })
+    expect(start.skins).toEqual({ player: 'spiked', enemy: 'spiked', neutral: 'classic' })
     host.close(false)
     const [t2] = pair()
     const cancel = joinRoom(t2, () => {}, () => {}, 'hex')

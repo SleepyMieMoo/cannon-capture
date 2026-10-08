@@ -114,7 +114,7 @@ export class TitleScene extends Phaser.Scene {
       const code = normaliseCode(new URLSearchParams(location.search).get('room') ?? '')
       if (!joinedFromUrl && isRoomCode(code)) {
         joinedFromUrl = true
-        onlineMenu.join(code, savedName() || 'Player')
+        onlineMenu.join(code, savedName())
         screen = 'lobby'
       } else if (online.room && !online.room.closed) watch(online.room)
       joinedFromUrl = true

@@ -32,7 +32,7 @@ describe('online battle texts', () => {
     expect(clock(-5)).toBe('0:00')
     expect(nameOnSide(info(), 0)).toBe('Kim')
     expect(nameOnSide(info(), 1)).toBe('Nova')
-    expect(nameOnSide(null, 1)).toBe('Pink')
+    expect(nameOnSide(null, 1)).toBe('Player 2')
   })
 
   it('pauses: only with pauses left, only the pauser resumes, watchers never', () => {

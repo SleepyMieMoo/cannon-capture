@@ -19,9 +19,30 @@ export function clock(ms: number): string {
 
 /** The player on a side (by the room's seats). */
 export function nameOnSide(info: RoomInfo | null, side: 0 | 1): string {
-  if (!info) return side === 0 ? 'Gold' : 'Pink'
+  const fallback = `Player ${side + 1}`
+  if (!info) return fallback
   const seat = sideIndex(info.sides[0]) === side ? 0 : 1
-  return info.seats[seat]?.name ?? (side === 0 ? 'Gold' : 'Pink')
+  return info.seats[seat]?.name || fallback
+}
+
+/** Longest name on a cannon's name tag (longer ones end in "…"). */
+export const TAG_MAX = 12
+
+/** Shorten a name for a tag. */
+export function tagText(name: string): string {
+  const chars = Array.from(name.trim())
+  return chars.length > TAG_MAX ? chars.slice(0, TAG_MAX - 1).join('').trimEnd() + '…' : chars.join('')
+}
+
+/**
+ * The two names for the cannons' tags, gold side first: each player's room
+ * name, shortened; if both read the same, a seat number tells them apart.
+ */
+export function tagNames(gold: string, pink: string): [string, string] {
+  const a = tagText(gold || 'Player 1')
+  const b = tagText(pink || 'Player 2')
+  if (a.toLowerCase() !== b.toLowerCase()) return [a, b]
+  return [tagText(a.slice(0, TAG_MAX - 2)) + ' 1', tagText(b.slice(0, TAG_MAX - 2)) + ' 2']
 }
 
 /** Can this player pause / resume now? (The server decides; this only avoids sending what it would refuse.) */

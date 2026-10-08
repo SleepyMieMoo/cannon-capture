@@ -16,4 +16,6 @@ export const DEBUG = {
   botStyle: params.get('bot') === 'mirror' ? ('mirror' as const) : ('focus' as const),
   /** Countdown override in ms (null: TUNING.countdownMs). */
   countdown: params.has('debug') && params.has('countdown') ? Math.max(0, Number(params.get('countdown')) || 0) : null,
+  /** Name tags on cannons: &tags=1 forces them on (even vs the AI, for screenshots), &tags=0 off; null: only when looks clash online. */
+  tags: params.has('debug') && params.has('tags') ? params.get('tags') !== '0' : null,
 }
