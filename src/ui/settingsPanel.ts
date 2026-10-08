@@ -7,25 +7,32 @@ const SWITCH_W = 44
 const SWITCH_H = 22
 
 /** What a press on the panel hit. */
-export type SettingsHit = 'auto' | 'close' | 'panel'
+export type SettingsHit = 'auto' | 'mute' | 'volume' | 'close' | 'panel'
 
 /** What the panel shows: the global auto-target toggle, and whether it can be changed here. */
 export interface SettingsState {
   autoTarget: boolean
   /** Puzzles: nothing auto-targets, so the toggle is shown greyed out. */
   puzzle: boolean
+  /** Sound effects: master volume (0..1) and mute, saved on this device. */
+  volume: number
+  muted: boolean
+  /** False when the browser has no audio (the sound rows are greyed out). */
+  audio: boolean
 }
 
 /**
  * The in-game Settings panel (top right, under the HUD). Drawn on the fixed
  * UI camera and hit-tested by hand in layout units, like the swap menu, so it
- * never fights the board's click-to-aim input. One setting for now: the
- * global auto-target toggle for your cannons.
+ * never fights the board's click-to-aim input. Settings: the global
+ * auto-target toggle for your cannons, and sound (on/off and volume).
  */
 export class SettingsPanel {
   open = false
   private box = { x: 0, y: 0, w: W, h: 0 }
   private sw = { x: 0, y: 0, w: SWITCH_W + 160, h: SWITCH_H + 8 }
+  private muteRow = { x: 0, y: 0, w: 0, h: 0 }
+  private slider = { x: 0, y: 0, w: 0, h: 0 }
   private closeAt = { x: 0, y: 0 }
   private hot: SettingsHit | null = null
   private readonly g: Phaser.GameObjects.Graphics
@@ -34,6 +41,9 @@ export class SettingsPanel {
   private readonly value: Phaser.GameObjects.Text
   private readonly note: Phaser.GameObjects.Text
   private readonly close: Phaser.GameObjects.Text
+  private readonly soundLabel: Phaser.GameObjects.Text
+  private readonly soundValue: Phaser.GameObjects.Text
+  private readonly soundNote: Phaser.GameObjects.Text
 
   constructor(
     scene: Phaser.Scene,
@@ -54,6 +64,9 @@ export class SettingsPanel {
     this.value = text(13, theme.textMuted, true).setOrigin(1, 0.5)
     this.note = text(12, theme.textMuted).setWordWrapWidth(W - PAD * 2).setLineSpacing(3)
     this.close = text(18, theme.textMuted, true).setText('×').setOrigin(0.5)
+    this.soundLabel = text(14, theme.text, true).setText('Sound').setOrigin(0, 0.5)
+    this.soundValue = text(13, theme.textMuted, true).setOrigin(1, 0.5)
+    this.soundNote = text(12, theme.textMuted).setWordWrapWidth(W - PAD * 2).setLineSpacing(3)
   }
 
   toggle(): void {
@@ -74,9 +87,17 @@ export class SettingsPanel {
   hitAt(lx: number, ly: number): SettingsHit | null {
     if (!this.contains(lx, ly)) return null
     if (Math.hypot(lx - this.closeAt.x, ly - this.closeAt.y) <= 14) return 'close'
-    const s = this.sw
-    if (lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h) return 'auto'
+    const inside = (r: { x: number; y: number; w: number; h: number }) => lx >= r.x && lx <= r.x + r.w && ly >= r.y && ly <= r.y + r.h
+    if (inside(this.sw)) return 'auto'
+    if (inside(this.muteRow)) return 'mute'
+    if (inside({ x: this.slider.x - 8, y: this.slider.y - 12, w: this.slider.w + 16, h: this.slider.h + 24 })) return 'volume'
     return 'panel'
+  }
+
+  /** Volume (0..1) for a layout x on the slider. */
+  volumeAt(lx: number): number {
+    const s = this.slider
+    return s.w > 0 ? Math.max(0, Math.min(1, (lx - s.x) / s.w)) : 0
   }
 
   setHot(hit: SettingsHit | null): void {
@@ -85,7 +106,7 @@ export class SettingsPanel {
 
   draw(state: SettingsState): void {
     this.g.clear()
-    const parts = [this.title, this.label, this.value, this.note, this.close]
+    const parts = [this.title, this.label, this.value, this.note, this.close, this.soundLabel, this.soundValue, this.soundNote]
     if (!this.open) {
       for (const p of parts) p.setVisible(false)
       return
@@ -101,7 +122,17 @@ export class SettingsPanel {
     )
     const rowY = y + 52
     const noteY = rowY + 24
-    const h = noteY - y + this.note.height + PAD
+    // Sound: below the auto-target note.
+    const lineY = noteY + this.note.height + 14
+    const soundY = lineY + 24
+    const sliderY = soundY + 30
+    const soundNoteY = sliderY + 18
+    this.soundNote.setText(
+      state.audio
+        ? 'Saved on this device. N mutes or unmutes. Pop sound: CreatorsHome (Pixabay).'
+        : 'No sound in this browser. Pop sound: CreatorsHome (Pixabay).',
+    )
+    const h = soundNoteY - y + this.soundNote.height + PAD
     this.box = { x, y, w: W, h }
     this.g.fillStyle(theme.hud, 0.97)
     this.g.fillRoundedRect(x, y, W, h, 12)
@@ -130,5 +161,38 @@ export class SettingsPanel {
       .setColor(on ? theme.text : theme.textMuted)
       .setVisible(true)
     this.note.setPosition(x + PAD, noteY).setVisible(true)
+
+    this.g.lineStyle(1, theme.boardEdge, 1)
+    this.g.lineBetween(x + PAD, lineY, x + W - PAD, lineY)
+    const soundOn = state.audio && !state.muted && state.volume > 0
+    this.muteRow = { x: x + PAD - 4, y: soundY - SWITCH_H / 2 - 4, w: W - PAD * 2 + 8, h: SWITCH_H + 8 }
+    if (this.hot === 'mute' && state.audio) {
+      this.g.fillStyle(theme.board, 1)
+      this.g.fillRoundedRect(this.muteRow.x, this.muteRow.y, this.muteRow.w, this.muteRow.h, 8)
+    }
+    const dim = state.audio ? 1 : 0.45
+    this.g.fillStyle(soundOn ? theme.player : theme.grid, dim)
+    this.g.fillRoundedRect(sx, soundY - SWITCH_H / 2, SWITCH_W, SWITCH_H, SWITCH_H / 2)
+    this.g.fillStyle(soundOn ? theme.hud : theme.neutral, state.audio ? 1 : 0.6)
+    this.g.fillCircle(soundOn ? sx + SWITCH_W - SWITCH_H / 2 : sx + SWITCH_H / 2, soundY, SWITCH_H / 2 - 3)
+    this.soundLabel.setPosition(sx + SWITCH_W + 12, soundY).setColor(state.audio ? theme.text : theme.textMuted).setVisible(true)
+    this.soundValue
+      .setText(!state.audio ? 'Unavailable' : state.muted ? 'Muted' : `Volume ${Math.round(state.volume * 100)}%`)
+      .setPosition(x + W - PAD, soundY)
+      .setColor(soundOn ? theme.text : theme.textMuted)
+      .setVisible(true)
+    // The volume slider (drag or click anywhere on it).
+    this.slider = { x: x + PAD + 8, y: sliderY - 3, w: W - PAD * 2 - 16, h: 6 }
+    const sl = this.slider
+    const k = sl.x + sl.w * state.volume
+    this.g.fillStyle(theme.grid, dim)
+    this.g.fillRoundedRect(sl.x, sl.y, sl.w, sl.h, 3)
+    this.g.fillStyle(soundOn ? theme.player : theme.neutral, dim)
+    if (k > sl.x + 1) this.g.fillRoundedRect(sl.x, sl.y, k - sl.x, sl.h, 3)
+    this.g.fillStyle(this.hot === 'volume' && state.audio ? theme.select : soundOn ? theme.player : theme.neutral, dim)
+    this.g.fillCircle(k, sliderY, this.hot === 'volume' ? 9 : 8)
+    this.g.lineStyle(2, theme.hud, dim)
+    this.g.strokeCircle(k, sliderY, this.hot === 'volume' ? 9 : 8)
+    this.soundNote.setPosition(x + PAD, soundNoteY).setVisible(true)
   }
 }

@@ -108,6 +108,13 @@ export class WorldCamera {
     this.center.y = vh >= bh ? by + bh / 2 : Phaser.Math.Clamp(this.center.y, by + vh / 2, by + bh - vh / 2)
   }
 
+  /** The part of the world on screen right now. */
+  visibleRect(): Rect {
+    const w = this.view.w / this.zoom
+    const h = this.view.h / this.zoom
+    return { x: this.center.x - w / 2, y: this.center.y - h / 2, w, h }
+  }
+
   /** Canvas pixel -> world point, consistent with how the camera renders. */
   toWorld(px: number, py: number): Point {
     const s = this.s

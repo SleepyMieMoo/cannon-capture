@@ -41,6 +41,21 @@ Nothing else is automatic. Free aim points are never changed, cannons you haven'
 - Fairness: Impossible re-assesses the moment you resume. Every one of its cannons (except ones mid-heal) thinks on the next tick with fresh look-aheads, and may drop a job it committed to if the look-ahead finds a clearly better one (its usual minimum gain still applies). Easy, Normal and Hard just carry on and notice your changes at their normal reaction speed.
 - There is no limit on pausing. A versus mode would need one (a few pauses per round, or a short cooldown).
 
+**Sound.** Every shot makes a short cartoon pop. The tower type changes how it sounds. Normal is the baseline pop, Sniper is a bit louder and deeper, and Machine gun is a soft, higher patter with a random pitch on each shot. Shields don't shoot, so they make no sound. A capture plays a bigger, deeper pop, and a breaking barrier the lowest one.
+
+- **Settings** has a **Sound** switch and a volume slider (default 70%). Both are saved on this device, unlike auto-target. **N** mutes or unmutes.
+- Browsers keep sound locked until your first click, tap or key press. Pops before that are skipped, not saved up.
+- To keep big maps from becoming a wall of noise:
+  - at most 6 pops play at once, and a new pop replaces the quietest one only if it is clearly louder;
+  - one cannon pops at most every 150 ms;
+  - machine-gun pops from all cannons are at least 50 ms apart;
+  - pink's shots play at 60%;
+  - off-screen shots fade down to 30%;
+  - zoomed out, everything is a little quieter;
+  - pops pan left or right by where they are on screen.
+- Pausing stops new pops, since nothing fires.
+- Every number lives in [`src/config/sfx.ts`](src/config/sfx.ts).
+
 **Healing.** Each cannon has one capture meter, like a tug of war:
 
 - Your own shots heal your cannons. If pink is part-way through capturing one of your gold cannons, select another gold cannon and click the damaged one. Every hit takes one point of pink's progress back off, so the tint and the ring shrink and a gold ring pulses out with a "+1 heal" popup. Once it is whole, the healer goes back to whatever it was aiming at before.
@@ -306,6 +321,10 @@ In the repo settings, set **Pages → Build and deployment → Source** to **Git
 - `src/config` — palette, layout, tuning, and `kinds.ts` (the tower types: add a type there, give it a look in `Cannon.draw`, and the swap menu, editor, lanes and AI pick it up).
 - `src/render` — crisp high-DPI scaling, the zoom/pan `WorldCamera` shared by play and the editor, and the board surface.
 - `src/ui` — buttons, stars, the in-play tower swap menu, and the HTML panel overlay used by the editor and My maps.
+
+## Credits
+
+- Pop sound: ["Pop Cartoon"](https://pixabay.com/sound-effects/film-special-effects-pop-cartoon-328167/) by [CreatorsHome](https://pixabay.com/users/creatorshome-49707711/) on Pixabay. It is used under the [Pixabay Content License](https://pixabay.com/service/license-summary/), which allows free use without attribution; credit is given anyway. The game ships a trimmed, re-encoded copy ([`public/sfx/`](public/sfx), about 120 ms, mono) as part of the game. The licence doesn't allow redistributing the sound on its own, so please don't reuse those files separately; get the original from Pixabay instead.
 
 ## Roadmap
 
