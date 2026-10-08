@@ -46,6 +46,8 @@ export class TitleBgScene extends Phaser.Scene {
     this.fx = this.add.graphics().setDepth(3)
     this.sim = new BattleSim(level, this, {}, 'progressive')
     this.sim.addAi('player', 'normal')
+    // A short, silent planning grace (no 3-2-1 behind the menu): both AIs line up before anyone fires.
+    this.sim.startCountdown(TUNING.demoCountdownMs)
     // The demo shows your skin on gold (and the AI's pick on pink), like a round you'd play.
     this.sim.setSkins(vsAiSkins(loadSkin()))
     const offSkin = onSkinChange((skin) => this.sim.setSkins(vsAiSkins(skin)))

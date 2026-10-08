@@ -421,6 +421,8 @@ export class RoomCore {
     const log = new EventLog(() => sim?.clock ?? 0)
     sim = new BattleSim(level, null, log.tap({}), lanesFor(level))
     sim.makePvp()
+    // 3-2-1-Go: nothing fires and the match clock stands still until Go (both screens and watchers show it).
+    sim.startCountdown(PVP_RULES.countdownMs)
     log.bind(sim)
     this.match = {
       id: rid(),

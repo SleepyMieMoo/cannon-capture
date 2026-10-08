@@ -1,4 +1,5 @@
 import type { AiLevel } from '../types'
+import { TUNING } from './tuning'
 
 /**
  * Online player vs player: the rules and limits, in one place. The server
@@ -9,6 +10,8 @@ export const PVP_RULES = {
   pausesPerPlayer: 3,
   /** ...for at most this long each (then it resumes by itself). Both screens pause. */
   pauseMaxMs: 30_000,
+  /** Countdown before each match (the round clock starts at Go; no pausing during it). */
+  countdownMs: TUNING.countdownMs,
   /** Round time (it stops while paused); then whoever holds the most cannons wins (equal = draw). */
   matchMs: 5 * 60_000,
   /** A player who drops has this long to come back (same tab) before an AI takes their seat. */

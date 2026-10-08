@@ -100,6 +100,8 @@ const NO_HOLD = { paused: false, ended: null, pause: () => false, resume: () => 
 /** Slim HUD band on top (same info as before, less height). */
 const HUD_H = 54
 const HUD_ROW = 18
+/** How long "Go!" shows after the countdown (ms). */
+const GO_MS = 850
 const WORLD_VIEW = { x: 0, y: HUD_H + 2, w: GAME_WIDTH, h: GAME_HEIGHT - HUD_H - 2 }
 /** Hold a press this long on one of your cannons to open its type menu (touch). */
 const LONG_PRESS_MS = 450
@@ -132,6 +134,14 @@ export class BattleScene extends Phaser.Scene {
   private selected: Cannon | null = null
   private hover: Cannon | null = null
   private shownEnd = false
+  /** The 3-2-1-Go overlay: the number showing (0: none) and how long "Go!" still shows (ms). */
+  private countdownFx!: Phaser.GameObjects.Graphics
+  private countdownNum!: Phaser.GameObjects.Text
+  private countdownHint!: Phaser.GameObjects.Text
+  private countShown = 0
+  private goLeft = 0
+  /** Time left on the "no pausing during the countdown" note (player vs player). */
+  private countNoteLeft = 0
   private restarting = false
   /** The in-battle menu (HUD "Menu" or Esc); the round is paused while it is open. */
   private battleMenu!: BattleMenu
@@ -268,6 +278,9 @@ export class BattleScene extends Phaser.Scene {
     this.selected = null
     this.hover = null
     this.shownEnd = false
+    this.countShown = 0
+    this.goLeft = 0
+    this.countNoteLeft = 0
     this.restarting = false
     this.aimsText = null
     this.editorButton = null
@@ -338,6 +351,8 @@ export class BattleScene extends Phaser.Scene {
     this.sim = new BattleSim(this.level, this, pvp && pvp.role !== 'host' ? {} : events, DEBUG.bot && !pvp ? undefined : 'progressive')
     if (this.host) this.host.localSkin = loadSkin()
     this.sim.setSkins(this.roundSkins(pvp))
+    // 3-2-1-Go before every round this screen runs (a network view shows the host's or server's countdown instead).
+    if (!pvp || pvp.role === 'host') this.sim.startCountdown(DEBUG.countdown ?? TUNING.countdownMs)
     if (pvp) this.startPvp(pvp)
     // Everything created so far is board content.
     this.children.list.forEach((obj) => this.world(obj))
@@ -367,6 +382,21 @@ export class BattleScene extends Phaser.Scene {
         })
         .setOrigin(0.5)
         .setDepth(31)
+        .setVisible(false),
+    )
+    this.countdownFx = this.ui(this.add.graphics().setDepth(18))
+    this.countdownNum = this.ui(
+      this.add
+        .text(GAME_WIDTH / 2, 0, '', { fontFamily: theme.font, fontSize: '112px', fontStyle: 'bold', color: cssHex(theme.player), stroke: cssHex(theme.hud), strokeThickness: 8 })
+        .setOrigin(0.5)
+        .setDepth(19)
+        .setVisible(false),
+    )
+    this.countdownHint = this.ui(
+      this.add
+        .text(GAME_WIDTH / 2, 0, '', { fontFamily: theme.font, fontSize: '16px', fontStyle: 'bold', color: theme.text, backgroundColor: cssHex(theme.panel), padding: { x: 12, y: 6 } })
+        .setOrigin(0.5)
+        .setDepth(19)
         .setVisible(false),
     )
     // Leaving the tab (or the window) pauses the round, so nothing happens behind your back.
@@ -419,7 +449,8 @@ export class BattleScene extends Phaser.Scene {
     const timing = perf.active
     this.sim.timeAi = timing
     const t0 = timing ? performance.now() : 0
-    this.sim.pumpLanes(5)
+    // Nothing fires during the countdown: spend more of the frame on lanes, so the AI knows them by Go.
+    this.sim.pumpLanes(this.sim.countdown > 0 ? 10 : 5)
     if (this.client) {
       // Second player: show the host's round a moment behind its newest snapshot.
       this.client.update(this.sim, this.simEvents, delta)
@@ -463,7 +494,90 @@ export class BattleScene extends Phaser.Scene {
       cannon.manualBadge = cannon.side === 'player' && !this.sim.isPuzzle && !this.sim.autoTargets(cannon)
       cannon.draw(time)
     }
+    this.drawCountdown(delta)
     this.refreshHud()
+  }
+
+  /**
+   * The 3-2-1-Go overlay, centred on the board: a dark disc with a gold ring
+   * that runs down each second, the number popping in, then "Go!". A tick
+   * plays on each number and a brighter pop on Go. It follows the round's
+   * countdown (the host's or server's on a network view), so a pause holds it.
+   * On a small screen it is drawn bigger, so the number stays about 48 CSS px.
+   */
+  private drawCountdown(delta: number): void {
+    const g = this.countdownFx
+    g.clear()
+    const cd = this.ended ? 0 : this.sim.countdown
+    let label = ''
+    let t = 0
+    if (cd > 0) {
+      const n = Math.max(1, Math.ceil(cd / 1000 - 1e-6))
+      if (n !== this.countShown) {
+        this.sfx.cue('tick')
+        this.countShown = n
+      }
+      label = String(n)
+      t = Math.min(1, Math.max(0, (n * 1000 - cd) / 1000))
+    } else {
+      if (this.countShown > 0 && !this.ended) {
+        this.goLeft = GO_MS
+        this.sfx.cue('go')
+      }
+      this.countShown = 0
+      if (this.goLeft > 0) {
+        this.goLeft -= delta
+        label = 'Go!'
+        t = 1 - Math.max(0, this.goLeft) / GO_MS
+      }
+    }
+    const show = label !== '' && !this.battleMenu?.open
+    this.countdownNum.setVisible(show)
+    this.countdownHint.setVisible(show && cd > 0)
+    if (!show) return
+    const go = cd <= 0
+    const cssPerLayout = this.uiCam.zoom / (this.scale.displayScale.x || 1)
+    const k = Math.min(2, Math.max(1, 48 / (112 * cssPerLayout)))
+    const cx = GAME_WIDTH / 2
+    const cy = WORLD_VIEW.y + WORLD_VIEW.h / 2
+    const ease = (x: number) => 1 - (1 - x) * (1 - x)
+    const pop = go ? 1 + 0.25 * ease(t) : 1 + 0.28 * (1 - ease(Math.min(1, t / 0.22)))
+    const alpha = go ? (t < 0.45 ? 1 : 1 - ((t - 0.45) / 0.55) ** 2) : t > 0.85 ? 1 - ((t - 0.85) / 0.15) * 0.5 : 1
+    const r = 84 * k * (go ? pop : 1)
+    g.fillStyle(theme.hud, 0.86 * alpha)
+    g.fillCircle(cx, cy, r)
+    g.lineStyle(5 * k, theme.boardEdge, alpha)
+    g.strokeCircle(cx, cy, r)
+    if (!go) {
+      // The ring runs down with the second.
+      g.lineStyle(5 * k, theme.player, alpha)
+      g.beginPath()
+      g.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + (1 - t) * Math.PI * 2, false)
+      g.strokePath()
+    } else {
+      g.lineStyle(5 * k, theme.player, alpha)
+      g.strokeCircle(cx, cy, r)
+    }
+    this.countdownNum
+      .setText(label)
+      .setFontSize(go ? 76 : 112)
+      .setPosition(cx, cy + 2 * k)
+      .setScale(k * pop)
+      .setAlpha(alpha)
+    if (cd > 0) {
+      const kh = Math.min(2.4, Math.max(1, 12 / (16 * cssPerLayout)))
+      const spectate = this.online !== null && this.me === null
+      if (this.countNoteLeft > 0) this.countNoteLeft -= delta
+      let text = 'Aim and pick types now: firing starts at Go'
+      if (this.countNoteLeft > 0) text = 'No pausing during the countdown: give your orders now'
+      else if (spectate) text = 'The match starts at Go'
+      else if (this.sim.isPuzzle) text = 'Plan your aims: firing starts at Go'
+      this.countdownHint
+        .setText(text)
+        .setPosition(cx, cy + r + 14 * kh + 10)
+        .setScale(kh)
+        .setAlpha(alpha)
+    }
   }
 
   private recordPerf(simMs: number): void {
@@ -762,6 +876,11 @@ export class BattleScene extends Phaser.Scene {
   /** Tactical pause on/off (Space, or the HUD's Pause / Resume). */
   togglePause(): void {
     if (this.ended || this.restarting || this.battleMenu?.open) return
+    if (this.pvp && this.sim.countdown > 0) {
+      // Shown in place of the countdown's hint line, where the player is already looking.
+      this.countNoteLeft = 1600
+      return
+    }
     this.order({ t: this.sim.paused ? 'resume' : 'pause' })
     this.pauseLink?.setText(this.sim.paused ? 'Resume' : 'Pause').setFontStyle(this.sim.paused ? 'bold' : 'normal')
   }

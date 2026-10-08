@@ -198,6 +198,8 @@ describe('online room: the match', () => {
     const b = s.join(TOKEN_B, 'B')
     a.say({ t: 'map', id: mapId })
     a.say({ t: 'start' })
+    // Past the 3-2-1-Go (the match clock starts at Go).
+    s.run(PVP_RULES.countdownMs + LOOP_MS)
     return { ...s, a, b }
   }
   /** Nothing changes hands: every cannon holds its fire. */
@@ -223,12 +225,46 @@ describe('online room: the match', () => {
     expect(order(b, { t: 'aim', cannon: 'e1', at: { x: 'nope' } })).toBe(false)
     expect(order(b, { t: 'teleport' })).toBe(false)
     const before = a.all('snap').length
+    const tick0 = room.match!.tick
     run(1000)
     expect(a.all('snap').length - before).toBeGreaterThanOrEqual(19)
     expect(a.all('snap').length - before).toBeLessThanOrEqual(21)
-    expect(room.match!.tick).toBeGreaterThanOrEqual(59)
-    expect(room.match!.tick).toBeLessThanOrEqual(61)
+    expect(room.match!.tick - tick0).toBeGreaterThanOrEqual(59)
+    expect(room.match!.tick - tick0).toBeLessThanOrEqual(61)
     expect(room.match!.sim.byId('e1')!.target?.id).toBe('p1')
+  })
+
+  it('3-2-1-Go: everyone gets the countdown in snapshots, nothing fires, no pausing, the clock starts at Go; a rematch counts down again', () => {
+    const s = setup()
+    const a = s.join(TOKEN_A, 'A')
+    const b = s.join(TOKEN_B, 'B')
+    const w = s.join('token-wwwwwwww', 'W')
+    a.say({ t: 'start' })
+    s.run(1000)
+    for (const c of [a, b, w]) {
+      expect(c.snap.cd).toBeGreaterThan(1500)
+      expect(c.snap.cd).toBeLessThanOrEqual(2000)
+      expect(c.snap.x!.tl).toBe(PVP_RULES.matchMs)
+    }
+    expect(s.room.match!.sim.shots.length).toBe(0)
+    // Orders work; pausing doesn't (and costs nothing).
+    expect(order(a, { t: 'aim', cannon: 'p1', at: { cannon: 'e1' } })).toBe(true)
+    expect(order(a, { t: 'pause' })).toBe(false)
+    expect(a.snap.x!.pl).toEqual([3, 3])
+    s.run(PVP_RULES.countdownMs - 1000 + 200)
+    expect(a.snap.cd).toBeUndefined()
+    expect(a.snap.x!.tl).toBeLessThan(PVP_RULES.matchMs)
+    expect(a.snap.x!.tl).toBeGreaterThan(PVP_RULES.matchMs - 400)
+    expect(order(a, { t: 'pause' })).toBe(true)
+    expect(order(a, { t: 'resume' })).toBe(true)
+    // Rematch: the countdown runs again.
+    for (const c of s.room.match!.sim.cannons) if (c.side === 'enemy') c.side = 'player'
+    s.run(100)
+    a.say({ t: 'rematch', on: true })
+    b.say({ t: 'rematch', on: true })
+    s.run(100)
+    expect(a.snap.cd).toBeGreaterThan(PVP_RULES.countdownMs - 300)
+    expect(w.snap.cd).toBe(a.snap.cd)
   })
 
   it('pauses: 3 each, up to 30 s, both screens pause, only the pauser resumes, and queued orders stay hidden', () => {

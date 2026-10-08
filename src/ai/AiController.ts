@@ -174,6 +174,9 @@ export class AiController {
   /** Each own cannon's committed job: the team's claims list. */
   readonly jobs = new Map<Cannon, Job>()
   private readonly nextThink = new Map<Cannon, number>()
+  /** First decisions made during the round's countdown (they wait for their lanes, up to graceWaitUntil). */
+  private readonly graceFirst = new Set<Cannon>()
+  private graceWaitUntil = 0
   /** Cannons re-thinking after a pause: free of the commitment time (Impossible only, see afterPause). */
   private readonly reassess = new Set<Cannon>()
   /** Reaction thinks that are due (cannon -> when, why). */
@@ -224,6 +227,8 @@ export class AiController {
     this.world = world
     this.jobs.clear()
     this.nextThink.clear()
+    this.graceFirst.clear()
+    this.graceWaitUntil = 0
     this.reassess.clear()
     this.react.clear()
     this.helpAt = null
@@ -272,6 +277,15 @@ export class AiController {
     }
     for (const c of mine) {
       const due = this.react.get(c)
+      if (this.graceFirst.size && this.graceFirst.has(c) && (due ? this.now >= due.at : this.now >= (this.nextThink.get(c) ?? Infinity))) {
+        // Countdown: decide once this cannon's lanes are known (big maps build them over a second or so).
+        if (!this.lanesKnown(c) && this.now < this.graceWaitUntil) {
+          this.nextThink.set(c, this.now + 100)
+          if (due) due.at = this.now + 100
+          continue
+        }
+        this.graceFirst.delete(c)
+      }
       if (due && this.now >= due.at) {
         this.react.delete(c)
         this.think(c, cannons, due.why)
@@ -399,16 +413,34 @@ export class AiController {
   }
 
   /**
-   * First tick for each cannon. At the start, cannons the map already aims
-   * keep that aim for a full think interval (then they stagger); unaimed
-   * ones decide right away, a moment apart. A cannon captured mid-round
-   * picks a job after reactMs.
+   * First tick for each cannon. With a countdown before the round (every
+   * screen round), every cannon makes its own first decision during it, a
+   * moment apart, in the first ~40% of the countdown: the map's aim is only
+   * where the barrel starts. It then has the rest of the countdown to turn,
+   * so its first shot at Go is its own, lined up. Without a countdown
+   * (headless rounds), cannons the map already aims keep that aim for a full
+   * think interval (then they stagger); unaimed ones decide right away, a
+   * moment apart. A cannon captured mid-round picks a job after reactMs.
    */
   private schedule(mine: Cannon[]): void {
     const { thinkMs, reactMs } = this.timing
+    const grace = this.started ? 0 : (this.world?.countdown ?? 0)
+    if (grace > 0) this.graceWaitUntil = this.now + grace * 0.6
     mine.forEach((c, i) => {
       if (this.nextThink.has(c)) return
-      if (!this.started) {
+      if (!this.started && grace > 0) {
+        const foe = c.kind === 'shield' ? nearestFoe(c, this.side, this.byId) : null
+        if (foe) {
+          // A shield the map placed still holds its ground as a shield (as without a countdown).
+          const job: Job = { kind: 'guard', target: foe, since: 0, face: c.aim() ? c.angle : Math.atan2(foe.y - c.y, foe.x - c.x), stationed: true }
+          this.jobs.set(c, job)
+          this.face(c, job)
+          this.nextThink.set(c, thinkMs * (1 + i / mine.length))
+          return
+        }
+        this.graceFirst.add(c)
+        this.nextThink.set(c, this.now + 150 + (grace * 0.4 - 150) * (i / Math.max(1, mine.length)))
+      } else if (!this.started) {
         const foe = c.kind === 'shield' ? nearestFoe(c, this.side, this.byId) : null
         // A shield the map placed holds its ground as a shield: facing where the map aimed it, else the nearest foe.
         const face = c.aim() ? c.angle : foe ? Math.atan2(foe.y - c.y, foe.x - c.x) : 0
