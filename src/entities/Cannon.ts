@@ -129,6 +129,11 @@ export class Cannon {
    * A cannon wears its current owner's, so the shape flips on capture. Null: Classic.
    */
   skins: SideSkins | null = null
+  /**
+   * Asked when a heal finishes (the friend is whole). Returning true means it
+   * re-aimed this cannon itself (auto-target); otherwise the saved aim comes back.
+   */
+  healHook: { healDone(cannon: Cannon): boolean } | null = null
 
   /** The skin this cannon wears now: its current owner's (neutral: Classic). */
   get skin(): SkinId {
@@ -397,7 +402,9 @@ export class Cannon {
   /**
    * Shoot a damaged friendly cannon to heal it. Aims straight at it, or along
    * `via` (a lane point) when a straight shot would miss. Once it is fully
-   * healed this cannon goes back to whatever it was aiming at before.
+   * healed, a cannon with auto-target on picks a fresh target (the round's
+   * healHook does that); otherwise it goes back to whatever it was aiming at
+   * before, or waits for orders if that's gone.
    */
   startHeal(friend: Cannon, via?: Point): void {
     if (friend === this || friend.side !== this.side) return
@@ -425,6 +432,7 @@ export class Cannon {
     if (friend.damaged) return
     const resume = this.resumeAim
     this.endHeal()
+    if (this.healHook?.healDone(this)) return
     this.target = resume?.target && resume.target !== this ? resume.target : null
     this.aimPoint = this.target ? null : (resume?.aimPoint ?? null)
   }

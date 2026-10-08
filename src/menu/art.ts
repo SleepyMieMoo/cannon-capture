@@ -138,7 +138,7 @@ export const HOWTO: { title: string; text: string; art: string; wide?: boolean }
   {
     title: 'Heal friends',
     wide: true,
-    text: 'Select one of your cannons, then click one of yours that’s being captured: your hits heal it instead of hurting it. Once it’s whole, the healer goes back to its earlier aim (auto-target on or off). If it had none, or that target has since become yours, it waits for you to aim it. Tip: heal a cannon a few hits from flipping; a sniper heals 2 per shot.',
+    text: 'Select one of your cannons, then click one of yours that’s being captured: your hits heal it instead of hurting it. Once it’s whole: with auto-target on, the healer aims at the nearest foe by itself. With it off (or that cannon on manual, M), it goes back to its earlier aim, or waits for you to aim it if it had none or that target is now yours. Tip: heal a cannon a few hits from flipping; a sniper heals 2 per shot.',
     art: svg(
       `${cannon(40, 58, gold, -0.06)}${own(40, 58, ringYou)}<circle cx="94" cy="54" r="4" fill="${gold}"/><circle cx="120" cy="53" r="4" fill="${gold}"/><circle cx="146" cy="52" r="4" fill="${gold}"/>${cannon(196, 50, healing, Math.PI)}${own(196, 50, ringYou)}<circle cx="196" cy="50" r="23.5" fill="none" stroke="${edge}" stroke-width="3.5"/><path d="M196 26.5 A23.5 23.5 0 0 1 212.6 66.6" fill="none" stroke="${pink}" stroke-width="3.5" stroke-linecap="round"/><circle cx="196" cy="50" r="30" fill="none" stroke="${gold}" stroke-opacity=".45" stroke-width="2"/>${label(196, 15, '+1 heal', gold, 11)}${label(92, 90, 'your hits heal yours')}`,
     ),

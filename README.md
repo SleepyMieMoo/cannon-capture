@@ -46,12 +46,13 @@ You are gold. The enemy is strawberry pink. Warm grey cannons are neutral and do
 
 A cannon tints toward whoever is hitting it, and a capture ring just outside its ownership ring fills in their colour. At eight hits it flips. Capture every cannon to win. Lose when none are yours. A newly captured cannon swings toward the nearest foe on its own (see Auto-target).
 
-**Auto-target.** Your cannons help themselves in two ways, and only these two:
+**Auto-target.** Your cannons help themselves in three ways, and only these three:
 
 - When the cannon a gun of yours was shooting becomes yours, that gun picks the nearest foe (one it has a lane to) and carries on.
 - A cannon you capture aims at the nearest foe.
+- A gun that finishes healing a friend aims at the nearest foe (see After the heal below).
 
-Nothing else is automatic. Free aim points are never changed, cannons you haven't aimed stay idle, and a gun that finished healing a friend goes back to the aim you gave it before.
+Nothing else is automatic. Free aim points are never changed, and cannons you haven't aimed stay idle (unless they just finished a heal).
 
 - **Settings** (top right in every battle) has the global **Auto-target** switch. Off: none of your cannons ever picks a target by itself. A gun whose target is captured drops it and holds its fire with its barrel where it was, until you aim it (cannons with no aim never fire). Cannons you capture wait for orders too. It starts **on** at the start of every game (each level, restart or new map).
 - **Per cannon:** the hover menu (long-press on touch) has an **Auto** switch after the tower types, or press **M** over a cannon. A cannon on manual shows a small crossed-out crosshair badge at its top left.
@@ -88,16 +89,17 @@ Nothing else is automatic. Free aim points are never changed, cannons you haven'
 **Healing.** Each cannon has one capture meter, like a tug of war:
 
 - Your own shots heal your cannons. If pink is part-way through capturing one of your gold cannons, select another gold cannon and click the damaged one. Every hit takes one point of pink's progress back off, so the tint and the ring shrink and a gold ring pulses out with a "+1 heal" popup.
-- **After the heal.** The frame the friend is whole, the healer goes back to the aim it had before you sent it to heal (a target cannon or a free aim point). If you sent it to heal a second friend first, it still goes back to that original aim. Auto-target (global or per cannon) doesn't change any of this:
-  - It was aiming at a foe or a free point: it goes back to that and carries on.
-  - It had no aim before (a cannon you never aimed): it stops firing and waits for you to aim it.
-  - Its old target was captured by your side while it was healing: it drops it and waits for you to aim it, even with auto-target on. Auto-target only re-aims guns at the moment a target falls, and at that moment this gun was busy healing.
-  - The friend fell to pink anyway: the healer keeps shooting it, now as a capture.
+- **After the heal.** What the healer does the frame the friend is whole depends on whether auto-target is on for it, meaning the global switch is on and the cannon isn't on manual (M):
+  - **Auto-target on:** it picks a fresh target the same way a newly captured cannon does: the nearest foe it has a lane to, aiming along the lane if a straight shot would miss. The aim it had before the heal is ignored. That covers every case: it had a target or a free aim point, it had no aim at all, or its old target was captured by your side while it was healing.
+  - **Auto-target off** (the global switch off, or this cannon on manual) goes back to the aim it had before you sent it to heal (a target cannon or a free aim point). If you sent it to heal a second friend first, it still goes back to that original aim. If it had no aim before, or its old target was captured by your side while it was healing, it stops firing and waits for you to aim it.
+  - Either way, if the friend fell to pink anyway, the healer keeps shooting it, now as a capture.
+  - Puzzles never auto-target, so there a healer always goes back to its earlier aim (or waits).
+  - Online it's the same rule for both players, with each player's own switches. The server runs it, so both screens and spectators see the same thing. A seat the AI has taken over follows the AI's rule below.
   - Shots already in the air when the friend is whole just stop on it and do nothing.
 - How to play has a **Heal friends** card with the same rules.
 - A healthy cannon can't be overhealed: friendly shots that hit a cannon at full health just stop there and do nothing.
 - Neutrals work the same way. If pink is part-way through a neutral and you shoot it, you push their progress back first. Once their progress is gone, your hits start counting toward your own capture (and the other way round).
-- The enemy heals too. Once you are halfway through one of its cannons, it sends its nearest cannon with a clear shot to heal it.
+- The enemy heals too. Once you are halfway through one of its cannons, it sends its nearest cannon with a clear shot to heal it. After the heal, the AI follows its own plan as before: back to the attack it was on if that's still a foe, otherwise it picks a new job at its usual reaction speed. That's its version of auto-target, and it is unchanged.
 - Clicking a damaged gold cannon while another one is selected heals it. Clicking a healthy gold cannon still switches the selection.
 - Heals scale with the shot: a sniper heal takes off 2, a machine gun heal 0.3 (a burst of machine gun heals shows as one summed popup, like "+1.5 heal").
 

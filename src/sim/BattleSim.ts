@@ -137,7 +137,10 @@ export class BattleSim {
         new Cannon(scene, def.id, def.name, def.x, def.y, def.side, (index % 3) * TUNING.fireStaggerMs, def.kind),
       )
     })
-    for (const c of this.cannons) c.skins = this.skins
+    for (const c of this.cannons) {
+      c.skins = this.skins
+      c.healHook = this
+    }
     for (const def of level.cannons) {
       const cannon = this.byId(def.id)!
       if (def.aimAt) cannon.setTarget(this.byId(def.aimAt) ?? null)
@@ -223,7 +226,10 @@ export class BattleSim {
     const f = Object.create(BattleSim.prototype) as BattleSim
     const cannons = this.cannons.map((c) => c.copy())
     const byId = (id: string) => cannons.find((c) => c.id === id)
-    cannons.forEach((c, i) => c.linkCopy(this.cannons[i], byId))
+    cannons.forEach((c, i) => {
+      c.linkCopy(this.cannons[i], byId)
+      c.healHook = f
+    })
     Object.assign(f, {
       level: this.level,
       lanes: this.lanes,
@@ -527,6 +533,22 @@ export class BattleSim {
       const foe = this.nearestFoe(cannon)
       if (foe) aimViaLane(cannon, foe, lanesOf(this.lanes, cannon)?.get(foe.id), this.board)
     }
+  }
+
+  /**
+   * A heal just finished. A person's cannon with auto-target on for it (the
+   * side's switch and its own) picks the best fresh target, the same way a
+   * newly captured cannon does, instead of going back to its saved aim.
+   * Returns false to keep the old rule (saved aim, or wait for orders):
+   * auto-target off, puzzles, no foe left, and the AI's cannons (the AI
+   * follows up its heals with its own plan).
+   */
+  healDone(cannon: Cannon): boolean {
+    if (!this.humans.has(cannon.side) || this.ais.some((ai) => ai.side === cannon.side) || !this.autoTargets(cannon)) return false
+    const foe = this.nearestFoe(cannon)
+    if (!foe) return false
+    aimViaLane(cannon, foe, lanesOf(this.lanes, cannon)?.get(foe.id), this.board)
+    return true
   }
 
   /** Nearest foe it has a lane to, falling back to the nearest foe overall. */
