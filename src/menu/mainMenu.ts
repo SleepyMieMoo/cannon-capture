@@ -26,6 +26,7 @@ import { MUSIC_ARTIST, TRACKS } from '../audio/musicTracks'
 import { jukeboxPanel } from '../ui/jukebox'
 import { loadTabPrefs, saveTabPrefs } from './tabPrefs'
 import { settingRow } from '../ui/settingRow'
+import { loadMotionPref, onMotionChange, saveMotionPref, systemReduces, type MotionPref } from '../ui/motion'
 import { closeHelpTips, setHelpText } from '../ui/helpTip'
 
 /** What the menu asks the game to do. */
@@ -161,6 +162,9 @@ export class MainMenu {
     this.thumbs = []
   }
 
+  /** The page on screen now (a new one animates in). */
+  private shownScreen = ''
+
   private render(focusId?: string): void {
     this.runTeardown()
     const screen = this.nav.screen
@@ -187,6 +191,9 @@ export class MainMenu {
                 : screen === 'lobby' && this.actions.online
                   ? this.lobby(this.actions.online)
                   : this.howto()
+    // A new page rises in (a redraw of the same page, like the lobby on a room change, doesn't).
+    if (screen !== this.shownScreen) view.classList.add('cc-enter')
+    this.shownScreen = screen
     this.root.replaceChildren(view)
     const focus = (focusId && this.root.querySelector<HTMLElement>(`[data-id="${focusId}"]`)) || this.root.querySelector<HTMLElement>('[data-autofocus]') || this.root.querySelector<HTMLElement>('[data-id="back"]')
     focus?.focus({ preventScroll: true })
@@ -509,6 +516,7 @@ export class MainMenu {
         ),
         h('div', {},
           ...this.tabbedSettings(),
+          ...this.motionSettings(),
           h('div.mm-h', {}, 'Your looks and name'),
           settingRow({ id: 'profile', label: 'Profile', help: 'Cannon skin, team colour, online name and the Play vs AI difficulty are in Profile.', control: [this.button('to-profile', 'Open Profile', () => this.open('profile', 'to-profile'), { icon: ICONS.profile, cls: 'small' })] }),
           h('div.mm-h', {}, 'Bug reports'),
@@ -540,6 +548,29 @@ export class MainMenu {
         control: [pauseSw],
       }),
     ]
+  }
+
+  /** Settings → Display: Reduce motion (Auto follows the device's own setting). */
+  private motionSettings(): HTMLElement[] {
+    const choices: { id: MotionPref; label: string }[] = [
+      { id: 'auto', label: 'Auto' },
+      { id: 'on', label: 'On' },
+      { id: 'off', label: 'Off' },
+    ]
+    const segs = choices.map((c) =>
+      h('button.mm-seg', { type: 'button', dataset: { id: 'motion-' + c.id }, onclick: () => saveMotionPref(c.id) }, c.label),
+    )
+    const helpText = (): string =>
+      `Stills the menus and battle screens: no sliding or popping panels, floating title, button bounces or win confetti. Auto follows your device’s reduce-motion setting (${systemReduces() ? 'on' : 'off'} on this device).`
+    const row = settingRow({ id: 'motion', label: 'Reduce motion', help: helpText(), layout: 'wide', control: [h('div.mm-segs', { role: 'group', 'aria-label': 'Reduce motion' }, ...segs)] })
+    const update = (): void => {
+      const pref = loadMotionPref()
+      segs.forEach((b, i) => b.setAttribute('aria-pressed', String(choices[i].id === pref)))
+      if (row.help) setHelpText(row.help, helpText())
+    }
+    update()
+    this.teardown.push(onMotionChange(update))
+    return [h('div.mm-h', {}, 'Display'), row]
   }
 
   /** Settings → Music: on/off, its own volume, and the way to the jukebox. */

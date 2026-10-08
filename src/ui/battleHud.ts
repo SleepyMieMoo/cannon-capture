@@ -2,6 +2,17 @@ import type Phaser from 'phaser'
 import { GAME_WIDTH } from '../config/layout'
 import { cssHex, theme } from '../config/theme'
 import { h } from './dom'
+import { motionOK } from './motion'
+
+/** A cannon flip: a light sweep over the bar segment that gained, and its number popping (made once, reused). */
+const GLINT: Keyframe[] = [
+  { opacity: 0, transform: 'translateX(-70%)' },
+  { opacity: 1, offset: 0.3 },
+  { opacity: 0, transform: 'translateX(70%)' },
+]
+const GLINT_TIMING: KeyframeAnimationOptions = { duration: 560, easing: 'ease-out' }
+const POP: Keyframe[] = [{ transform: 'scale(1)' }, { transform: 'scale(1.3)', offset: 0.3 }, { transform: 'scale(1)' }]
+const POP_TIMING: KeyframeAnimationOptions = { duration: 420, easing: 'cubic-bezier(.34, 1.56, .64, 1)' }
 
 /**
  * The battle's top bar, as HTML over the canvas: real buttons (Dark Choco,
@@ -147,7 +158,7 @@ export class BattleHud {
     this.titleEl = h('div.bh-title', { title: opts.title }, opts.title)
     const mk = (cls: string): [HTMLDivElement, HTMLSpanElement] => {
       const n = h('span.bh-n')
-      return [h(`div.bh-seg.${cls}`, {}, n), n]
+      return [h(`div.bh-seg.${cls}`, {}, h('span.bh-glint'), n), n]
     }
     const [mineSeg, mineNum] = mk('mine')
     const [neutralSeg, neutralNum] = mk('neutral')
@@ -297,7 +308,15 @@ export class BattleHud {
   setCounts(mine: number, neutral: number, theirs: number, label: (m: number, n: number, t: number) => string): void {
     const c = this.counts
     if (c.mine === mine && c.neutral === neutral && c.theirs === theirs) return
-    if (c.mine >= 0) this.lastChange = performance.now()
+    if (c.mine >= 0) {
+      this.lastChange = performance.now()
+      // A cannon changed hands: the side that gained flashes and its number pops (only on a change, never per frame).
+      if (motionOK()) {
+        if (mine > c.mine) this.flash(this.seg.mine, this.num.mine)
+        if (theirs > c.theirs) this.flash(this.seg.theirs, this.num.theirs)
+        if (neutral > c.neutral) this.flash(this.seg.neutral, this.num.neutral)
+      }
+    }
     c.mine = mine
     c.neutral = neutral
     c.theirs = theirs
@@ -312,6 +331,11 @@ export class BattleHud {
     const text = label(mine, neutral, theirs)
     this.tug.setAttribute('aria-label', text)
     this.tug.title = text
+  }
+
+  private flash(seg: HTMLDivElement, num: HTMLSpanElement): void {
+    ;(seg.firstElementChild as HTMLElement | null)?.animate?.(GLINT, GLINT_TIMING)
+    num.animate?.(POP, POP_TIMING)
   }
 
   setAims(text: string, out: boolean): void {
@@ -460,7 +484,6 @@ function injectHudStyles(): void {
 .bh-tug > .bh-seg:last-child { justify-content: flex-end; }
 .bh-seg.neutral { justify-content: center; }
 .bh-seg.zero .bh-n { visibility: hidden; }
-@media (prefers-reduced-motion: reduce) { .bh-seg { transition: none; } }
 .bh-aims { font-weight: bold; font-size: 14px; white-space: nowrap; flex: none; }
 .bh-aims.out { color: ${cssHex(theme.enemy)}; }
 .bh-clockbox { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; flex: none; min-width: 64px; }

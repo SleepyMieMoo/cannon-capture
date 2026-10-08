@@ -8,6 +8,7 @@ import { PROGRESS_KEY } from '../progress'
 import { clearColour, COLOUR_KEY } from './colourPref'
 import { MENU_KEY } from './menuModel'
 import { clearSkin, SKIN_KEY } from './skinPref'
+import { applyMotion, MOTION_KEY } from '../ui/motion'
 
 /**
  * Every preference saved on this device, and what Profile → "Reset all
@@ -23,6 +24,7 @@ export const PREF_KEYS: readonly { key: string; what: string }[] = [
   { key: MUSIC_KEY, what: 'music, default song and music volume' },
   { key: TAB_KEY, what: 'what happens when tabbed out' },
   { key: PERF_KEY, what: 'performance overlay' },
+  { key: MOTION_KEY, what: 'reduce motion' },
 ]
 
 /** Kept by the reset. */
@@ -65,5 +67,6 @@ export function resetAllPreferences(): string[] {
   const removed = resetPreferences()
   clearSkin()
   clearColour()
+  applyMotion()
   return removed
 }

@@ -13,6 +13,7 @@ import { cleanName, isRoomCode, normaliseCode } from '../net/online'
 import { createRoom, online, saveName, savedName, type OnlineRoom } from '../net/onlineClient'
 import type { OnlineMenu } from '../menu/onlineMenu'
 import { resetAllPreferences } from '../menu/prefs'
+import { loadMotionPref, motionOK } from '../ui/motion'
 import { loadMenuPrefs } from '../menu/menuModel'
 import { loadSkin } from '../menu/skinPref'
 import { loadColour } from '../menu/colourPref'
@@ -189,6 +190,7 @@ export class TitleScene extends Phaser.Scene {
               difficulty: loadMenuPrefs().difficulty,
               music: { on: music.playing, volume: music.settings.volume, track: music.current, default: music.settings.track },
               tabbed: { music: music.settings.keepHidden, pauseVsAi: loadTabPrefs().pauseVsAi },
+              motion: { pref: loadMotionPref(), reduced: !motionOK() },
             }),
           )
         },

@@ -42,6 +42,8 @@ export interface DebugSettings {
   music?: { on: boolean; volume: number; track: string; default: string }
   /** When tabbed out: keep music playing, pause vs AI (left out when unknown). */
   tabbed?: { music: boolean; pauseVsAi: boolean }
+  /** Reduce motion: the setting, and whether motion is reduced right now (left out when unknown). */
+  motion?: { pref: string; reduced: boolean }
 }
 
 export function settingsText(s: DebugSettings): Record<string, string> {
@@ -52,6 +54,7 @@ export function settingsText(s: DebugSettings): Record<string, string> {
     colour: s.colour,
     'vs AI difficulty': s.difficulty,
     ...(s.tabbed ? { 'tabbed out': `music ${s.tabbed.music ? 'keeps playing' : 'pauses'}, vs AI ${s.tabbed.pauseVsAi ? 'pauses' : 'keeps going'}` } : {}),
+    ...(s.motion ? { 'reduce motion': `${s.motion.pref} (${s.motion.reduced ? 'reduced' : 'full motion'})` } : {}),
     ...(s.music ? { music: s.music.on ? `on, ${Math.round(s.music.volume * 100)}%, ${s.music.track} (default ${s.music.default})` : `off (default ${s.music.default})` } : {}),
   }
 }
