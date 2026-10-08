@@ -407,6 +407,22 @@ npm run art -- --checks /tmp/art  # also: the icon at 32/64/128 px and shelf-til
 
 It needs Chrome or Chromium (`CHROME_PATH`, else `/usr/bin/google-chrome`). The title uses Verdana, the game's font; without it installed the browser falls back to a similar font. The art page is dev-only and not part of the game build. The cover keeps the title and the main fight in the middle, so the 13:11 crop on the Activity Shelf still shows them.
 
+## Player vs player test mode (Phase 0)
+
+Real player vs player needs a server (see the PvP plan). This test mode is a step toward it. Two copies of the game in **one browser** play each other. Nothing leaves the browser, and no account or server is needed. It is hidden behind `?pvpdev`:
+
+- **Split view**: [`?pvpdev=split`](https://sleepymiemoo.github.io/cannon-capture/?pvpdev=split) shows both players side by side. Left is the host, who plays gold. Right is player 2, who plays pink. Click a side to play it. This is the easiest way to try it alone.
+- **Two windows**: open [`?pvpdev`](https://sleepymiemoo.github.io/cannon-capture/?pvpdev), pick a map, then press **Host (gold)** and then **Open player 2 window**. Keep both windows in sight: a browser stops drawing a tab that is hidden behind another one, and the round only runs while the host's window is drawn. You can also join from any other window of the same browser: open `?pvpdev`, type the same room code and press **Join (pink)**.
+- Extra switches: `&gold=0` shows player 2 their own cannons in pink (by default each player sees themselves as gold). `&lag=150&jitter=50` fakes a slow network. `&map=crossfire` picks the host's map, and `&role=host|join&room=abcd` starts straight away.
+
+How it works:
+
+- **The host is the authority.** The host's game runs the round in fixed 1/60 s steps (`src/sim/fixedStep.ts`). It sends a snapshot of every cannon and shot 20 times a second (`src/net/snapshot.ts`, about 10 KB/s of JSON on a small map). Player 2 never runs the round. Their screen shows the snapshots about 100 ms late, blending between two snapshots, and replays the host's events (shots, sparks, captures, sounds) when the picture reaches them.
+- **One order API.** Every click, key and menu choice is an `Order`: aim, swap, auto, autoAll, pause or resume (`src/sim/orders.ts`). Single player sends its orders through the same `applyOrder` as the network, which checks that the order is for that side's own cannons. Orders from the network are shape-checked first.
+- **Side swap.** Player 2's copy swaps gold and pink, so their own cannons are "yours" and the normal battle screen works unchanged.
+- **The transport** (`src/net/transport.ts`) is a `BroadcastChannel` here. The messages are plain JSON (`src/net/pvp.ts`), so a server (a WebSocket) can take the host's place later.
+- **Rules for now (not final):** there is no AI. A side wins when the other holds no cannons (neutrals may be left). Either player can pause or resume, and the menu doesn't pause. A restart from either side starts a new round for both.
+
 ## Layout
 
 - `src/scenes` — Phaser scenes: `TitleScene` (main menu, see `src/menu`), `TitleBgScene` (the title's background battle), `MapScene` (campaign map), `BattleScene` (draws a round and handles clicks), `EditorScene` (map editor) and `MapsScene` (My maps).
@@ -420,6 +436,7 @@ It needs Chrome or Chromium (`CHROME_PATH`, else `/usr/bin/google-chrome`). The 
 - `src/ui` — buttons, stars, the in-play tower swap menu, and the HTML panel overlay used by the editor and My maps.
 - `src/platform` — running as a Discord Activity (SDK handshake, external links, orientation).
 - `src/perf` — the performance overlay (F3).
+- `src/net` — the player vs player test mode: transport, snapshots, host and player 2, and the `?pvpdev` panel.
 
 ## Credits
 

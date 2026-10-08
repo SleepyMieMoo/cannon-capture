@@ -18,6 +18,8 @@ export class Shot {
   /** Capture progress this shot adds to a foe (or heals on a friend). */
   readonly damage: number
   readonly kind: CannonKind
+  /** Set by the sim when it is fired (network views follow shots by id). 0 for copies. */
+  id = 0
 
   constructor(ball: Ball, side: Side, damage = 1, kind: CannonKind = 'normal') {
     this.ball = ball

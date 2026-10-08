@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import type { MapView } from '../editor/maps'
-import { cssHex, sideColor, theme } from '../config/theme'
+import { cssHex, sideColor, swapSideColours, theme } from '../config/theme'
 import { TUNING } from '../config/tuning'
 import { DEBUG } from '../debug'
 import { BRAND } from '../config/brand'
@@ -33,6 +33,12 @@ import { SettingsPanel } from '../ui/settingsPanel'
 import { perf } from '../perf/PerfOverlay'
 import { layoutScale } from '../render/resolution'
 import { KINDS, firesAs, fmtNum, kindLabel, nextKind } from '../config/kinds'
+import { PVP } from '../config/pvp'
+import { FixedStep, SIM_STEP_MS } from '../sim/fixedStep'
+import { applyOrder, type Order, type OrderResult } from '../sim/orders'
+import type { SimEvents } from '../sim/BattleSim'
+import { PvpClient, PvpHost, flipLevel, type StartMsg } from '../net/pvp'
+import { randomId, type Transport } from '../net/transport'
 
 interface Spark {
   x: number
@@ -68,7 +74,16 @@ export interface BattleData {
   from?: BattleFrom
   /** Start the camera here (the editor's view when playtesting). */
   view?: MapView
+  /** Player vs player test mode (?pvpdev): this game hosts the round, or plays pink in someone else's. */
+  pvp?: PvpData
 }
+
+export type PvpData =
+  | { role: 'host'; room: string; transport: Transport; /** Restart: the player already here. */ peer?: string }
+  | { role: 'client'; room: string; transport: Transport; start: StartMsg }
+
+/** In player vs player the menu and leaving the window don't pause the round (the other player is still playing). */
+const NO_HOLD = { paused: false, ended: null, pause: () => false, resume: () => {} }
 
 /** The world viewport: everything under the HUD band. */
 /** Slim HUD band on top (same info as before, less height). */
@@ -111,7 +126,18 @@ export class BattleScene extends Phaser.Scene {
   private battleMenu!: BattleMenu
   /** Look-ahead time already counted by the performance overlay (null while it is hidden). */
   private lookBase: number | null = null
-  private readonly menuHold = new PauseHold(() => this.sim)
+  private readonly menuHold = new PauseHold(() => (this.pvp ? NO_HOLD : this.sim))
+  /** The round advances in fixed steps; the screen draws between them. */
+  private readonly steps = new FixedStep(SIM_STEP_MS)
+  private pvp: PvpData | null = null
+  /** Player vs player: this game runs the round (gold) ... */
+  private host: PvpHost | null = null
+  /** ... or only shows the host's round (pink, seen as gold) and sends orders. */
+  private client: PvpClient | null = null
+  /** The event handlers (the client replays the host's events through them). */
+  private simEvents: SimEvents = {}
+  /** Player vs player: the other player is here (the host waits until they are). */
+  private peerHere = false
   private hint!: Phaser.GameObjects.Text
   private pauseLink!: Phaser.GameObjects.Text
   /** Paused: a frame round the board and a label at its top (UI camera; never blocks the board). */
@@ -139,8 +165,12 @@ export class BattleScene extends Phaser.Scene {
     this.custom = data?.custom ?? null
     this.from = data?.from
     this.startView = data?.view
+    this.pvp = data?.pvp ?? null
+    // The second player sees the host's map with the sides swapped, so their cannons are "yours" here.
+    if (this.pvp?.role === 'client') this.custom = flipLevel(this.pvp.start.level)
     this.level = this.custom ?? findLevel(data?.levelId) ?? SKIRMISH
-    this.levelIndex = this.custom ? -1 : campaignIndex(this.level.id)
+    // Player vs player is never a campaign round (no stars, no Next, no progress saved).
+    this.levelIndex = this.custom || this.pvp ? -1 : campaignIndex(this.level.id)
     this.board = boardFor(this.level)
   }
 
@@ -232,10 +262,14 @@ export class BattleScene extends Phaser.Scene {
 
     this.volumeDrag = false
     this.sfx = new Sfx(this, () => ({ rect: this.wc.visibleRect(), zoom: this.wc.zoom }))
-    this.sim = new BattleSim(
-      this.level,
-      this,
-      {
+    this.host = null
+    this.client = null
+    this.peerHere = false
+    this.steps.reset()
+    const pvp = this.pvp
+    if (pvp?.role === 'client') swapSideColours(!PVP.seeSelfAsGold)
+    else swapSideColours(false)
+    let events: SimEvents = {
         fired: (cannon) => this.sfx.shot(cannon),
       bounce: (x, y) => this.sparks.push({ x, y, life: 1, color: theme.spark }),
       hit: (x, y, side, kind) => this.sparks.push({ x, y, life: 1, color: sideColor(side), size: kind === 'machinegun' ? 0.45 : 1 }),
@@ -256,12 +290,20 @@ export class BattleScene extends Phaser.Scene {
       noAims: (cannon) => this.popup(cannon.x, cannon.y, 'No aims left', theme.textMuted),
       swapped: (cannon) => this.popup(cannon.x, cannon.y, kindLabel(cannon.kind), cssHex(sideColor(cannon.side))),
       aimed: (point) => {
+        // The other player's aims don't ping on the host's screen.
+        if (this.host?.applyingRemote) return
         this.pings.push({ x: point.x, y: point.y, life: 1, color: theme.select })
         this.hideBanner()
       },
-      },
-      DEBUG.bot ? undefined : 'progressive',
-    )
+    }
+    this.simEvents = events
+    if (pvp?.role === 'host') {
+      this.host = new PvpHost(pvp.transport, this.level, randomId(), 'enemy', SIM_STEP_MS, pvp.peer)
+      events = this.host.log.tap(events)
+    }
+    // The second player's round is only a picture of the host's: it never runs, so it gets no handlers.
+    this.sim = new BattleSim(this.level, this, pvp?.role === 'client' ? {} : events, DEBUG.bot && !pvp ? undefined : 'progressive')
+    if (pvp) this.startPvp(pvp)
     // Everything created so far is board content.
     this.children.list.forEach((obj) => this.world(obj))
     this.wc = new WorldCamera(this, this.board, WORLD_VIEW, undefined, 1)
@@ -271,7 +313,7 @@ export class BattleScene extends Phaser.Scene {
       this.wc.center = { x: this.startView.x, y: this.startView.y }
       this.wc.apply()
     } else this.frameOwnCannons()
-    this.bot = !DEBUG.bot
+    this.bot = !DEBUG.bot || pvp
       ? null
       : DEBUG.botStyle === 'mirror' && !this.sim.isPuzzle
         ? new MirrorBot(this.sim)
@@ -296,6 +338,10 @@ export class BattleScene extends Phaser.Scene {
     this.game.events.on(Phaser.Core.Events.BLUR, this.onLoseFocus, this)
     this.game.events.on(Phaser.Core.Events.HIDDEN, this.onLoseFocus, this)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      // Stop listening (Back / Main menu say goodbye first; a restart keeps the connection).
+      this.host?.close(false)
+      this.client?.close(false)
+      swapSideColours(false)
       this.game.events.off(Phaser.Core.Events.BLUR, this.onLoseFocus, this)
       this.game.events.off(Phaser.Core.Events.HIDDEN, this.onLoseFocus, this)
       this.input.keyboard?.removeCapture('SPACE')
@@ -311,7 +357,8 @@ export class BattleScene extends Phaser.Scene {
       this.restart()
     })
     if (this.wc.canZoomOut) this.createZoomUi()
-    if (this.level.hint) this.showBanner(this.level.hint)
+    if (pvp) this.pvpBanner()
+    else if (this.level.hint) this.showBanner(this.level.hint)
     else if (this.wc.canZoomOut) this.showBanner('Big map: scroll or pinch to zoom out, drag empty space or use WASD to pan.')
     this.bindInput()
     this.refreshHud()
@@ -325,7 +372,7 @@ export class BattleScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (perf.battle?.level === this.level) perf.battle = null
     })
-    if (DEBUG.enabled) (window as unknown as { __cc?: unknown }).__cc = { scene: this, sim: this.sim, sfx: this.sfx }
+    if (DEBUG.enabled) (window as unknown as { __cc?: unknown }).__cc = { scene: this, sim: this.sim, sfx: this.sfx, net: this.host ?? this.client }
   }
 
   update(time: number, delta: number): void {
@@ -338,9 +385,18 @@ export class BattleScene extends Phaser.Scene {
     this.sim.timeAi = timing
     const t0 = timing ? performance.now() : 0
     this.sim.pumpLanes(5)
-    for (let i = 0; i < DEBUG.speed && !this.sim.ended && !this.sim.paused; i++) {
-      this.bot?.update(dt)
-      this.sim.step(dt)
+    if (this.client) {
+      // Second player: show the host's round a moment behind its newest snapshot.
+      this.client.update(this.sim, this.simEvents, delta)
+    } else {
+      const running = !this.sim.ended && !this.sim.paused && (!this.host || this.host.joined)
+      const n = running ? this.steps.take(delta) * DEBUG.speed : (this.steps.reset(), 0)
+      for (let i = 0; i < n && !this.sim.ended && !this.sim.paused; i++) {
+        this.bot?.update(SIM_STEP_MS)
+        this.sim.step(SIM_STEP_MS)
+        this.host?.stepped()
+      }
+      this.host?.frame()
     }
     if (timing) this.recordPerf(performance.now() - t0)
     else this.lookBase = null
@@ -392,7 +448,118 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private playerAim(cannon: Cannon, aim: Cannon | Point): boolean {
-    return this.sim.playerAim(cannon, aim)
+    return this.order({ t: 'aim', cannon: cannon.id, at: aim instanceof Cannon ? { cannon: aim.id } : { x: aim.x, y: aim.y } }).ok
+  }
+
+  /**
+   * Every order from this screen (clicks, keys, menus) goes through here: to
+   * the round itself, or to the host when this is the second player. The other
+   * player's orders reach the host's round through the same applyOrder.
+   */
+  private order(o: Order): OrderResult {
+    if (!this.client) return applyOrder(this.sim, 'player', o)
+    if (this.client.lost || this.sim.ended) return { ok: false }
+    // Check it against the picture first (the host checks again), and show it straight away.
+    const res = this.predict(o)
+    if (res.ok) this.client.send(o)
+    return res
+  }
+
+  /** Second player: would the host take this order, judging by the latest picture? Shows its effect early where that's cheap. */
+  private predict(o: Order): OrderResult {
+    const sim = this.sim
+    const mine = (id: string) => {
+      const c = sim.byId(id)
+      return c && c.side === 'player' ? c : null
+    }
+    switch (o.t) {
+      case 'aim': {
+        const c = mine(o.cannon)
+        if (!c || c.damaged || ('cannon' in o.at && (!sim.byId(o.at.cannon) || o.at.cannon === o.cannon))) return { ok: false }
+        const at = 'cannon' in o.at ? sim.byId(o.at.cannon)! : o.at
+        this.simEvents.aimed?.({ x: at.x, y: at.y })
+        return { ok: true }
+      }
+      case 'swap': {
+        const c = mine(o.cannon)
+        return { ok: !!c && (o.kind !== c.kind || sim.queuedKind(c) !== null) }
+      }
+      case 'auto': {
+        const c = mine(o.cannon)
+        if (!c || sim.isPuzzle) return { ok: false }
+        c.autoTarget = !c.autoTarget
+        return { ok: true, on: c.autoTarget }
+      }
+      case 'autoAll':
+        sim.autoTarget = o.on
+        return { ok: true, on: o.on }
+      case 'pause':
+        return { ok: !sim.paused }
+      case 'resume':
+        return { ok: sim.paused }
+    }
+  }
+
+  /** Player vs player: hook this screen up to the other player. */
+  private startPvp(pvp: PvpData): void {
+    if (this.host) {
+      const host = this.host
+      this.sim.makePvp()
+      host.onPeer = (joined) => {
+        this.peerHere = joined
+        this.pvpBanner()
+      }
+      host.onRestart = () => this.restart()
+      host.attach(this.sim)
+      this.peerHere = host.joined
+    } else if (pvp.role === 'client') {
+      this.sim.makePvp()
+      const client = new PvpClient(pvp.transport, pvp.start, true)
+      this.client = client
+      this.peerHere = true
+      client.onStart = (start) => {
+        // The host started a new round.
+        this.restarting = true
+        this.scene.restart({ from: this.from, pvp: { ...pvp, start }, view: this.viewNow() })
+      }
+      client.onLost = () => {
+        this.peerHere = false
+        this.pvpBanner()
+      }
+      client.onBack = () => {
+        this.peerHere = true
+        this.pvpBanner()
+      }
+      client.onRefused = () => this.popupAtTop('The host refused that order (the round had moved on).')
+    }
+  }
+
+  /** The player vs player status line along the bottom. */
+  private pvpBanner(): void {
+    if (!this.pvp || this.shownEnd) return
+    const you = this.pvp.role === 'host' ? 'gold' : PVP.seeSelfAsGold ? 'pink (shown as gold)' : 'pink'
+    const msg = this.host
+      ? this.peerHere
+        ? `PvP test · room ${this.pvp.room} · you are ${you} · player 2 is here: go!`
+        : `PvP test · room ${this.pvp.room} · you are ${you} · waiting for player 2 to join…`
+      : this.peerHere
+        ? `PvP test · room ${this.pvp.room} · you are ${you}`
+        : `PvP test · room ${this.pvp.room} · the host has left (or stopped answering)`
+    if (this.banner) {
+      const b = this.banner
+      this.banner = null
+      b.destroy()
+    }
+    this.showBanner(msg)
+  }
+
+  private popupAtTop(text: string): void {
+    const p = this.wc.toWorld(GAME_WIDTH / 2, WORLD_VIEW.y + 40)
+    this.popup(p.x, p.y, text, theme.textMuted)
+  }
+
+  private viewNow(): MapView {
+    return { zoom: this.wc.zoom, x: this.wc.center.x, y: this.wc.center.y }
   }
 
   // ---------------------------------------------------------------- input
@@ -451,15 +618,16 @@ export class BattleScene extends Phaser.Scene {
 
   private toggleCannonAuto(c: Cannon): void {
     if (this.ended || this.sim.isPuzzle) return
-    const on = this.sim.toggleCannonAuto(c)
-    if (on === null) return
+    const res = this.order({ t: 'auto', cannon: c.id })
+    if (!res.ok) return
+    const on = !!res.on
     const note = !this.sim.autoTarget ? (on ? 'Auto on (when Settings is on)' : 'Auto off') : on ? 'Auto-target on' : 'Manual: auto-target off'
     this.popup(c.x, c.y - 30, note, on ? cssHex(theme.player) : theme.textMuted)
   }
 
   private toggleGlobalAuto(): void {
     if (this.sim.isPuzzle || this.ended) return
-    this.sim.setAutoTarget(!this.sim.autoTarget)
+    this.order({ t: 'autoAll', on: !this.sim.autoTarget })
   }
 
   /** Esc: close what is open (Settings, the type menu, a selection), else open the menu. */
@@ -478,19 +646,20 @@ export class BattleScene extends Phaser.Scene {
   /** Tactical pause on/off (Space, or the HUD's Pause / Resume). */
   togglePause(): void {
     if (this.ended || this.restarting || this.battleMenu?.open) return
-    if (this.sim.paused) this.sim.resume()
-    else this.sim.pause()
+    this.order({ t: this.sim.paused ? 'resume' : 'pause' })
     this.pauseLink?.setText(this.sim.paused ? 'Resume' : 'Pause').setFontStyle(this.sim.paused ? 'bold' : 'normal')
   }
 
   private onLoseFocus(): void {
+    // Player vs player: the other player is still playing.
+    if (this.pvp) return
     if (!this.sim.paused && !this.ended && !this.restarting) this.togglePause()
   }
 
   private onTypeKey(): void {
     const sel = this.selected
     if (!sel || this.ended) return
-    this.sim.playerSwap(sel, nextKind(this.sim.queuedKind(sel) ?? sel.kind))
+    this.order({ t: 'swap', cannon: sel.id, kind: nextKind(this.sim.queuedKind(sel) ?? sel.kind) })
   }
 
   private toLayout(pointer: Phaser.Input.Pointer): Point {
@@ -568,7 +737,7 @@ export class BattleScene extends Phaser.Scene {
       if (kind === 'auto') {
         if (cannon) this.toggleCannonAuto(cannon)
       } else if (kind && cannon) {
-        this.sim.playerSwap(cannon, kind)
+        this.order({ t: 'swap', cannon: cannon.id, kind })
         if (this.swapMenu.pinned) this.swapMenu.hide()
       }
       return
@@ -706,11 +875,18 @@ export class BattleScene extends Phaser.Scene {
 
   private restart(): void {
     if (this.restarting) return
+    if (this.client) {
+      // The host starts the new round; it arrives as a "start" (see startPvp).
+      this.client.requestRestart()
+      return
+    }
     this.restarting = true
     this.input.setDefaultCursor('default')
     // Restarting keeps the camera where you left it.
-    const view = { zoom: this.wc.zoom, x: this.wc.center.x, y: this.wc.center.y }
-    this.scene.restart(this.custom ? { custom: this.custom, from: this.from, view } : { levelId: this.level.id, from: this.from, view })
+    const view = this.viewNow()
+    // A host's restart keeps the player who is here (the new round goes straight to them).
+    const pvp = this.pvp?.role === 'host' ? { ...this.pvp, peer: this.host?.peerId ?? undefined } : (this.pvp ?? undefined)
+    this.scene.restart(this.custom ? { custom: this.custom, from: this.from, view, pvp } : { levelId: this.level.id, from: this.from, view, pvp })
   }
 
   private goNext(): void {
@@ -737,6 +913,12 @@ export class BattleScene extends Phaser.Scene {
     this.restarting = true
     this.closeMenu()
     this.input.setDefaultCursor('default')
+    if (this.pvp) {
+      // Leaving player vs player: tell the other player, then hang up.
+      this.host?.close(true)
+      this.client?.close(true)
+      this.pvp.transport.close()
+    }
     this.scene.start(route.scene, route.data)
   }
 
@@ -785,8 +967,9 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createHud(): void {
-    const title =
-      this.levelIndex >= 0
+    const title = this.pvp
+      ? `PvP test  ·  ${this.level.name}  ·  ${this.host ? 'host' : 'player 2'}`
+      : this.levelIndex >= 0
         ? `${this.levelIndex + 1}. ${this.level.name}${this.isPuzzle ? '  ·  Puzzle' : ''}`
         : this.custom
           ? `${this.level.name}  ·  ${this.isPuzzle ? 'Puzzle' : 'Battle'}${this.from === 'editor' ? '  ·  Playtest' : ''}`
@@ -873,7 +1056,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private hintLine(): string {
-    if (this.ended) return this.ended === 'win' ? 'You hold every cannon.' : 'Not this time.'
+    if (this.pvp && !this.ended) {
+      if (this.host && !this.peerHere) return `Waiting for player 2 to join room ${this.pvp.room}…`
+      if (this.client && !this.peerHere) return 'The host has left (or stopped answering).'
+    }
+    if (this.ended) return this.pvp ? (this.ended === 'win' ? 'You win!' : 'You lost.') : this.ended === 'win' ? 'You hold every cannon.' : 'Not this time.'
     if (this.sim.paused) {
       const lp0 = this.pointerLayout
       const pill0 = lp0 && this.swapMenu.open ? this.swapMenu.pillAt(lp0.x, lp0.y) : null
@@ -900,7 +1087,7 @@ export class BattleScene extends Phaser.Scene {
     }
     if (!this.selected) {
       if (this.hover && this.hover.side === 'player') return `Click to select ${this.hover.name}, or pick a type above it (long-press on touch).`
-      return 'Click one of your gold cannons to select it, then click where it should aim.'
+      return `Click one of your ${this.client && !PVP.seeSelfAsGold ? 'pink' : 'gold'} cannons to select it, then click where it should aim.`
     }
     const name = this.selected.name
     if (!this.selected.fires) {
@@ -985,6 +1172,7 @@ export class BattleScene extends Phaser.Scene {
     root.add(panel)
 
     let headline = result === 'win' ? 'All cannons captured' : 'No cannons left'
+    if (this.pvp) headline = result === 'win' ? 'You win' : 'You lost'
     if (campaign && result === 'win') headline = next ? 'Level complete' : 'Campaign complete!'
     if (result === 'lose' && this.isPuzzle) headline = 'Puzzle failed'
     let y = top + 50
@@ -1001,6 +1189,7 @@ export class BattleScene extends Phaser.Scene {
       y += 42
     }
     let detail = this.sim.endReason || (result === 'win' ? 'The board is yours.' : '')
+    if (this.pvp) detail = result === 'win' ? 'The other player has no cannons left.' : 'You have no cannons left.'
     if (result === 'win' && campaign) {
       const usesAims = this.isPuzzle && this.level.aims !== undefined
       const par = this.level.par

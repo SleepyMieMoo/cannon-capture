@@ -123,3 +123,18 @@ export function shade(color: number, factor: number): number {
   const b = Math.min(255, Math.round((color & 255) * factor))
   return (r << 16) | (g << 8) | b
 }
+
+const baseSides = { player: theme.player, playerHot: theme.playerHot, enemy: theme.enemy, select: theme.select }
+
+/**
+ * Player vs player with "see yourself as gold" off: the second player's own
+ * cannons are gold in the game's logic (so the battle screen works as usual)
+ * but should look pink, so the two side colours trade places while on.
+ */
+export function swapSideColours(on: boolean): void {
+  const t = theme as unknown as Record<'player' | 'enemy' | 'playerHot' | 'select', number>
+  t.player = on ? baseSides.enemy : baseSides.player
+  t.enemy = on ? baseSides.player : baseSides.enemy
+  t.playerHot = on ? mix(baseSides.enemy, 0xffffff, 0.3) : baseSides.playerHot
+  t.select = on ? mix(baseSides.enemy, 0xffffff, 0.75) : baseSides.select
+}
