@@ -4,6 +4,8 @@
     {
       "date": "2026-10-08",
       "entries": [
+        { "kind": "new", "title": "Version 0.2.0: the jukebox", "text": "Music! Three songs by Reganati play from the menu straight into your battles and loop. Open the Jukebox (top left) to switch songs, star the one the game starts with, and set the music volume, apart from sound effects." },
+        { "kind": "change", "title": "A tidier main menu", "text": "Profile moved to the top-right corner and the Jukebox sits top left, so the middle of the menu is lighter. Music is also in Settings and in the Menu during a battle." },
         { "kind": "new", "title": "Profile, Credits and What’s new", "text": "Your online name, skin, colour and difficulty live together in Profile, with a button to reset them. Credits has its own page. Tap the version under the menu to see this list, and use Copy debug info when you report a bug." },
         { "kind": "fix", "title": "The title battle stays after alt-tab", "text": "The battle behind the main menu no longer disappears when you switch away and come back. Online, coming back jumps straight to the live round without a burst of old sounds." },
         { "kind": "new", "title": "Battle top bar and Surrender", "text": "Proper buttons that stay readable on phones and in Discord, a tug-of-war bar showing how many cannons each side holds, and Surrender (after a confirm) in every mode." },

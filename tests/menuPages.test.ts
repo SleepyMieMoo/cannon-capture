@@ -43,7 +43,7 @@ describe("What's new", () => {
   it("lists today's verified features, newest first, in player words", () => {
     expect(WHATS_NEW.length).toBeGreaterThan(0)
     const titles = WHATS_NEW.flatMap((d) => d.entries.map((e) => e.title.toLowerCase())).join(' | ')
-    for (const topic of ['shield', 'editor', 'difficulty', 'ownership rings', 'heal guide', 'skins', 'healers re-aim', 'countdown', 'team colours', 'name tags', 'room settings', 'side glow', 'surrender', 'profile', 'credits', 'alt-tab']) {
+    for (const topic of ['shield', 'editor', 'difficulty', 'ownership rings', 'heal guide', 'skins', 'healers re-aim', 'countdown', 'team colours', 'name tags', 'room settings', 'side glow', 'surrender', 'profile', 'credits', 'alt-tab', 'jukebox', '0.2.0']) {
       expect(titles).toContain(topic)
     }
     const dates = WHATS_NEW.map((d) => d.date)
