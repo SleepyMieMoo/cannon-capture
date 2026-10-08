@@ -39,7 +39,7 @@ export interface DebugSettings {
   colour: string
   difficulty: string
   /** Music: on, volume, the song playing and the default one (left out when there is no jukebox). */
-  music?: { on: boolean; volume: number; track: string; default: string }
+  music?: { on: boolean; volume: number; track: string; default: string; pulse?: boolean }
   /** When tabbed out: keep music playing, pause vs AI (left out when unknown). */
   tabbed?: { music: boolean; pauseVsAi: boolean }
   /** Reduce motion: the setting, and whether motion is reduced right now (left out when unknown). */
@@ -55,7 +55,7 @@ export function settingsText(s: DebugSettings): Record<string, string> {
     'vs AI difficulty': s.difficulty,
     ...(s.tabbed ? { 'tabbed out': `music ${s.tabbed.music ? 'keeps playing' : 'pauses'}, vs AI ${s.tabbed.pauseVsAi ? 'pauses' : 'keeps going'}` } : {}),
     ...(s.motion ? { 'reduce motion': `${s.motion.pref} (${s.motion.reduced ? 'reduced' : 'full motion'})` } : {}),
-    ...(s.music ? { music: s.music.on ? `on, ${Math.round(s.music.volume * 100)}%, ${s.music.track} (default ${s.music.default})` : `off (default ${s.music.default})` } : {}),
+    ...(s.music ? { music: s.music.on ? `on, ${Math.round(s.music.volume * 100)}%, ${s.music.track} (default ${s.music.default})${s.music.pulse === undefined ? '' : `, pulse ${s.music.pulse ? 'on' : 'off'}`}` : `off (default ${s.music.default})` } : {}),
   }
 }
 

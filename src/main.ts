@@ -12,6 +12,7 @@ import { TitleBgScene } from './scenes/TitleBgScene'
 import { TitleScene } from './scenes/TitleScene'
 import { mountPvpPanel, mountSplitView } from './net/pvpDev'
 import { music } from './audio/music'
+import { beatPulse } from './ui/beatPulse'
 import { applyMotion } from './ui/motion'
 import { injectMotionStyles } from './ui/motionStyles'
 
@@ -78,4 +79,6 @@ function boot(parent: HTMLElement): void {
   // menu paint) and starts on the first click, tap or key if the browser blocks autoplay.
   game.events.once(Phaser.Core.Events.READY, () => music.bootLater())
   if (DEBUG.enabled) (window as unknown as { __music: typeof music }).__music = music
+  // Small UI pulses on the music's beat (src/ui/beatPulse.ts): idle unless music is audible.
+  beatPulse.start()
 }

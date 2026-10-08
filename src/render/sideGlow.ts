@@ -74,6 +74,8 @@ export function glowAlpha(t: number, alpha = GLOW.alpha): number {
 }
 
 let serial = 0
+/** How dim the glow rests between bars while it pulses to the music. */
+const BREATHE_REST = 0.8
 
 export class SideGlow {
   private readonly parts: { edge: Edge; key: string; tex: Phaser.Textures.CanvasTexture; img: Phaser.GameObjects.Image; colour: number | null }[] = []
@@ -110,6 +112,20 @@ export class SideGlow {
       this.parts.push({ edge, key, tex, img, colour: null })
     }
     scene.events.once('shutdown', () => this.destroy())
+  }
+
+  private shown = 1
+
+  /**
+   * Breathe with the music: while the beat clock is live the glow rests a
+   * touch dimmer and swells back to full on each bar's first beat (`level`
+   * 0..1). Not pulsing: as drawn. Cheap enough for every frame.
+   */
+  breathe(pulsing: boolean, level: number): void {
+    const a = pulsing ? BREATHE_REST + (1 - BREATHE_REST) * level : 1
+    if (Math.abs(a - this.shown) < 0.004) return
+    this.shown = a
+    for (const p of this.parts) if (p) p.img.setAlpha(a)
   }
 
   /** Every glow image (to hand to a camera). */

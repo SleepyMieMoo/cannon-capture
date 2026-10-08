@@ -188,7 +188,7 @@ export class TitleScene extends Phaser.Scene {
               skin: loadSkin(),
               colour: loadColour(),
               difficulty: loadMenuPrefs().difficulty,
-              music: { on: music.playing, volume: music.settings.volume, track: music.current, default: music.settings.track },
+              music: { on: music.playing, volume: music.settings.volume, track: music.current, default: music.settings.track, pulse: music.settings.pulse },
               tabbed: { music: music.settings.keepHidden, pauseVsAi: loadTabPrefs().pauseVsAi },
               motion: { pref: loadMotionPref(), reduced: !motionOK() },
             }),

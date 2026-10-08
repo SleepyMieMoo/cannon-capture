@@ -147,6 +147,33 @@ html .mm-btn svg, html .mm-corner svg { transition: translate .2s var(--cc-back)
 html :is(.mm-seg, .mm-skin)[aria-pressed="true"], html .mm-card.on, html .bh-btn[aria-pressed="true"] { animation: cc-tick .22s var(--cc-back); }
 html .rp-btns .mm-btn.primary:not(:disabled):hover { transform: translateY(-1px) scale(1.01); }
 
+/* ---- pulse to the music (src/ui/beatPulse.ts) ----
+   html.cc-pulsing only while music is audible; cc-beat-a / cc-beat-b swap on
+   every beat (two names, so the animation restarts), cc-down marks a bar's
+   first beat. Each pulse peaks on the beat and fades well before the next. */
+html.cc-pulsing .jb-eq i { animation: none; transform: scaleY(.3); }
+html.cc-pulsing.cc-beat-a .jb-eq i { animation: cc-eq-a .42s cubic-bezier(.2, .7, .4, 1) both; }
+html.cc-pulsing.cc-beat-b .jb-eq i { animation: cc-eq-b .42s cubic-bezier(.2, .7, .4, 1) both; }
+html.cc-pulsing .jb-eq i:nth-child(1) { --eq: .75; }
+html.cc-pulsing .jb-eq i:nth-child(2) { --eq: .55; animation-delay: 20ms; }
+html.cc-pulsing .jb-eq i:nth-child(3) { --eq: .65; animation-delay: 40ms; }
+html.cc-pulsing.cc-down .jb-eq i { --eq: 1; }
+@keyframes cc-eq-a { from { transform: scaleY(var(--eq)); } to { transform: scaleY(.3); } }
+@keyframes cc-eq-b { from { transform: scaleY(var(--eq)); } to { transform: scaleY(.3); } }
+html .mm-home .mm-title::before, html .mm-home [data-id="play"]::before, html .bh-tug::after { content: ''; position: absolute; pointer-events: none; opacity: 0; }
+html .mm-home .mm-title::before { inset: -10% -4%; z-index: -1; background: radial-gradient(closest-side, ${rgba(theme.player, 0.13)}, transparent); }
+html .mm-home [data-id="play"]::before { inset: 0; border-radius: inherit; box-shadow: 0 0 16px 2px ${rgba(theme.player, 0.3)}; }
+html .bh-tug { position: relative; }
+html .bh-tug::after { inset: 0; border-radius: inherit; background: linear-gradient(180deg, rgba(255, 255, 255, .5), transparent 60%); }
+html.cc-pulsing.cc-down.cc-beat-a .mm-home :is(.mm-title, [data-id="play"])::before { animation: cc-bar-a .5s ease-out both; }
+html.cc-pulsing.cc-down.cc-beat-b .mm-home :is(.mm-title, [data-id="play"])::before { animation: cc-bar-b .5s ease-out both; }
+html.cc-pulsing.cc-down.cc-beat-a .bh-tug::after { animation: cc-shine-a .45s ease-out both; }
+html.cc-pulsing.cc-down.cc-beat-b .bh-tug::after { animation: cc-shine-b .45s ease-out both; }
+@keyframes cc-bar-a { from { opacity: 1; } to { opacity: 0; } }
+@keyframes cc-bar-b { from { opacity: 1; } to { opacity: 0; } }
+@keyframes cc-shine-a { from { opacity: .22; } to { opacity: 0; } }
+@keyframes cc-shine-b { from { opacity: .22; } to { opacity: 0; } }
+
 /* ---- reduce motion: everything still, nothing moves ---- */
 html.cc-calm *, html.cc-calm *::before, html.cc-calm *::after {
   animation-duration: 1ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important;
@@ -156,6 +183,7 @@ html.cc-calm :is(${PRESSABLE}):is(:hover, :active) { transform: none !important;
 html.cc-calm .rp-confetti { display: none !important; }
 html.cc-calm :is(.mm-btn, .mm-corner) svg, html.cc-calm .ht-btn, html.cc-calm .rp-btns .mm-btn { scale: none !important; translate: none !important; rotate: none !important; }
 html.cc-calm .jb-eq i { animation: none !important; transform: scaleY(.7); }
+html.cc-calm :is(.mm-title, [data-id="play"])::before, html.cc-calm .bh-tug::after { animation: none !important; opacity: 0 !important; }
 `
   document.head.appendChild(Object.assign(document.createElement('style'), { id: 'cc-motion', textContent: css }))
 }
