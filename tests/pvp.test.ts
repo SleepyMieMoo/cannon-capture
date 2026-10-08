@@ -7,6 +7,7 @@ import { withDifficulty } from '../src/editor/maps'
 import { encodeSnap, applySnap, sideMapper } from '../src/net/snapshot'
 import { PvpClient, PvpHost, flipLevel, joinRoom, type StartMsg } from '../src/net/pvp'
 import { loopbackPair } from '../src/net/transport'
+import { PVP } from '../src/config/pvp'
 import type { LevelDef } from '../src/types'
 import { mirrored } from './helpers/arena'
 
@@ -302,6 +303,61 @@ describe('host and second player over a fake network', () => {
     hostEnd.flush()
     expect(left).toBe(true)
     expect(host.joined).toBe(false)
+    host.close(false)
+  })
+
+  it('after a hidden tab the second player jumps to the live round (no stall) without replaying a burst of old events', () => {
+    const [hostEnd, clientEnd] = loopbackPair()
+    const level = withDifficulty(mirrored(3), 'hard')
+    const host = new PvpHost(hostEnd, level, 'match-h', 'enemy', SIM_STEP_MS)
+    const sim = pvpSim(level, host.log.tap({}))
+    host.attach(sim)
+    // Everyone shoots at the first cannon of the other side (events: fired, bounce, hit...).
+    for (const c of sim.cannons) {
+      if (c.side === 'neutral') continue
+      const foe = sim.cannons.find((o) => o.side !== c.side && o.side !== 'neutral')!
+      applyOrder(sim, c.side, { t: 'aim', cannon: c.id, at: { cannon: foe.id } })
+    }
+    let start: StartMsg | null = null
+    const cancel = joinRoom(clientEnd, (s) => (start = s), () => {})
+    hostEnd.flush()
+    clientEnd.flush()
+    cancel()
+    const client = new PvpClient(clientEnd, start!, true, false)
+    const view = pvpSim(flipLevel(start!.level))
+    let replayed = 0
+    const handlers: SimEvents = { fired: () => replayed++, bounce: () => replayed++, hit: () => replayed++, captured: () => replayed++ }
+    const hostStep = () => {
+      sim.step(SIM_STEP_MS)
+      host.stepped()
+    }
+    for (let i = 0; i < 120; i++) {
+      hostStep()
+      clientEnd.flush()
+      client.update(view, handlers, SIM_STEP_MS)
+    }
+    // Hidden for 40 s: messages still arrive, but no frames are drawn.
+    for (let i = 0; i < 60 * 40 && !sim.ended; i++) {
+      hostStep()
+      clientEnd.flush()
+    }
+    const queued = (client as unknown as { events: unknown[] }).events.length
+    expect(sim.ended).toBeNull()
+    expect(queued).toBeGreaterThan(200)
+    expect(queued).toBeLessThanOrEqual(PVP.maxQueuedEvents)
+    // Back: the first frame (Phaser resets the frame time on return) shows the live round.
+    replayed = 0
+    client.update(view, handlers, SIM_STEP_MS)
+    expect(sim.clock - view.clock).toBeLessThan(250)
+    // Only about the last second's worth (before: every one of them in one frame).
+    expect(replayed).toBeLessThan(60)
+    // And it keeps up afterwards.
+    for (let i = 0; i < 60 && !sim.ended; i++) {
+      hostStep()
+      clientEnd.flush()
+      client.update(view, handlers, SIM_STEP_MS)
+    }
+    expect(Math.abs(sim.clock - view.clock - PVP.interpDelayMs)).toBeLessThan(60)
     host.close(false)
   })
 

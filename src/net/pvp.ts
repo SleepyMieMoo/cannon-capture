@@ -259,6 +259,8 @@ export class PvpClient {
       this.snaps.push(msg.s)
       if (this.snaps.length > 12) this.snaps.shift()
       for (const ev of msg.s.ev) this.events.push(ev)
+      // A hidden tab draws nothing for a while: keep only the newest (the rest are stale by then).
+      if (this.events.length > PVP.maxQueuedEvents) this.events.splice(0, this.events.length - PVP.maxQueuedEvents / 2)
     } else if (msg.t === 'start') {
       if (msg.match !== this.start.match) this.onStart?.(msg)
     } else if (msg.t === 'ack') {
@@ -319,7 +321,9 @@ export class PvpClient {
     const all = latest.paused || latest.winner !== null
     let n = 0
     while (n < this.events.length && (all || Number(this.events[n][0]) <= this.renderClock)) n++
-    if (n > 0) for (const ev of this.events.splice(0, n)) replayEvent(ev, view, handlers, this.flip)
+    // Long past ones (the picture jumped ahead after a hidden tab) are dropped: the snapshot shows their result.
+    const stale = this.renderClock - PVP.staleEventMs
+    if (n > 0) for (const ev of this.events.splice(0, n)) if (Number(ev[0]) >= stale) replayEvent(ev, view, handlers, this.flip)
   }
 
   close(sayBye: boolean): void {

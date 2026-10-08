@@ -70,19 +70,8 @@ export class TitleBgScene extends Phaser.Scene {
     this.add.graphics().setDepth(50).fillStyle(theme.bg, 0.2).fillRect(-200, -200, GAME_WIDTH + 400, GAME_HEIGHT + 400)
     this.cameras.main.fadeIn(700, 20, 14, 12)
     this.input.enabled = false
-    // Browsers stop drawing hidden tabs anyway; sleeping makes sure the round stops too.
-    const hide = (): void => {
-      if (this.scene.isActive()) this.scene.sleep()
-    }
-    const show = (): void => {
-      if (this.scene.isSleeping()) this.scene.wake()
-    }
-    this.game.events.on(Phaser.Core.Events.HIDDEN, hide)
-    this.game.events.on(Phaser.Core.Events.VISIBLE, show)
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.game.events.off(Phaser.Core.Events.HIDDEN, hide)
-      this.game.events.off(Phaser.Core.Events.VISIBLE, show)
-    })
+    // Nothing to do when the tab is hidden: it gets no frames, so the round waits by itself.
+    // (It used to sleep here, and could stay asleep after alt-tab: see demoWatch.ts.)
   }
 
   update(time: number, delta: number): void {

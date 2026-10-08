@@ -19,6 +19,14 @@ export const PVP = {
   heartbeatMs: 1000,
   /** ...and counts the other as gone after this long without a word. */
   timeoutMs: 4000,
+  /**
+   * Events the picture has passed by more than this are not replayed: after a
+   * hidden tab the picture jumps to now, and replaying everything missed would
+   * be one burst of sounds and sparks (the snapshot already shows the result).
+   */
+  staleEventMs: 1000,
+  /** Most events kept waiting for the picture (a hidden tab keeps receiving them). */
+  maxQueuedEvents: 600,
   lagMs: num('lag'),
   jitterMs: num('jitter'),
 }
