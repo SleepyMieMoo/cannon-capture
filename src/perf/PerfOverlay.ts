@@ -25,6 +25,8 @@ export interface PerfBattle {
   cannons: () => number
   shots: () => number
   sounds: () => number
+  /** Effects quality (e.g. "high (auto)") and live particles. */
+  fx?: () => { label: string; particles: number }
   /** Online battles: the connection. */
   net?: () => PerfNet | null
 }
@@ -135,7 +137,7 @@ export class PerfMonitor {
       sim: b ? recent(this.sim) : null,
       ai: b ? recent(this.ai) : null,
       look: b ? recent(this.look) : null,
-      counts: b ? { cannons: b.cannons(), shots: b.shots(), sounds: b.sounds() } : null,
+      counts: b ? { cannons: b.cannons(), shots: b.shots(), sounds: b.sounds(), ...(b.fx ? fxCounts(b.fx()) : {}) } : null,
       context: this.context(),
       net: b?.net?.() ?? null,
     }
@@ -277,7 +279,7 @@ export class PerfMonitor {
     const am = (x: { avg: number; max: number } | null) => (x ? `${num(x.avg)}<i>/${num(x.max)}</i>` : '–')
     this.q('pf-sim').innerHTML = s.sim ? `sim ${am(s.sim)} · AI ${am(s.ai)} · look-ahead ${am(s.look)} ms` : 'sim – (no battle running)'
     this.q('pf-gfx').innerHTML = `update ${am(s.logic)} · render ${am(s.render)} ms`
-    this.q('pf-count').textContent = s.counts ? `${plural(s.counts.cannons, 'cannon')} · ${plural(s.counts.shots, 'shot')} · ${plural(s.counts.sounds, 'sound')}` : '–'
+    this.q('pf-count').textContent = s.counts ? countsText(s.counts) : '–'
     const net = this.q('pf-net')
     net.hidden = !s.net
     if (s.net) {
@@ -344,6 +346,15 @@ export class PerfMonitor {
       if (msg.isConnected) msg.textContent = ''
     }, 4000)
   }
+}
+
+function fxCounts(f: { label: string; particles: number }): { fx: string; particles: number } {
+  return { fx: f.label, particles: f.particles }
+}
+
+function countsText(c: NonNullable<PerfSnapshot['counts']>): string {
+  const base = `${plural(c.cannons, 'cannon')} · ${plural(c.shots, 'shot')} · ${plural(c.sounds, 'sound')}`
+  return c.fx ? `${base} · fx ${c.fx}, ${c.particles ?? 0} particles` : base
 }
 
 function isTyping(el: Element | null): boolean {

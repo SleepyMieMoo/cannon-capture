@@ -1,3 +1,4 @@
+import { fxLabel } from '../render/vfx/fxPrefs'
 import Phaser from 'phaser'
 import { perf } from '../perf/PerfOverlay'
 import { applyAudioSettings, preloadSfx, previewPop } from '../audio/Sfx'
@@ -191,6 +192,7 @@ export class TitleScene extends Phaser.Scene {
               music: { on: music.playing, volume: music.settings.volume, track: music.current, default: music.settings.track, pulse: music.settings.pulse },
               tabbed: { music: music.settings.keepHidden, pauseVsAi: loadTabPrefs().pauseVsAi },
               motion: { pref: loadMotionPref(), reduced: !motionOK() },
+              effects: fxLabel(),
             }),
           )
         },

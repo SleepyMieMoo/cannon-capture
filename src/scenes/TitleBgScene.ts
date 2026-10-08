@@ -14,7 +14,9 @@ import { setRingScale } from '../entities/Cannon'
 import { drawBoardSurface } from '../render/boardSurface'
 import { SideGlow, glowColours, glowEdges } from '../render/sideGlow'
 import { bindSceneResolution } from '../render/resolution'
-import { BattleSim } from '../sim/BattleSim'
+import { BattleSim, type SimEvents } from '../sim/BattleSim'
+import { Vfx } from '../render/vfx/Vfx'
+import { currentFxConfig, onFxChange } from '../render/vfx/fxPrefs'
 import { beatPulse } from '../ui/beatPulse'
 import type { LevelDef } from '../types'
 
@@ -35,6 +37,8 @@ export class TitleBgScene extends Phaser.Scene {
   private fx!: Phaser.GameObjects.Graphics
   private index = 0
   private glow?: SideGlow
+  /** The demo's effects: never above Low behind the menu, no camera shake. */
+  private vfx: Vfx | null = null
 
   constructor() {
     super('titlebg')
@@ -50,7 +54,17 @@ export class TitleBgScene extends Phaser.Scene {
     level.walls.forEach((rect) => new Wall(this, rect))
     this.fans = level.fans.map((def) => new Fan(this, def))
     this.fx = this.add.graphics().setDepth(3)
-    this.sim = new BattleSim(level, this, {}, 'progressive')
+    this.vfx = null
+    const events: SimEvents = {
+      fired: (c) => this.vfx?.fired(c),
+      bounce: (x, y) => this.vfx?.bounce(x, y),
+      hit: (x, y, side, kind) => this.vfx?.hit(x, y, side, kind),
+      blocked: (x, y, shield, _side, kind) => this.vfx?.blocked(x, y, shield, kind),
+      shieldBroken: (c) => this.vfx?.shieldBroken(c),
+      captured: (c) => this.vfx?.captured(c),
+      healed: (c) => this.vfx?.healed(c),
+    }
+    this.sim = new BattleSim(level, this, events, 'progressive')
     this.sim.addAi('player', 'normal')
     // A short, silent planning grace (no 3-2-1 behind the menu): both AIs line up before anyone fires.
     this.sim.startCountdown(TUNING.demoCountdownMs)
@@ -64,6 +78,10 @@ export class TitleBgScene extends Phaser.Scene {
     const glow = new SideGlow(this, board, glowEdges(this.sim.cannons, board))
     this.glow = glow
     glow.paint(glowColours(vsAiColours(loadColour())))
+    const vfx = new Vfx(this, this.sim.cannons, this.fans, currentFxConfig('demo'), { board })
+    this.vfx = vfx
+    const offFx = onFxChange(() => vfx.setConfig(currentFxConfig('demo')))
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, offFx)
     const offColour = onColourChange((c) => {
       applyTeamColours(vsAiColours(c))
       glow.paint(glowColours(vsAiColours(c)))
@@ -84,7 +102,8 @@ export class TitleBgScene extends Phaser.Scene {
     if (!this.sim.ended) this.sim.step(dt)
     for (const fan of this.fans) fan.draw(time)
     setRingScale(this.cameras.main.zoom / (this.scale.displayScale.x || 1))
-    for (const c of this.sim.cannons) c.draw(time)
+    this.vfx?.update(dt, time, this.sim.cannons, this.sim.shots, this.fans)
+    for (const c of this.sim.cannons) c.draw(time, this.vfx?.cannonFx ?? null)
     const g = this.fx
     g.clear()
     for (const shot of this.sim.shots) {

@@ -69,6 +69,19 @@ export function haloR(): number {
   return trackR() + 5
 }
 
+/**
+ * Drawing touches a scene can ask for (Effects quality, Reduce motion): the
+ * barrel eases into its turns and kicks back when it fires, the cannon
+ * jitters when hit, and wobbles when nearly captured. All off by default.
+ */
+export interface CannonFx {
+  recoil: boolean
+  wobble: boolean
+}
+
+/** How far each barrel kicks back when it fires (px), and the muzzle flash time it follows. */
+const RECOIL_PX: Record<CannonKind, number> = { normal: 5, sniper: 6, machinegun: 2.5, shield: 0 }
+
 /** A cannon's drawable state, as sent to a network view (net/snapshot.ts). Cannons are named by id. */
 export interface CannonNet {
   side: Side
@@ -170,6 +183,9 @@ export class Cannon {
   shieldReturned = false
   private shieldFlash = 0
   private shieldBreakFx = 0
+  /** The barrel's drawn direction (eases after `angle` when effects are on); NaN: not drawn yet. */
+  private shown = NaN
+  private lastDraw = -1
 
   constructor(
     scene: Phaser.Scene | null,
@@ -557,8 +573,32 @@ export class Cannon {
     return ball
   }
 
-  draw(time: number): void {
+  /** Shots fired so far (a machine gun's flash alternates barrels with it). */
+  get shotCount(): number {
+    return this.shotsFired
+  }
+
+  /** Where the barrel is drawn pointing (it eases after `angle` with effects on). */
+  get shownAngle(): number {
+    return Number.isNaN(this.shown) ? this.angle : this.shown
+  }
+
+  /** Ease the drawn barrel toward the real one (a shield's barrier is never drawn off its real place). */
+  private easeBarrel(time: number, fx: CannonFx | null): void {
+    const dt = this.lastDraw < 0 ? 0 : Math.min(100, Math.max(0, time - this.lastDraw))
+    this.lastDraw = time
+    if (!fx?.recoil || Number.isNaN(this.shown) || this.kind === 'shield') {
+      this.shown = this.angle
+      return
+    }
+    const d = angleDelta(this.shown, this.angle)
+    // About 30 ms behind: soft starts and stops, never visibly off where it fires.
+    this.shown = Math.abs(d) < 1e-4 ? this.angle : this.shown + d * (1 - Math.exp(-dt / 30))
+  }
+
+  draw(time: number, fx: CannonFx | null = null): void {
     if (!this.body || !this.barrel || !this.root) return
+    this.easeBarrel(time, fx)
     const threatened =
       this.captureAttacker !== null
         ? lerpColor(
@@ -678,6 +718,17 @@ export class Cannon {
       }
     }
 
+    // Effects: the barrel kicks back as it fires, a hit jolts the cannon, and one nearly captured wobbles.
+    let kick = 0
+    if (fx?.recoil && this.muzzle > 0) {
+      const k = this.muzzle / (this.kind === 'machinegun' ? 70 : 110)
+      kick = RECOIL_PX[this.kind] * k * k
+    }
+    this.barrel.setPosition(-Math.cos(angle) * kick, -Math.sin(angle) * kick)
+    const jolt = fx?.recoil ? this.hitFlash * 1.8 : 0
+    this.root.setPosition(this.x + (jolt ? Math.sin(time * 0.13 + this.x) * jolt : 0), this.y + (jolt ? Math.cos(time * 0.17 + this.y) * jolt : 0))
+    const danger = fx?.wobble && this.captureAttacker && this.captureAttacker !== this.side ? this.captureProgress / TUNING.captureThreshold : 0
+    this.body.setRotation(danger > 0.6 ? Math.sin(time / 85) * 0.05 * ((danger - 0.6) / 0.4) : 0)
     this.root.setScale(this.pop)
     this.root.setDepth(this.selected ? 6 : 5)
   }
@@ -816,6 +867,6 @@ export class Cannon {
   }
 
   private facing(): number {
-    return this.angle
+    return this.shownAngle
   }
 }

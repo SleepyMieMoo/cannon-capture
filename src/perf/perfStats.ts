@@ -147,7 +147,7 @@ export interface PerfSnapshot {
   sim: { avg: number; max: number } | null
   ai: { avg: number; max: number } | null
   look: { avg: number; max: number } | null
-  counts: { cannons: number; shots: number; sounds: number } | null
+  counts: { cannons: number; shots: number; sounds: number; fx?: string; particles?: number } | null
   /** What is on screen, e.g. 'battle: Huge Arena (huge, impossible)'. */
   context: string
   /** Online: the connection (left out otherwise). */
@@ -208,7 +208,7 @@ export function perfReport(s: PerfSnapshot): string {
     `logic ${am(s.logic)} ms`,
     s.sim ? `sim ${am(s.sim)} ms (AI ${am(s.ai)}, look-ahead ${am(s.look)})` : 'sim -',
     `render ${am(s.render)} ms`,
-    s.counts ? `${plural(s.counts.cannons, 'cannon')}, ${plural(s.counts.shots, 'shot')}, ${plural(s.counts.sounds, 'sound')}` : 'no battle',
+    s.counts ? `${plural(s.counts.cannons, 'cannon')}, ${plural(s.counts.shots, 'shot')}, ${plural(s.counts.sounds, 'sound')}${s.counts.fx ? `, effects ${s.counts.fx} (${s.counts.particles ?? 0} particles)` : ''}` : 'no battle',
     ...(s.net ? [`net ${netText(s.net)}`] : []),
     `canvas ${s.canvas.w}x${s.canvas.h} (css ${s.canvas.cssW}x${s.canvas.cssH}, DPR ${+s.canvas.dpr.toFixed(2)})`,
     s.gpu ? `${s.renderer} (${s.gpu})` : s.renderer,
