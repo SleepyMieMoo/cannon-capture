@@ -9,7 +9,8 @@ import type { AiLevel, CannonKind, LevelDef, Point, Rect, Side } from '../types'
 import { Broadphase, type BallisticsOpts, type Barrier, type Body } from './ballistics'
 import { LaneBuilder, lanesOf, levelFans, shotOpts, type LaneTable } from './solver'
 
-export type Outcome = 'win' | 'lose'
+/** How a round ended, for gold: 'draw' only in player vs player (the time limit with equal cannons). */
+export type Outcome = 'win' | 'lose' | 'draw'
 
 /** Puzzle: lose once out of aims and no neutral has been hit for this long. */
 export const PUZZLE_STALL_MS = 5000
@@ -155,6 +156,30 @@ export class BattleSim {
     this.pvp = true
     this.humans = new Set<Side>(['player', 'enemy'])
     this.ais.length = 0
+  }
+
+  /**
+   * Player vs player: hand a side to an AI (a player left) or back to its
+   * person (`null`). Only one AI per side.
+   */
+  setController(side: Side, ai: AiLevel | null): void {
+    const humans = new Set(this.humans)
+    for (let i = this.ais.length - 1; i >= 0; i--) if (this.ais[i].side === side) this.ais.splice(i, 1)
+    if (ai) {
+      humans.delete(side)
+      this.addAi(side, ai)
+    } else humans.add(side)
+    this.humans = humans
+  }
+
+  /** Which AI (if any) plays `side`. */
+  aiFor(side: Side): AiController | null {
+    return this.ais.find((ai) => ai.side === side) ?? null
+  }
+
+  /** End the round now (player vs player: the time limit). */
+  endMatch(result: Outcome, reason = ''): void {
+    if (!this.ended) this.finish(result, reason)
   }
 
   /** True for a side whose orders come from a person. */
@@ -509,9 +534,10 @@ export class BattleSim {
     return best
   }
 
-  /** Who won: gold for 'win', pink for 'lose', null while it is still on. */
+  /** Who won: gold for 'win', pink for 'lose', neutral for a draw, null while it is still on. */
   get winner(): Side | null {
-    return this.ended === 'win' ? 'player' : this.ended === 'lose' ? 'enemy' : null
+    // A draw is "neutral" won.
+    return this.ended === 'win' ? 'player' : this.ended === 'lose' ? 'enemy' : this.ended === 'draw' ? 'neutral' : null
   }
 
   private checkOutcome(): void {

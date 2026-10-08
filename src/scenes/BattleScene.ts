@@ -39,6 +39,9 @@ import { applyOrder, type Order, type OrderResult } from '../sim/orders'
 import type { SimEvents } from '../sim/BattleSim'
 import { PvpClient, PvpHost, flipLevel, type StartMsg } from '../net/pvp'
 import { randomId, type Transport } from '../net/transport'
+import type { OnlineRoom, OnlineStart } from '../net/onlineClient'
+import { clock, endTexts, nameOnSide, netLine, opponentLine, pauseCheck, pauseLabel, rematchLine, sideIndex } from '../net/onlineView'
+import { PVP_RULES } from '../config/pvpRules'
 
 interface Spark {
   x: number
@@ -81,6 +84,11 @@ export interface BattleData {
 export type PvpData =
   | { role: 'host'; room: string; transport: Transport; /** Restart: the player already here. */ peer?: string }
   | { role: 'client'; room: string; transport: Transport; start: StartMsg }
+  /** Online (server/): the server runs the round; this screen draws it and sends orders, like 'client'. */
+  | { role: 'online'; room: string; transport: OnlineRoom; start: OnlineStart }
+
+/** Back to the online room's lobby (the room stays joined). */
+const LOBBY: Route = { scene: 'title', data: { screen: 'lobby' } }
 
 /** In player vs player the menu and leaving the window don't pause the round (the other player is still playing). */
 const NO_HOLD = { paused: false, ended: null, pause: () => false, resume: () => {} }
@@ -138,6 +146,16 @@ export class BattleScene extends Phaser.Scene {
   private simEvents: SimEvents = {}
   /** Player vs player: the other player is here (the host waits until they are). */
   private peerHere = false
+  /** Online: the room (null otherwise). */
+  private online: OnlineRoom | null = null
+  /** Online: this player's side index (0 gold, 1 pink), null when watching. */
+  private me: 0 | 1 | null = null
+  private sawPlaying = false
+  private endRoot: Phaser.GameObjects.Container | null = null
+  private clockText: Phaser.GameObjects.Text | null = null
+  private netText: Phaser.GameObjects.Text | null = null
+  /** When each side's player dropped (for the AI countdown). */
+  private dropAt: [number | null, number | null] = [null, null]
   private hint!: Phaser.GameObjects.Text
   private pauseLink!: Phaser.GameObjects.Text
   /** Paused: a frame round the board and a label at its top (UI camera; never blocks the board). */
@@ -168,6 +186,8 @@ export class BattleScene extends Phaser.Scene {
     this.pvp = data?.pvp ?? null
     // The second player sees the host's map with the sides swapped, so their cannons are "yours" here.
     if (this.pvp?.role === 'client') this.custom = flipLevel(this.pvp.start.level)
+    // Online, everyone sees themselves as gold: pink's player gets the board with the sides swapped.
+    else if (this.pvp?.role === 'online') this.custom = this.pvp.start.side === 'enemy' ? flipLevel(this.pvp.start.level) : this.pvp.start.level
     this.level = this.custom ?? findLevel(data?.levelId) ?? SKIRMISH
     // Player vs player is never a campaign round (no stars, no Next, no progress saved).
     this.levelIndex = this.custom || this.pvp ? -1 : campaignIndex(this.level.id)
@@ -265,6 +285,13 @@ export class BattleScene extends Phaser.Scene {
     this.host = null
     this.client = null
     this.peerHere = false
+    this.online = null
+    this.me = null
+    this.sawPlaying = false
+    this.endRoot = null
+    this.clockText = null
+    this.netText = null
+    this.dropAt = [null, null]
     this.steps.reset()
     const pvp = this.pvp
     if (pvp?.role === 'client') swapSideColours(!PVP.seeSelfAsGold)
@@ -302,7 +329,7 @@ export class BattleScene extends Phaser.Scene {
       events = this.host.log.tap(events)
     }
     // The second player's round is only a picture of the host's: it never runs, so it gets no handlers.
-    this.sim = new BattleSim(this.level, this, pvp?.role === 'client' ? {} : events, DEBUG.bot && !pvp ? undefined : 'progressive')
+    this.sim = new BattleSim(this.level, this, pvp && pvp.role !== 'host' ? {} : events, DEBUG.bot && !pvp ? undefined : 'progressive')
     if (pvp) this.startPvp(pvp)
     // Everything created so far is board content.
     this.children.list.forEach((obj) => this.world(obj))
@@ -459,6 +486,20 @@ export class BattleScene extends Phaser.Scene {
   private order(o: Order): OrderResult {
     if (!this.client) return applyOrder(this.sim, 'player', o)
     if (this.client.lost || this.sim.ended) return { ok: false }
+    if (this.online) {
+      const why = this.me === null ? 'You are watching this match.' : this.online.status !== 'open' ? 'Reconnecting…' : null
+      if (why) {
+        this.popupAtTop(why)
+        return { ok: false }
+      }
+      if (o.t === 'pause' || o.t === 'resume') {
+        const check = pauseCheck(o.t, this.client.latest?.x, this.me, this.sim.paused, this.online.info)
+        if (!check.ok) {
+          if (check.why) this.popupAtTop(check.why)
+          return { ok: false }
+        }
+      }
+    }
     // Check it against the picture first (the host checks again), and show it straight away.
     const res = this.predict(o)
     if (res.ok) this.client.send(o)
@@ -512,9 +553,10 @@ export class BattleScene extends Phaser.Scene {
       host.onRestart = () => this.restart()
       host.attach(this.sim)
       this.peerHere = host.joined
-    } else if (pvp.role === 'client') {
+    } else if (pvp.role === 'client' || pvp.role === 'online') {
       this.sim.makePvp()
-      const client = new PvpClient(pvp.transport, pvp.start, true)
+      const online = pvp.role === 'online'
+      const client = new PvpClient(pvp.transport, pvp.start, online ? pvp.start.side === 'enemy' : true, !online)
       this.client = client
       this.peerHere = true
       client.onStart = (start) => {
@@ -530,13 +572,58 @@ export class BattleScene extends Phaser.Scene {
         this.peerHere = true
         this.pvpBanner()
       }
-      client.onRefused = () => this.popupAtTop('The host refused that order (the round had moved on).')
+      client.onRefused = () => this.popupAtTop(online ? 'The server refused that order (the round had moved on).' : 'The host refused that order (the round had moved on).')
+      if (pvp.role === 'online') this.bindOnline(pvp.transport, pvp.start)
     }
+  }
+
+  /** Online: follow the room (players coming and going, rematch votes, the connection). */
+  private bindOnline(room: OnlineRoom, start: OnlineStart): void {
+    this.online = room
+    this.me = start.spectate ? null : sideIndex(start.side)
+    room.entered = start.match
+    const off = room.onChange(() => this.onRoomChange())
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, off)
+    this.onRoomChange()
+  }
+
+  private onRoomChange(): void {
+    const room = this.online
+    if (!room || this.restarting) return
+    const info = room.info
+    if (info?.phase === 'playing') this.sawPlaying = true
+    else if (this.sawPlaying && !this.sim.ended) {
+      // The room says the match is over but no final picture came: give it a moment, then call it interrupted.
+      this.sawPlaying = false
+      this.time.delayedCall(2500, () => {
+        if (this.restarting || this.sim.ended || this.client?.latest?.winner != null || room.info?.phase === 'playing') return
+        this.showBanner('The match was interrupted (the server restarted). Back to the room…')
+        this.time.delayedCall(3000, () => this.go(LOBBY))
+      })
+    }
+    if (room.closed && !this.sim.ended) this.showBanner(room.error?.msg ?? 'Disconnected from the room.')
+    if (this.shownEnd) this.showEnd(this.sim.ended!)
+  }
+
+  private voteRematch(): void {
+    const info = this.online?.info
+    if (!info || info.you.seat === null) return
+    this.online!.send({ t: 'rematch', on: !info.rematch[info.you.seat] })
   }
 
   /** The player vs player status line along the bottom. */
   private pvpBanner(): void {
     if (!this.pvp || this.shownEnd) return
+    if (this.online) {
+      const info = this.online.info
+      const mins = clock(PVP_RULES.matchMs)
+      this.showBanner(
+        this.me === null
+          ? `Watching room ${this.online.code}: ${nameOnSide(info, 0)} (gold) vs ${nameOnSide(info, 1)} (pink).`
+          : `Online · room ${this.online.code} · you are gold${this.me === 1 ? ' here (pink on the other screen)' : ''}. Take every cannon, or hold the most when the ${mins} clock runs out.`,
+      )
+      return
+    }
     const you = this.pvp.role === 'host' ? 'gold' : PVP.seeSelfAsGold ? 'pink (shown as gold)' : 'pink'
     const msg = this.host
       ? this.peerHere
@@ -875,6 +962,11 @@ export class BattleScene extends Phaser.Scene {
 
   private restart(): void {
     if (this.restarting) return
+    if (this.online) {
+      // Online there is no restart: after a match, R (or the button) votes for a rematch.
+      if (this.ended) this.voteRematch()
+      return
+    }
     if (this.client) {
       // The host starts the new round; it arrives as a "start" (see startPvp).
       this.client.requestRestart()
@@ -913,7 +1005,11 @@ export class BattleScene extends Phaser.Scene {
     this.restarting = true
     this.closeMenu()
     this.input.setDefaultCursor('default')
-    if (this.pvp) {
+    if (this.pvp?.role === 'online') {
+      // Back to the lobby keeps the room; anywhere else leaves it (an AI takes the seat mid-match).
+      this.client?.close(false)
+      if (!(route.scene === 'title' && route.data?.screen === 'lobby')) this.pvp.transport.leave()
+    } else if (this.pvp) {
       // Leaving player vs player: tell the other player, then hang up.
       this.host?.close(true)
       this.client?.close(true)
@@ -931,6 +1027,7 @@ export class BattleScene extends Phaser.Scene {
     this.menuHold.hold()
     // Keys go to the menu while it is open (Esc, R, arrows).
     if (this.input.keyboard) this.input.keyboard.enabled = false
+    if (this.online) return this.openOnlineMenu()
     const route = backRoute(this.ctx)
     const items = [
       { id: 'resume', label: this.ended ? 'Back to the board' : 'Resume', run: () => this.closeMenu(), primary: true, icon: ICONS.play },
@@ -941,6 +1038,16 @@ export class BattleScene extends Phaser.Scene {
     const where = this.levelIndex >= 0 ? `${this.levelIndex + 1}. ${this.level.name}` : this.level.name
     const paused = this.sim.paused
     this.battleMenu.show(paused ? 'Paused' : 'Menu', paused ? `${where}  ·  paused while this menu is open` : where, items)
+  }
+
+  private openOnlineMenu(): void {
+    const items: { id: string; label: string; run: () => void; primary?: boolean; icon?: string }[] = [
+      { id: 'resume', label: this.ended ? 'Back to the board' : 'Back to the match', run: () => this.closeMenu(), primary: true, icon: ICONS.play },
+    ]
+    if (this.ended && this.me !== null) items.push({ id: 'rematch', label: 'Rematch', run: () => (this.closeMenu(), this.voteRematch()) })
+    if (this.ended || this.me === null) items.push({ id: 'lobby', label: 'Back to the room', run: () => this.go(LOBBY) })
+    items.push({ id: 'leave', label: this.ended || this.me === null ? 'Leave the room' : 'Leave the match (an AI takes your side)', run: () => this.go(MAIN_MENU) })
+    this.battleMenu.show('Menu', `Room ${this.online!.code}  ·  ${this.level.name}  ·  the match keeps going while this is open`, items)
   }
 
   closeMenu(): void {
@@ -967,7 +1074,9 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createHud(): void {
-    const title = this.pvp
+    const title = this.online
+      ? `Online  ·  ${this.level.name}  ·  room ${this.online.code}`
+      : this.pvp
       ? `PvP test  ·  ${this.level.name}  ·  ${this.host ? 'host' : 'player 2'}`
       : this.levelIndex >= 0
         ? `${this.levelIndex + 1}. ${this.level.name}${this.isPuzzle ? '  ·  Puzzle' : ''}`
@@ -989,10 +1098,10 @@ export class BattleScene extends Phaser.Scene {
 
     const legend = this.add.graphics().setDepth(10)
     const groups: { side: Side; x: number; label: string }[] = [
-      { side: 'player', x: 504, label: 'You' },
+      { side: 'player', x: 504, label: this.online && this.me === null ? 'Gold' : 'You' },
       { side: 'neutral', x: 616, label: 'Neutral' },
     ]
-    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 756, label: 'Enemy' })
+    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 756, label: this.online ? (this.me === null ? 'Pink' : 'Them') : 'Enemy' })
     const counts: Partial<Record<Side, Phaser.GameObjects.Text>> = {}
     this.counts = counts
     for (const group of groups) {
@@ -1030,7 +1139,17 @@ export class BattleScene extends Phaser.Scene {
       text.on('pointerdown', onClick)
       return text
     }
-    link(GAME_WIDTH - 28, 'Restart', () => this.restart())
+    if (this.online) {
+      // Online: the match clock where Restart was, pauses left and ping under it.
+      this.clockText = this.add
+        .text(GAME_WIDTH - 28, HUD_ROW, clock(PVP_RULES.matchMs), { fontFamily: theme.font, fontSize: '16px', fontStyle: 'bold', color: theme.text })
+        .setOrigin(1, 0.5)
+        .setDepth(10)
+      this.netText = this.add
+        .text(GAME_WIDTH - 28, HUD_ROW + 21, '', { fontFamily: theme.font, fontSize: '12px', color: theme.textMuted })
+        .setOrigin(1, 0.5)
+        .setDepth(10)
+    } else link(GAME_WIDTH - 28, 'Restart', () => this.restart())
     link(GAME_WIDTH - 112, 'Menu', () => this.openMenu())
     link(GAME_WIDTH - 196, 'Settings', () => this.settings.toggle())
     this.pauseLink = link(GAME_WIDTH - 276, 'Pause', () => this.togglePause())
@@ -1051,11 +1170,44 @@ export class BattleScene extends Phaser.Scene {
         this.aimsText.setColor(this.aimsLeft === 0 ? cssHex(theme.enemy) : theme.text)
       }
     }
+    if (this.online) this.refreshOnlineHud()
     const hint = this.hintLine()
     if (this.hint.text !== hint) this.hint.setText(hint)
   }
 
+  private refreshOnlineHud(): void {
+    const x = this.client?.latest?.x
+    const t = performance.now()
+    if (x) {
+      for (const i of [0, 1] as const) {
+        if (x.on[i] || x.ai[i]) this.dropAt[i] = null
+        else this.dropAt[i] ??= t
+      }
+    }
+    const time = clock(x ? x.tl : PVP_RULES.matchMs)
+    if (this.clockText && this.clockText.text !== time) {
+      this.clockText.setText(time)
+      this.clockText.setColor(x && x.tl < 30_000 ? cssHex(theme.enemy) : theme.text)
+    }
+    const net = netLine(x, this.me, this.online!.rttAvg)
+    if (this.netText && this.netText.text !== net) this.netText.setText(net)
+    if (this.sim.paused) {
+      const label = pauseLabel(x, this.me, this.online!.info)
+      if (this.pausedLabel.text !== label) this.pausedLabel.setText(label)
+    }
+  }
+
   private hintLine(): string {
+    if (this.online && !this.ended) {
+      const room = this.online
+      if (room.closed) return room.error?.msg ?? 'Disconnected from the room.'
+      if (room.status !== 'open') return `Connection lost: reconnecting… (after ${PVP_RULES.graceMs / 1000} s an AI plays your side until you are back)`
+      if (this.me === null) return `Watching ${nameOnSide(room.info, 0)} (gold) vs ${nameOnSide(room.info, 1)} (pink).`
+      const them = (1 - this.me) as 0 | 1
+      const line = opponentLine(this.client?.latest?.x, this.me, room.info, this.dropAt[them], performance.now())
+      if (line) return line
+    }
+    if (this.online && this.ended) return endTexts(this.ended, this.me, this.online.info, this.client?.latest?.x?.why, this.tally()).headline
     if (this.pvp && !this.ended) {
       if (this.host && !this.peerHere) return `Waiting for player 2 to join room ${this.pvp.room}…`
       if (this.client && !this.peerHere) return 'The host has left (or stopped answering).'
@@ -1141,7 +1293,66 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showEnd(result: Outcome): void {
+    if (this.online) {
+      this.endRoot?.destroy()
+      this.endRoot = this.uiBlock(() => this.buildOnlineEnd(result))
+      return
+    }
     this.uiBlock(() => this.buildEnd(result))
+  }
+
+  /** Cannons held: this screen's gold ("mine") and pink. */
+  private tally(): { mine: number; theirs: number } {
+    let mine = 0
+    let theirs = 0
+    for (const c of this.cannons) {
+      if (c.side === 'player') mine++
+      else if (c.side === 'enemy') theirs++
+    }
+    return { mine, theirs }
+  }
+
+  /** Online end screen: drawn again whenever the room changes (rematch votes). */
+  private buildOnlineEnd(result: Outcome): Phaser.GameObjects.Container {
+    const info = this.online!.info
+    const root = this.add.container(0, 0).setDepth(20)
+    const dim = this.add.graphics()
+    dim.fillStyle(theme.dim, 0.64)
+    dim.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT)
+    root.add(dim)
+    const cx = GAME_WIDTH / 2
+    const cy = GAME_HEIGHT / 2 + 10
+    const ph = 290
+    const top = cy - ph / 2
+    const panel = this.add.graphics()
+    panel.fillStyle(theme.panel, 0.98)
+    panel.fillRoundedRect(cx - 280, top, 560, ph, 18)
+    const stroke = result === 'draw' ? theme.neutral : result === 'win' ? theme.player : theme.enemy
+    panel.lineStyle(3, stroke, 1)
+    panel.strokeRoundedRect(cx - 280, top, 560, ph, 18)
+    root.add(panel)
+    const { headline, detail } = endTexts(result, this.me, info, this.client?.latest?.x?.why, this.tally())
+    const text = (y: number, s: string, size: number, bold = false, color: string = theme.textMuted) =>
+      root.add(this.add.text(cx, y, s, { fontFamily: theme.font, fontSize: `${size}px`, fontStyle: bold ? 'bold' : 'normal', color, align: 'center', wordWrap: { width: 520 } }).setOrigin(0.5))
+    text(top + 48, headline, 30, true, theme.text)
+    text(top + 92, detail, 16)
+    const by = top + ph - 70
+    if (this.me !== null) {
+      text(top + 130, rematchLine(info), 15, true, info && info.you.seat !== null && info.rematch[1 - info.you.seat] ? cssHex(theme.player) : theme.text)
+      const mine = !!(info && info.you.seat !== null && info.rematch[info.you.seat])
+      const other = info && info.you.seat !== null ? info.seats[1 - info.you.seat] : null
+      const rematch = makeButton(this, cx - 125, by, mine ? 'Cancel rematch' : 'Rematch', () => this.voteRematch(), { width: 220, primary: !mine })
+      if (!other) rematch.setAlpha(0.4).disableInteractive()
+      root.add(rematch)
+      root.add(makeButton(this, cx + 125, by, 'Back to the room', () => this.go(LOBBY), { width: 220, primary: false }))
+      text(by + 46, 'R for rematch  ·  Esc for the menu  ·  sides swap every match', 13)
+    } else {
+      root.add(makeButton(this, cx - 125, by, 'Back to the room', () => this.go(LOBBY), { width: 220 }))
+      root.add(makeButton(this, cx + 125, by, 'Leave the room', () => this.go(MAIN_MENU), { width: 220, primary: false }))
+      text(by + 46, 'You will watch the next match too', 13)
+    }
+    if (DEBUG.enabled) (window as unknown as { __ccResult?: unknown }).__ccResult = { online: true, result, headline, detail, seconds: Math.round(this.sim.clock / 1000) }
+    return root
   }
 
   private buildEnd(result: Outcome): void {

@@ -98,6 +98,28 @@ export function injectMenuStyles(): void {
 .mm-switch::after { content: ''; position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; border-radius: 50%; background: ${cssHex(theme.neutral)}; transition: left .12s, background .12s; }
 .mm-switch:checked { background: ${gold}; }
 .mm-switch:checked::after { left: 24px; background: ${cssHex(theme.hud)}; }
+.mm-friends { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: clamp(12px, 2.4vmin, 24px); }
+.mm-input { font: inherit; font-size: 16px; color: ${theme.text}; background: ${rgba(theme.panel, 0.95)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 10px; padding: 8px 10px; min-height: 42px; min-width: 0; width: 100%; box-sizing: border-box; }
+.mm-input:focus { outline: none; border-color: ${gold}; }
+.mm-code-in { text-transform: uppercase; letter-spacing: .3em; font-weight: bold; font-size: 20px; text-align: center; flex: 1; }
+.mm-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.mm-row .mm-btn { flex: none; }
+.mm-err { color: ${cssHex(theme.enemy)}; min-height: 1.2em; margin: 8px 0; }
+.mm-rules { margin-top: 10px; font-size: 12px; }
+.mm-bigcode { font-size: clamp(34px, 7vmin, 52px); font-weight: bold; letter-spacing: .25em; color: ${gold}; text-align: center; background: ${rgba(theme.panel, 0.8)}; border-radius: 12px; padding: 4px 0 4px .25em; user-select: all; }
+.mm-link { font-size: 12px; min-height: 32px; color: ${theme.textMuted}; }
+.mm-seat { background: ${rgba(theme.panel, 0.85)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 12px; padding: 8px 10px; }
+.mm-seat.you { border-color: ${gold}; }
+.mm-seat.empty { border-style: dashed; opacity: .75; }
+.mm-seat .n { font-weight: bold; }
+.mm-seat .m { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: ${theme.textMuted}; }
+.mm-seat .ok { color: ${gold}; }
+.mm-card:disabled { cursor: default; }
+.mm-card:disabled:not(.on) { opacity: .6; }
+.mm-card:disabled:hover:not(.on) { border-color: ${cssHex(theme.boardEdge)}; }
+.mm-soon svg { width: 1.3em; height: 1.3em; flex: none; }
+.mm-soon.live { cursor: pointer; opacity: 1; border-style: solid; border-color: ${gold}; font-size: clamp(13px, 2.1vmin, 16px); padding: 7px 18px; color: ${theme.text}; }
+.mm-soon.live:hover { background: ${rgba(theme.grid, 0.6)}; }
 .mm-range { flex: 1; min-width: 120px; accent-color: ${gold}; height: 28px; }
 .mm-val { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
 .mm-credits { margin: 0; padding-left: 18px; line-height: 1.6; color: ${theme.textMuted}; }

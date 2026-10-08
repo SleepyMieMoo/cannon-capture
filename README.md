@@ -18,7 +18,7 @@ The title screen shows a live AI-vs-AI battle, dimmed and silent, behind the men
 - **Map editor** and **My maps** (play, edit, rename, share, `.json`, import a share code or file) are unchanged.
 - **Settings** has sound on/off, volume (saved on this device) and credits, including the Pixabay credit. Auto-target is explained there but stays an in-battle setting.
 - **How to play** has illustrated tips (aim, capture, swap type, auto-target, pause, camera) and the keys.
-- **Play with friends** shows as "Coming soon". It's the spot for multiplayer and the Discord Activity later.
+- **Play with friends** plays online against a friend (see [Online player vs player](#online-player-vs-player)). Inside the Discord Activity it still shows as "Coming soon".
 - **Back** (top left of every screen) or **Esc** goes up one screen. Arrow keys and Tab move between buttons, Enter picks, and everything works by touch. Phone and embedded-frame sizes fit without the page scrolling; long lists scroll inside their panel.
 - The game's name ("Cannon Capture", a working name), the "by SleepyMie" line and the Levels label all live in `src/config/brand.ts`. `index.html` has the page title for before the code loads.
 
@@ -394,7 +394,7 @@ Never commit or paste the **client secret**; nothing here uses it. For a local b
 **Not done yet:**
 
 - Rich presence (`setActivity`) needs the `rpc.activities.write` scope, so it needs OAuth: `authorize` plus `authenticate`, with the token exchanged on a server that holds the client secret.
-- Multiplayer ("Play with friends").
+- Online play ("Play with friends") inside the Activity: it works on the website; the Activity needs the server mapped under URL Mappings first.
 
 ## Store art
 
@@ -407,9 +407,49 @@ npm run art -- --checks /tmp/art  # also: the icon at 32/64/128 px and shelf-til
 
 It needs Chrome or Chromium (`CHROME_PATH`, else `/usr/bin/google-chrome`). The title uses Verdana, the game's font; without it installed the browser falls back to a similar font. The art page is dev-only and not part of the game build. The cover keeps the title and the main fight in the middle, so the 13:11 crop on the Activity Shelf still shows them.
 
+## Online player vs player
+
+On the website, **Play with friends** on the main menu plays one against one over the internet. No accounts.
+
+1. One player opens **Play with friends**, types a name and presses **Create a room**. The room gets a 4-letter code, and an invite link like `https://sleepymiemoo.github.io/cannon-capture/?room=KQTW` (**Copy invite link**).
+2. The friend opens the link, or types the code under **Join a room**.
+3. The lobby shows both players. The host (whoever made the room) picks the map and presses **Start match**. Anyone who joins after the two players watches.
+
+Rules (all in [`src/config/pvpRules.ts`](src/config/pvpRules.ts)):
+
+- **Fair maps only**: Skirmish and three boards mirrored left/right (Wind Gap, Four Walls, Narrow Duel). No Huge maps. The same tower types and swap rules as single player.
+- **5-minute matches.** Take every cannon to win. When time runs out, whoever holds the most cannons wins; equal is a draw. Paused time doesn't count.
+- **Pauses**: 3 per player per match, each up to 30 s. Both screens pause. Orders you queue during a pause stay hidden from the other player until the round resumes. Only the player who paused can resume early.
+- **You are always gold** on your own screen. Sides swap every match.
+- **Rematch** starts when both players press it (R on the end screen).
+- **Dropping out**: you have 45 s to come back (reload, or the same tab reconnects by itself) and keep your seat. After that, or if you leave, a Hard AI plays your side for the rest of the match. A room stays open while anyone is in it; if the host leaves, the other player becomes host.
+- No records or stars are kept.
+
+How it works:
+
+- **The server** ([`server/`](server)) is a Cloudflare Worker with one Durable Object per room, at `https://cannon-capture-server.sleepymiemoo.workers.dev`. The room runs the same `BattleSim` as the game, in fixed 1/60 s steps, takes orders from the two seated players, and sends each screen a snapshot 20 times a second (the Phase 0 messages: `start`, `snap`, `order`, `ack`). It checks every order (shape, own cannons only, pause rules), limits message size (1 KB) and rate (15 a second; extra messages are dropped, and a flood closes the connection), and closes idle rooms (`PVP_LIMITS`). Rooms are created near the player who makes them (a location hint from their continent).
+- **Cheap on the free plan.** Between matches a room sleeps (WebSocket hibernation) and pings are answered without waking it. The match loop only runs while a match is on (at most 5 minutes plus pauses). Traffic is about 16 KB/s per player during a match, all outgoing (free).
+- **The game** ([`src/net/onlineClient.ts`](src/net/onlineClient.ts)) keeps one WebSocket per room, reconnects by itself, and draws the round like Phase 0's player 2. The menu screens are in [`src/menu/onlineMenu.ts`](src/menu/onlineMenu.ts).
+- **Not in Discord yet.** Inside the Discord Activity the button still says "Coming soon" (the Activity frame can only reach URLs mapped in the Developer Portal).
+
+Try it alone: open the game in two different browsers (or one normal and one private window, since a tab keeps its seat through `sessionStorage`). `&lag=150&jitter=40` fakes a slow network on that screen (both directions).
+
+Run the server locally:
+
+```bash
+cd server
+npm install        # once
+npm run dev        # wrangler dev on http://localhost:8787
+npm test           # the Worker and room in workerd (vitest + @cloudflare/vitest-plugin)
+```
+
+Then open the game with `?server=http://localhost:8787` (only localhost addresses are accepted there). The room rules are also tested without Cloudflare in `tests/pvpServer.test.ts` (`npm test` at the root).
+
+Deploys: `.github/workflows/server.yml` tests and deploys the Worker on pushes to `main` that touch `server/` or the shared round code (`src/sim`, `src/net`, `src/levels`, `src/config`, ...). It uses the repository secret `CLOUDFLARE_API_TOKEN` and variable `CLOUDFLARE_ACCOUNT_ID`. By hand: `cd server && npx wrangler deploy` (needs Node 22 and the same two values in the environment).
+
 ## Player vs player test mode (Phase 0)
 
-Real player vs player needs a server (see the PvP plan). This test mode is a step toward it. Two copies of the game in **one browser** play each other. Nothing leaves the browser, and no account or server is needed. It is hidden behind `?pvpdev`:
+This was the step before online play (above), and it still works. Two copies of the game in **one browser** play each other. Nothing leaves the browser, and no account or server is needed. It is hidden behind `?pvpdev`:
 
 - **Split view**: [`?pvpdev=split`](https://sleepymiemoo.github.io/cannon-capture/?pvpdev=split) shows both players side by side. Left is the host, who plays gold. Right is player 2, who plays pink. Click a side to play it. This is the easiest way to try it alone.
 - **Two windows**: open [`?pvpdev`](https://sleepymiemoo.github.io/cannon-capture/?pvpdev), pick a map, then press **Host (gold)** and then **Open player 2 window**. Keep both windows in sight: a browser stops drawing a tab that is hidden behind another one, and the round only runs while the host's window is drawn. You can also join from any other window of the same browser: open `?pvpdev`, type the same room code and press **Join (pink)**.
@@ -436,7 +476,8 @@ How it works:
 - `src/ui` — buttons, stars, the in-play tower swap menu, and the HTML panel overlay used by the editor and My maps.
 - `src/platform` — running as a Discord Activity (SDK handshake, external links, orientation).
 - `src/perf` — the performance overlay (F3).
-- `src/net` — the player vs player test mode: transport, snapshots, host and player 2, and the `?pvpdev` panel.
+- `src/net` — player vs player: snapshots and the order flow, the online room client and lobby messages (`online.ts`, `onlineClient.ts`), and the `?pvpdev` test mode.
+- `server` — the online game server: a Cloudflare Worker (`src/worker.ts`) with one Durable Object per room; the room logic is in `src/room.ts`.
 
 ## Credits
 
@@ -445,4 +486,4 @@ How it works:
 ## Roadmap
 
 - **Discord Activity extras.** Sign-in and rich presence (needs a small token server), then multiplayer per activity instance.
-- **Multiplayer.** Share cannon ownership and shots between players, possibly with Colyseus.
+- **Multiplayer.** Online 1v1 is in (see above). Next: online play inside the Discord Activity, and more than two players.

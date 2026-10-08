@@ -1,0 +1,70 @@
+name: Deploy game server
+
+# The online player vs player server (server/): a Cloudflare Worker with one
+# Durable Object per room, running the same round code as the game. It
+# deploys when the server or the shared round code changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'src/sim/**'
+      - 'src/net/**'
+      - 'src/entities/**'
+      - 'src/levels/**'
+      - 'src/config/**'
+      - 'src/ai/**'
+      - 'src/types.ts'
+      - '.github/workflows/server.yml'
+  pull_request:
+    paths:
+      - 'server/**'
+      - 'src/sim/**'
+      - 'src/net/**'
+      - 'src/levels/**'
+      - 'src/config/**'
+      - '.github/workflows/server.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install
+        run: |
+          npm ci
+          cd server && npm ci
+
+      - name: Test (room rules, then the Worker in workerd)
+        run: |
+          npx vitest run tests/pvpServer.test.ts tests/pvp.test.ts tests/onlineView.test.ts
+          cd server
+          npm run typecheck
+          npm test
+
+      - name: Deploy to Cloudflare
+        if: github.event_name != 'pull_request'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server

@@ -44,6 +44,25 @@ export interface Snap {
   /** The recipient's own queued orders (the other player's stay hidden). */
   q: QueuedRow[]
   ev: EventRow[]
+  /** Online matches: the server's match state. */
+  x?: SnapExtra
+}
+
+/** Online match state, by side index (0 gold, 1 pink). */
+export interface SnapExtra {
+  /** Time left (ms of round time; it stops while paused). */
+  tl: number
+  /** Who paused (0 gold, 1 pink, -1 nobody) and how long until it resumes by itself (ms). */
+  pz: number
+  pzl: number
+  /** Pauses left per side. */
+  pl: [number, number]
+  /** An AI plays this side now (its player left). */
+  ai: [0 | 1, 0 | 1]
+  /** This side's player is connected. */
+  on: [0 | 1, 0 | 1]
+  /** Once over: 'wipe' (no cannons left), 'time' (time limit), 'empty' (everyone left). */
+  why?: 'wipe' | 'time' | 'empty'
 }
 
 const EV = { fired: 1, bounce: 2, hit: 3, blocked: 4, shieldBroken: 5, shieldBack: 6, captured: 7, healed: 8, swapped: 9 } as const
@@ -86,7 +105,7 @@ export class EventLog {
 }
 
 /** Encode the round for a player of `forSide` (only that side's queued orders are included). */
-export function encodeSnap(sim: BattleSim, tick: number, forSide: Side, events: EventRow[] = []): Snap {
+export function encodeSnap(sim: BattleSim, tick: number, forSide: Side, events: EventRow[] = [], extra?: SnapExtra): Snap {
   const index = new Map(sim.cannons.map((c, i) => [c.id, i]))
   const ix = (id: string | null) => (id === null ? -1 : (index.get(id) ?? -1))
   const c = sim.cannons.map((cannon): CannonRow => {
@@ -132,6 +151,7 @@ export function encodeSnap(sim: BattleSim, tick: number, forSide: Side, events: 
     s,
     q,
     ev: events,
+    ...(extra ? { x: extra } : {}),
   }
 }
 
@@ -229,7 +249,7 @@ export function applySnap(view: BattleSim, a: Snap, b: Snap, t: number, latest: 
   view.clock = lerp(a.clock, b.clock, t)
   view.paused = latest.paused
   const winner = latest.winner === null ? null : map(latest.winner)
-  view.ended = winner === null ? null : winner === 'player' ? 'win' : 'lose'
+  view.ended = winner === null ? null : winner === 'player' ? 'win' : winner === 'enemy' ? 'lose' : 'draw'
   const mine = flip ? latest.auto[1] : latest.auto[0]
   view.setAutoTarget(mine, 'player')
   view.setViewQueued(
