@@ -17,6 +17,8 @@ import {
   turnSpeedDegFor,
 } from '../config/kinds'
 import type { CannonKind, Point, Side } from '../types'
+import type { SideSkins, SkinId } from '../config/skins'
+import { drawSkinBody } from '../render/skinDraw'
 
 /** What a shot did to a barrier. */
 export interface AbsorbOutcome {
@@ -122,6 +124,16 @@ export class Cannon {
   /** Drawn: show the "manual" badge (auto-target is off for this cannon right now). */
   manualBadge = false
 
+  /**
+   * The skins each side wears this round (shared by the round's cannons).
+   * A cannon wears its current owner's, so the shape flips on capture. Null: Classic.
+   */
+  skins: SideSkins | null = null
+
+  /** The skin this cannon wears now: its current owner's (neutral: Classic). */
+  get skin(): SkinId {
+    return this.side === 'neutral' || !this.skins ? 'classic' : this.skins[this.side]
+  }
   private readonly body?: Phaser.GameObjects.Graphics
   private readonly barrel?: Phaser.GameObjects.Graphics
   private cooldown: number
@@ -527,12 +539,7 @@ export class Cannon {
     this.body.clear()
     this.body.fillStyle(0x000000, 0.28)
     this.body.fillEllipse(0, 16, TUNING.cannonRadius * 1.8, 12)
-    this.body.fillStyle(color, 1)
-    this.body.fillCircle(0, 0, TUNING.cannonRadius)
-    this.body.fillStyle(0xffffff, 0.2)
-    this.body.fillCircle(-6, -7, TUNING.cannonRadius * 0.42)
-    this.body.lineStyle(3, 0x000000, 0.28)
-    this.body.strokeCircle(0, 0, TUNING.cannonRadius)
+    drawSkinBody(this.body, this.skin, color)
     if (this.kind === 'sniper') this.drawSniperBadge(this.body, color)
     else if (this.kind === 'machinegun') this.drawGunBadge(this.body, color)
     else if (this.kind === 'shield') this.drawShieldBadge(this.body, color)

@@ -12,11 +12,11 @@ It's a standalone browser game with Play vs AI (pick a map and a difficulty), pu
 
 The title screen shows a live AI-vs-AI battle, dimmed and silent, behind the menu. It cycles through Skirmish and the campaign's battle boards. It sleeps while the tab is hidden.
 
-- **Play vs AI** opens a picker. Choose a map (Skirmish, the campaign's five battle boards, or your own battle maps from My maps) and a difficulty (Easy, Normal, Hard or Impossible, each with a one-line description), then **Start battle**. The last map and difficulty are remembered on this device (`cannon-capture:menu:v1`). The campaign levels themselves don't change: here they're plain battles at your difficulty, without the campaign hint, par or stars.
+- **Play vs AI** opens a picker. Choose a map (Skirmish, the campaign's five battle boards, or your own battle maps from My maps) and a difficulty (Easy, Normal, Hard or Impossible, each with a one-line description), then **Start battle**. A compact **Your skin** row under the difficulty changes your cannon skin (the same setting as in Settings) and shows the skin pink will wear. The last map and difficulty are remembered on this device (`cannon-capture:menu:v1`). The campaign levels themselves don't change: here they're plain battles at your difficulty, without the campaign hint, par or stars.
 - **Puzzles** lists the campaign's five puzzles, all open here, with their stars. Wins count toward the campaign. Your own puzzle maps are listed below them. After a win, **Next puzzle** goes to the next one.
 - **Levels** is the original ten-level campaign map (unlocks and stars as before). The label lives in `src/config/brand.ts`, so it can become "Bonus" with a one-line change.
 - **Map editor** and **My maps** (play, edit, rename, share, `.json`, import a share code or file) are unchanged.
-- **Settings** has sound on/off, volume (saved on this device) and credits, including the Pixabay credit. Auto-target is explained there but stays an in-battle setting.
+- **Settings** has sound on/off, volume, your **cannon skin** (all saved on this device) and credits, including the Pixabay credit. Auto-target is explained there but stays an in-battle setting.
 - **How to play** has illustrated tips (aim, capture, swap type, auto-target, pause, camera) and the keys.
 - **Play with friends** plays online against a friend (see [Online player vs player](#online-player-vs-player)). Inside the Discord Activity it still shows as "Coming soon".
 - **Back** (top left of every screen) or **Esc** goes up one screen. Arrow keys and Tab move between buttons, Enter picks, and everything works by touch. Phone and embedded-frame sizes fit without the page scrolling; long lists scroll inside their panel.
@@ -31,6 +31,13 @@ The title screen shows a live AI-vs-AI battle, dimmed and silent, behind the men
 You are gold. The enemy is strawberry pink. Warm grey cannons are neutral and do not fire until someone captures them.
 
 **Ownership rings.** Every cannon you own (the ones you can steer) wears a solid light gold-white ring. Every enemy cannon wears a deep red ring, darker and more saturated than the pink so it stands out on a pink-tinted body. Neutrals have no ring. A missing ring is the clearest way to say "nobody's", and a faint one would only compete with the capture track. The ring shows the current owner only. It flips the moment a cannon is captured and ignores the capture tint, so mid-fight a cannon that has gone orange still says whose it is. Light against red also differs strongly in brightness, so it works with red-green colour blindness. On small screens and when zoomed out the ring is drawn thicker, so it stays about 2.4 px wide on screen (up to a cap). The HUD legend shows the same rings.
+
+**Cannon skins.** A cannon's body shape is its owner's skin: **Classic** (round), **Plated** (rounded square with rivets), **Spiked** (six-point star) or **Hex** (a hexagon with a darker frame, bold enough to tell from round on a phone). Like the ring, the skin follows the current owner, so a captured cannon changes shape along with its ring. Neutrals are always grey Classic with no ring. A skin only changes the outline. The barrel and its badge still show the type, the ring still shows the owner, and shield barriers look the same.
+
+- Pick yours in **Settings → Cannon skin**, or in the **Your skin** row on Play vs AI. It's saved on this device (`cannon-capture:skin:v1`).
+- The default is **Plated**. Neutrals are round, so a round default would give your cannons the same outline as the unowned ones. Plated (square) against the AI's Spiked (star) is also the pair that stays clearest on a phone.
+- Your opponent always wears a different skin. The AI wears the one that contrasts most with yours: Classic, Plated and Hex get Spiked, and Spiked gets Plated, so round never faces hex. Puzzles, editor playtests, the editor itself and the title screen's demo battle use your skin for gold and the AI's pick for pink.
+- Online, each player wears their own pick. If you both picked the same, the pink side wears the contrasting one instead. The server decides once per match and sends it with `start`, so both players and spectators see the same skins. A skin you change in Settings applies from the next room you join. In the `?pvpdev` test mode the host decides by the same rule.
 
 1. Click one of your cannons to select it (it gets a pulsing ring).
 2. Click anywhere on the board to set that spot as its aim point, or click an enemy or neutral cannon to aim at it. Free aiming lets you lead shots, bank them off walls, or let a fan carry them.
@@ -434,6 +441,7 @@ Rules (all in [`src/config/pvpRules.ts`](src/config/pvpRules.ts)):
 - **5-minute matches.** Take every cannon to win. When time runs out, whoever holds the most cannons wins; equal is a draw. Paused time doesn't count.
 - **Pauses**: 3 per player per match, each up to 30 s. Both screens pause. Orders you queue during a pause stay hidden from the other player until the round resumes. Only the player who paused can resume early.
 - **You are always gold** on your own screen. Sides swap every match.
+- **Skins**: each player wears their own pick (see [Cannon skins](#how-to-play)). On a tie, the pink side wears the contrasting skin. Your `hello` carries your skin, and the server's `start` carries both, gold first. Both are optional fields, so older games and servers still work: an older server's `start` has no skins, and the game then shows your pick against its contrast.
 - **Rematch** starts when both players press it (R on the end screen).
 - **Dropping out**: you have 45 s to come back (reload, or the same tab reconnects by itself) and keep your seat. After that, or if you leave, a Hard AI plays your side for the rest of the match. A room stays open while anyone is in it; if the host leaves, the other player becomes host.
 - No records or stars are kept.

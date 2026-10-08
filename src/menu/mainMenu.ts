@@ -1,3 +1,5 @@
+import { CONTRAST, SKINS, SKIN_LABEL } from '../config/skins'
+import { loadSkin, saveSkin } from './skinPref'
 import { BRAND } from '../config/brand'
 import { MAP_SIZES } from '../levels/board'
 import { drawThumb } from '../editor/thumb'
@@ -6,7 +8,7 @@ import { loadProgress } from '../progress'
 import { AI_LEVELS, type AiLevel, type LevelDef } from '../types'
 import type { AudioSettings } from '../audio/audioSettings'
 import { h } from '../ui/overlay'
-import { HOWTO, ICONS, KEYS } from './art'
+import { HOWTO, ICONS, KEYS, skinPreview } from './art'
 import { DIFFICULTY, loadMenuPrefs, pickMap, puzzleChoices, saveMenuPrefs, vsAiMaps, type MenuPrefs, type PuzzleChoice } from './menuModel'
 import { injectMenuStyles } from './menuStyles'
 import { friendsScreen, lobbyScreen, type MenuKit, type OnlineMenu } from './onlineMenu'
@@ -274,6 +276,8 @@ export class MainMenu {
           h('div.mm-segs', {}, ...segs),
           blurb,
           h('div.mm-note', {}, 'Every level fires and turns like you do: difficulty is only how well pink thinks.'),
+          h('div.mm-h', { style: 'margin-top:14px' }, 'Your skin'),
+          this.skinPicker(true),
         ),
       ),
     ],
@@ -304,6 +308,30 @@ export class MainMenu {
       h('div.mm-h', {}, 'Your puzzle maps'),
       mine.length ? h('div.mm-cards', {}, ...mine.map((p, i) => card(p, campaign.length + i))) : h('div.mm-note', {}, 'Make one in the editor (set the map to Puzzle) and it shows up here.'),
     ])
+  }
+
+  /**
+   * The skin picker: one button per skin, with a preview. `small` is the
+   * compact row on the Play vs AI panel. `vs` shows the skin pink wears.
+   */
+  private skinPicker(small: boolean): HTMLElement {
+    let skin = loadSkin()
+    const vsText = (): string => `Pink (the AI) wears ${SKIN_LABEL[CONTRAST[skin]]}.`
+    const vs = h('div.mm-note', {}, vsText())
+    const btns: HTMLButtonElement[] = SKINS.map((s) => {
+      const b = h(small ? 'button.mm-skin.small' : 'button.mm-skin', { type: 'button', dataset: { id: (small ? 'skin-s-' : 'skin-') + s }, 'aria-pressed': String(s === skin), title: SKIN_LABEL[s] },
+        h('span.pv', { innerHTML: skinPreview(s) }),
+        h('span.n', {}, SKIN_LABEL[s]),
+      )
+      b.addEventListener('click', () => {
+        skin = s
+        saveSkin(s)
+        for (const x of btns) x.setAttribute('aria-pressed', String(x === b))
+        vs.textContent = vsText()
+      })
+      return b
+    })
+    return h('div', {}, h(small ? 'div.mm-skins.small' : 'div.mm-skins', { role: 'group', 'aria-label': 'Cannon skin' }, ...btns), vs)
   }
 
   private settings(): HTMLElement {
@@ -345,7 +373,10 @@ export class MainMenu {
             : []),
         ),
         h('div', {},
-          h('div.mm-h', {}, 'Credits'),
+          h('div.mm-h', {}, 'Cannon skin'),
+          this.skinPicker(false),
+          h('div.mm-note', {}, 'Only the body’s shape: the barrel still shows the type, the ring still shows the owner. A captured cannon takes its new owner’s skin. Online, each player wears their own; if you both pick the same, the pink side wears another.'),
+          h('div.mm-h', { style: 'margin-top:16px' }, 'Credits'),
           h('ul.mm-credits', {},
             h('li', {}, h('b', {}, 'Game: '), 'SleepyMie'),
             h('li', {}, h('b', {}, 'Colours: '), 'ChocoNeko’s Dark Choco theme'),

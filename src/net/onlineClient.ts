@@ -1,3 +1,4 @@
+import { loadSkin } from '../menu/skinPref'
 import { PVP } from '../config/pvp'
 import { PVP_RULES } from '../config/pvpRules'
 import type { ClientMsg, RoomInfo, ServerMsg } from './online'
@@ -138,7 +139,7 @@ export class OnlineRoom implements Transport {
       this.downSince = null
       this.pingAt = []
       this.status = 'open'
-      this.sendNow(JSON.stringify({ t: 'hello', token: this.token, name: this.name } satisfies ClientMsg))
+      this.sendNow(JSON.stringify({ t: 'hello', token: this.token, name: this.name, skin: loadSkin() } satisfies ClientMsg))
       this.changed()
     }
     ws.onmessage = (e) => {

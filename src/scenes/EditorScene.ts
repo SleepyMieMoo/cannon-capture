@@ -1,3 +1,5 @@
+import { DEFAULT_SKIN, vsAiSkins, type SideSkins } from '../config/skins'
+import { loadSkin } from '../menu/skinPref'
 import { KINDS, KIND_IDS, kindLabel, nextKind } from '../config/kinds'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
@@ -104,6 +106,8 @@ export class EditorScene extends Phaser.Scene {
   private board: Rect = boardFor(undefined)
   private surface: Phaser.GameObjects.GameObject[] = []
   private cannonViews: Cannon[] = []
+  /** Gold in your skin, pink in the one the AI would wear (as in the playtest). */
+  private skins: SideSkins = vsAiSkins(DEFAULT_SKIN)
   private wallViews: Wall[] = []
   private fanViews: Fan[] = []
   private fx!: Phaser.GameObjects.Graphics
@@ -180,6 +184,7 @@ export class EditorScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.skins = vsAiSkins(loadSkin())
     this.surface = []
     this.cannonViews = []
     this.wallViews = []
@@ -273,6 +278,7 @@ export class EditorScene extends Phaser.Scene {
 
   private makeCannon(def: CannonDef): Cannon {
     const view = new Cannon(this, def.id, def.name, def.x, def.y, def.side, 0, def.kind)
+    view.skins = this.skins
     const aim = this.startAim(def)
     if (aim) view.angle = Math.atan2(aim.y - def.y, aim.x - def.x)
     if (view.root) this.world(view.root)

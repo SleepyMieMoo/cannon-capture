@@ -1,3 +1,4 @@
+import { DEFAULT_SKIN, vsAiSkins, type SideSkins } from '../config/skins'
 import type Phaser from 'phaser'
 import { AiController, aimViaLane } from '../ai/AiController'
 import { aiDifficulty, swapPolicy } from '../ai/towerChoice'
@@ -103,6 +104,16 @@ export class BattleSim {
   /** Scratch list: shields with their barrier up this step. */
   private readonly upShields: Cannon[] = []
 
+  /** Skins per side for drawing (the scene sets them; see config/skins.ts). Shared with every cannon. */
+  readonly skins: SideSkins = vsAiSkins(DEFAULT_SKIN)
+
+  /** Change the round's skins in place (the cannons share this object). */
+  setSkins(s: SideSkins): void {
+    this.skins.player = s.player
+    this.skins.enemy = s.enemy
+    this.skins.neutral = 'classic'
+  }
+
   constructor(
     level: LevelDef,
     scene: Phaser.Scene | null = null,
@@ -126,6 +137,7 @@ export class BattleSim {
         new Cannon(scene, def.id, def.name, def.x, def.y, def.side, (index % 3) * TUNING.fireStaggerMs, def.kind),
       )
     })
+    for (const c of this.cannons) c.skins = this.skins
     for (const def of level.cannons) {
       const cannon = this.byId(def.id)!
       if (def.aimAt) cannon.setTarget(this.byId(def.aimAt) ?? null)

@@ -1,3 +1,5 @@
+import { DEFAULT_SKIN, flipSkins, vsAiSkins, type SideSkins } from '../config/skins'
+import { loadSkin } from '../menu/skinPref'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import type { MapView } from '../editor/maps'
@@ -334,6 +336,8 @@ export class BattleScene extends Phaser.Scene {
     }
     // The second player's round is only a picture of the host's: it never runs, so it gets no handlers.
     this.sim = new BattleSim(this.level, this, pvp && pvp.role !== 'host' ? {} : events, DEBUG.bot && !pvp ? undefined : 'progressive')
+    if (this.host) this.host.localSkin = loadSkin()
+    this.sim.setSkins(this.roundSkins(pvp))
     if (pvp) this.startPvp(pvp)
     // Everything created so far is board content.
     this.children.list.forEach((obj) => this.world(obj))
@@ -546,6 +550,22 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * What each side wears (in this view's sides: 'player' is you). Against the
+   * AI (and in puzzles, playtests): your pick, and the contrasting one for pink.
+   * Two players: the host's/server's decision, flipped when this view is.
+   */
+  private roundSkins(pvp: PvpData | null): SideSkins {
+    const mine = loadSkin()
+    if (!pvp) return vsAiSkins(mine)
+    if (pvp.role === 'host') return this.host!.skins
+    const s = pvp.start.skins
+    if (pvp.role === 'client') return s ? flipSkins(s) : vsAiSkins(mine)
+    // Online: a watcher sees the server's sides as they are. An older server sends no skins: guess.
+    if (!s) return vsAiSkins(pvp.start.spectate ? DEFAULT_SKIN : mine)
+    return pvp.start.side === 'enemy' ? flipSkins(s) : s
+  }
+
   /** Player vs player: hook this screen up to the other player. */
   private startPvp(pvp: PvpData): void {
     if (this.host) {
@@ -553,6 +573,8 @@ export class BattleScene extends Phaser.Scene {
       this.sim.makePvp()
       host.onPeer = (joined) => {
         this.peerHere = joined
+        // The joiner's skin arrives with them.
+        this.sim.setSkins(host.skins)
         this.pvpBanner()
       }
       host.onRestart = () => this.restart()

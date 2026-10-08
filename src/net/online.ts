@@ -5,6 +5,7 @@ import { mirrored } from '../levels/mirrored'
 import type { Order } from '../sim/orders'
 import type { LevelDef, Side } from '../types'
 import type { Snap } from './snapshot'
+import { isSkin, type SideSkins, type SkinId } from '../config/skins'
 
 /**
  * Online player vs player: the messages between the game and the server
@@ -15,7 +16,7 @@ import type { Snap } from './snapshot'
 /** Game to server. */
 export type ClientMsg =
   /** First message on every connection; `token` is this tab's, so a reload gets the same seat back. */
-  | { t: 'hello'; token: string; name: string }
+  | { t: 'hello'; token: string; name: string; skin?: SkinId }
   | { t: 'name'; name: string }
   /** Host: the map for the next match. */
   | { t: 'map'; id: string }
@@ -66,7 +67,11 @@ export interface RoomInfo {
 /** Server to game. */
 export type ServerMsg =
   | RoomInfo
-  | { t: 'start'; match: string; level: LevelDef; side: Side; stepMs: number; spectate?: boolean }
+  /**
+   * `skins`: what each side wears, gold ('player') first, as the server
+   * decided (every client and watcher shows the same). Old servers leave it out.
+   */
+  | { t: 'start'; match: string; level: LevelDef; side: Side; stepMs: number; spectate?: boolean; skins?: SideSkins }
   | { t: 'snap'; match: string; s: Snap }
   | { t: 'ack'; seq: number; ok: boolean }
   | { t: 'error'; code: 'noroom' | 'bad' | 'rate' | 'notallowed' | 'full' | 'closed'; msg: string }
@@ -127,7 +132,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   const m = raw as Record<string, unknown>
   switch (m.t) {
     case 'hello':
-      return typeof m.token === 'string' && m.token.length >= 8 && m.token.length <= 64 ? { t: 'hello', token: m.token, name: cleanName(m.name, '') } : null
+      return typeof m.token === 'string' && m.token.length >= 8 && m.token.length <= 64 ? { t: 'hello', token: m.token, name: cleanName(m.name, ''), ...(isSkin(m.skin) ? { skin: m.skin } : {}) }
+        : null
     case 'name':
       return { t: 'name', name: cleanName(m.name, '') }
     case 'map':
