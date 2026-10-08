@@ -6,3 +6,5 @@ dist
 *.tsbuildinfo
 .scratch/
 .env
+.wrangler
+.dev.vars

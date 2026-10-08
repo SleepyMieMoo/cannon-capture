@@ -202,9 +202,11 @@ export class PvpClient {
     readonly start: StartMsg,
     /** Flip sides so this player's cannons are "player" in the view (the UI acts on those). */
     readonly flip = true,
+    /** Ping the host and watch for silence (Phase 0). Online, the room's connection does that. */
+    beat = true,
   ) {
     this.off = transport.onMessage((msg) => this.handle(msg as HostMsg))
-    this.stopBeat = heartbeat(() => this.beat())
+    this.stopBeat = beat ? heartbeat(() => this.beat()) : () => {}
   }
 
   private beat(): void {

@@ -4,7 +4,7 @@ import type { AiLevel, LevelDef } from '../types'
 export type BattleFrom = 'editor' | 'maps' | 'menu' | 'puzzles'
 
 /** A main-menu screen. */
-export type MenuScreen = 'home' | 'play' | 'puzzles' | 'settings' | 'howto'
+export type MenuScreen = 'home' | 'play' | 'puzzles' | 'settings' | 'howto' | 'friends' | 'lobby'
 
 /** A scene to go to, with its start data. */
 export interface Route {

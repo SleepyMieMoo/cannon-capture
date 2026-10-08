@@ -9,6 +9,7 @@ import { h } from '../ui/overlay'
 import { HOWTO, ICONS, KEYS } from './art'
 import { DIFFICULTY, loadMenuPrefs, pickMap, puzzleChoices, saveMenuPrefs, vsAiMaps, type MenuPrefs, type PuzzleChoice } from './menuModel'
 import { injectMenuStyles } from './menuStyles'
+import { friendsScreen, lobbyScreen, type MenuKit, type OnlineMenu } from './onlineMenu'
 import { MenuNav, vsAiLevel, type MapChoice, type MenuScreen } from './routes'
 
 /** What the menu asks the game to do. */
@@ -24,6 +25,8 @@ export interface MenuActions {
   previewSound(): void
   /** The performance overlay switch (optional so tests can leave it out). */
   perf?: { get(): boolean; set(on: boolean): void; onChange(fn: (on: boolean) => void): () => void }
+  /** Online play with friends (left out inside Discord and in tests). */
+  online?: OnlineMenu
 }
 
 const icon = (svg: string): HTMLSpanElement => h('span', { innerHTML: svg, style: 'display:inline-flex' })
@@ -46,6 +49,14 @@ export class MainMenu {
   private readonly opener = new Map<MenuScreen, string>()
   private readonly onKey = (e: KeyboardEvent): void => this.key(e)
   private readonly offPerf: () => void
+  private teardown: (() => void)[] = []
+  private readonly kit: MenuKit = {
+    button: (id, label, onClick, opts) => this.button(id, label, onClick, opts),
+    screenFrame: (title, sub, body, footer) => this.screenFrame(title, sub, body, footer),
+    open: (screen, from) => this.open(screen, from),
+    back: () => this.back(),
+    onTeardown: (fn) => this.teardown.push(fn),
+  }
 
   constructor(
     private readonly actions: MenuActions,
@@ -67,6 +78,7 @@ export class MainMenu {
   }
 
   destroy(): void {
+    this.runTeardown()
     this.offPerf()
     window.removeEventListener('keydown', this.onKey)
     this.root.remove()
@@ -84,6 +96,7 @@ export class MainMenu {
 
   back(): boolean {
     const leaving = this.nav.screen
+    if (leaving === 'lobby') this.actions.online?.leave()
     if (!this.nav.back()) return false
     this.render(this.opener.get(leaving))
     return true
@@ -106,14 +119,46 @@ export class MainMenu {
     e.preventDefault()
   }
 
+  private runTeardown(): void {
+    for (const fn of this.teardown.splice(0)) fn()
+  }
+
   private render(focusId?: string): void {
+    this.runTeardown()
     const screen = this.nav.screen
     this.root.dataset.screen = screen
     const view =
-      screen === 'home' ? this.home() : screen === 'play' ? this.play() : screen === 'puzzles' ? this.puzzles() : screen === 'settings' ? this.settings() : this.howto()
+      screen === 'home'
+        ? this.home()
+        : screen === 'play'
+          ? this.play()
+          : screen === 'puzzles'
+            ? this.puzzles()
+            : screen === 'settings'
+              ? this.settings()
+              : screen === 'friends' && this.actions.online
+                ? friendsScreen(this.kit, this.actions.online)
+                : screen === 'lobby' && this.actions.online
+                  ? this.lobby(this.actions.online)
+                  : this.howto()
     this.root.replaceChildren(view)
     const focus = (focusId && this.root.querySelector<HTMLElement>(`[data-id="${focusId}"]`)) || this.root.querySelector<HTMLElement>('[data-autofocus]') || this.root.querySelector<HTMLElement>('[data-id="back"]')
     focus?.focus({ preventScroll: true })
+  }
+
+  /** The room screen, drawn again whenever the room changes. */
+  private lobby(online: OnlineMenu): HTMLElement {
+    const room = online.room()
+    if (room) {
+      this.teardown.push(
+        room.onChange(() => {
+          if (this.nav.screen !== 'lobby') return
+          const id = (document.activeElement as HTMLElement | null)?.dataset?.id
+          this.render(id)
+        }),
+      )
+    }
+    return lobbyScreen(this.kit, online)
   }
 
   private button(id: string, label: string, onClick: () => void, opts: { icon?: string; cls?: string; autofocus?: boolean } = {}): HTMLButtonElement {
@@ -138,7 +183,9 @@ export class MainMenu {
 
   private home(): HTMLElement {
     const go = (screen: MenuScreen) => () => this.open(screen, screen)
-    const soon = h('button.mm-soon', { type: 'button', disabled: true, title: 'Coming soon', dataset: { id: 'friends' } }, icon(ICONS.friends), h('b', {}, 'Play with friends'), '· Coming soon')
+    const soon = this.actions.online
+      ? h('button.mm-soon.live', { type: 'button', title: 'Play online against a friend', dataset: { id: 'friends' }, onclick: go('friends') }, icon(ICONS.friends), h('b', {}, 'Play with friends'), '· Online 1v1')
+      : h('button.mm-soon', { type: 'button', disabled: true, title: 'Coming soon', dataset: { id: 'friends' } }, icon(ICONS.friends), h('b', {}, 'Play with friends'), '· Coming soon')
     return h('div.mm-home', {},
       h('div.mm-title', {}, BRAND.title),
       h('div.mm-by', {}, BRAND.byline),
