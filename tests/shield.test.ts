@@ -54,11 +54,12 @@ function events() {
 }
 
 describe('shield tower', () => {
-  it('is a tower type: in the swap menu and editor list, turns at normal speed, never fires', () => {
+  it('is a tower type: in the swap menu and editor list, turns fastest (3x normal), never fires', () => {
     expect(KIND_IDS).toContain('shield')
     expect(KINDS.shield.label).toBe('Shield')
     expect(KINDS.shield.fires).toBe(false)
-    expect(turnSpeedDegFor('shield')).toBe(TUNING.turnSpeedDeg)
+    expect(turnSpeedDegFor('shield')).toBe(TUNING.turnSpeedDeg * 3)
+    expect(turnSpeedDegFor('shield')).toBeGreaterThan(Math.max(...KIND_IDS.filter((k) => k !== 'shield').map(turnSpeedDegFor)))
     const sim = quiet(new BattleSim(lineLevel('player')))
     const s1 = sim.byId('s1')!
     s1.setTarget(sim.byId('ef')!)

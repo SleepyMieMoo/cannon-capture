@@ -56,7 +56,7 @@ export const KINDS: Record<CannonKind, KindSpec> = {
     'shield',
     'Shield',
     () =>
-      `doesn't shoot; its barrier in front soaks ${fmtNum(TUNING.shield.hp)} damage, is down ${fmtNum(TUNING.shield.downMs / 1000)} s when broken, then regrows`,
+      `doesn't shoot; its barrier in front soaks ${fmtNum(TUNING.shield.hp)} damage, is down ${fmtNum(TUNING.shield.downMs / 1000)} s when broken, then regrows; turns fastest`,
   ),
 }
 
