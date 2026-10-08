@@ -1,6 +1,6 @@
 import type Phaser from 'phaser'
 import { TUNING } from '../config/tuning'
-import { lerpColor, shade, sideColor, theme } from '../config/theme'
+import { lerpColor, ownerRing, shade, sideColor, theme } from '../config/theme'
 import { aimAngle, aimShot, type Ball, type Barrier } from '../sim/ballistics'
 import { angleDelta, turnToward } from '../sim/aim'
 import { applyCaptureHit } from '../sim/capture'
@@ -34,6 +34,37 @@ export interface HitOutcome {
 interface SavedAim {
   target: Cannon | null
   aimPoint: Point | null
+}
+
+/**
+ * The ownership ring: a solid ring hugging the body, gold-white on cannons you
+ * own (you can steer them), red on the enemy's, none on neutrals. It shows
+ * the current owner only, so a capture tint can't mislead. Its width (world
+ * px) follows the on-screen scale so it stays about `cssPx` CSS px wide on a
+ * phone; the scene sets it once a frame (setRingScale). Everything drawn
+ * outside it (capture track, selection halo) sits just past it.
+ */
+export const RING = { cssPx: 2.4, minPx: 5, maxPx: 8, width: 5 }
+
+/** Set the ring width for this many CSS px per world px (camera zoom and screen fit). */
+export function setRingScale(cssPerWorld: number): void {
+  const w = RING.cssPx / Math.max(cssPerWorld, 1e-3)
+  RING.width = Math.min(RING.maxPx, Math.max(RING.minPx, w))
+}
+
+/** Centre radius of the ownership ring (its dark edge runs from the body's rim outward). */
+export function ownRingR(): number {
+  return TUNING.cannonRadius + 1 + RING.width / 2
+}
+
+/** Radius of the capture track, just outside the ownership ring. */
+export function trackR(): number {
+  return TUNING.cannonRadius + RING.width + 5.5
+}
+
+/** Radius of the selection / target halo, outside the capture track. */
+export function haloR(): number {
+  return trackR() + 5
 }
 
 /** A cannon's drawable state, as sent to a network view (net/snapshot.ts). Cannons are named by id. */
@@ -506,6 +537,16 @@ export class Cannon {
     else if (this.kind === 'machinegun') this.drawGunBadge(this.body, color)
     else if (this.kind === 'shield') this.drawShieldBadge(this.body, color)
 
+    const ring = ownerRing(this.side)
+    if (ring !== null) {
+      // Ownership ring: the current owner only, never the tint. A dark edge on both sides keeps it apart from the body and the board.
+      const rr = ownRingR()
+      this.body.lineStyle(RING.width + 3, theme.ringEdge, 0.85)
+      this.body.strokeCircle(0, 0, rr)
+      this.body.lineStyle(RING.width, ring, 1)
+      this.body.strokeCircle(0, 0, rr)
+    }
+
     if (this.swapLeft > 0 && this.swapTotal > 0) {
       // Swap reload: a light ring fills up until it can fire again.
       const done = 1 - this.swapLeft / this.swapTotal
@@ -519,21 +560,23 @@ export class Cannon {
 
     if (this.captureAttacker && this.captureProgress > 0) {
       const sweep = (this.captureProgress / TUNING.captureThreshold) * Math.PI * 2
+      const tr = trackR()
       this.body.lineStyle(4, 0x000000, 0.28)
-      this.body.strokeCircle(0, 0, TUNING.cannonRadius + 7)
+      this.body.strokeCircle(0, 0, tr)
       this.body.lineStyle(4, sideColor(this.captureAttacker), 0.95)
       this.body.beginPath()
-      this.body.arc(0, 0, TUNING.cannonRadius + 7, -Math.PI / 2, -Math.PI / 2 + sweep, false)
+      this.body.arc(0, 0, tr, -Math.PI / 2, -Math.PI / 2 + sweep, false)
       this.body.strokePath()
     }
 
     if (this.healFlash > 0) {
       // Heal: a ring in the owner's colour swells outward and fades.
       const t = 1 - this.healFlash
+      const from = ownRingR() + RING.width / 2
       this.body.lineStyle(3, sideColor(this.side), this.healFlash * 0.9)
-      this.body.strokeCircle(0, 0, TUNING.cannonRadius + 4 + t * 16)
+      this.body.strokeCircle(0, 0, from + 2 + t * 16)
       this.body.lineStyle(2, 0xffffff, this.healFlash * 0.5)
-      this.body.strokeCircle(0, 0, TUNING.cannonRadius + 2 + t * 10)
+      this.body.strokeCircle(0, 0, from + t * 10)
     }
 
     if (this.manualBadge) this.drawManualBadge(this.body)
@@ -541,7 +584,7 @@ export class Cannon {
     if (this.selected || this.hovered) {
       const pulse = this.selected ? 0.55 + 0.45 * Math.sin(time / 140) : 0.45
       this.body.lineStyle(2, this.selected ? theme.select : 0xffffff, pulse)
-      this.body.strokeCircle(0, 0, TUNING.cannonRadius + 12)
+      this.body.strokeCircle(0, 0, haloR())
     }
 
     const angle = this.facing()
@@ -655,7 +698,7 @@ export class Cannon {
     // Health bar: the barrier's hp in the team colour, or a pale refill while it is down.
     const s = TUNING.shield
     const w = 36
-    const y = r + 13
+    const y = Math.max(r + 13, trackR() + 4)
     g.fillStyle(0x000000, 0.4)
     g.fillRoundedRect(-w / 2 - 1, y - 1, w + 2, 6, 3)
     if (this.shieldDown > 0) {

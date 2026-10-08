@@ -6,6 +6,7 @@ import { Fan } from '../entities/Fan'
 import { Wall } from '../entities/Wall'
 import { withDifficulty } from '../editor/maps'
 import { CAMPAIGN, SKIRMISH } from '../levels'
+import { setRingScale } from '../entities/Cannon'
 import { drawBoardSurface } from '../render/boardSurface'
 import { bindSceneResolution } from '../render/resolution'
 import { BattleSim } from '../sim/BattleSim'
@@ -67,6 +68,7 @@ export class TitleBgScene extends Phaser.Scene {
     this.sim.pumpLanes(3)
     if (!this.sim.ended) this.sim.step(dt)
     for (const fan of this.fans) fan.draw(time)
+    setRingScale(this.cameras.main.zoom / (this.scale.displayScale.x || 1))
     for (const c of this.sim.cannons) c.draw(time)
     const g = this.fx
     g.clear()

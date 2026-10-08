@@ -108,6 +108,11 @@ export class WorldCamera {
     this.center.y = vh >= bh ? by + bh / 2 : Phaser.Math.Clamp(this.center.y, by + vh / 2, by + bh - vh / 2)
   }
 
+  /** CSS px per world px right now (screen fit, DPR and zoom), e.g. to keep a line readable on a phone. */
+  cssPerWorld(): number {
+    return this.cam.zoom / (this.scene.scale.displayScale.x || 1)
+  }
+
   /** The part of the world on screen right now. */
   visibleRect(): Rect {
     const w = this.view.w / this.zoom
