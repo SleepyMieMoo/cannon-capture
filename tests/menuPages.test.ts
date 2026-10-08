@@ -8,6 +8,8 @@ import { WHATS_NEW, dayLabel, parseWhatsNew } from '../src/menu/whatsNew'
 import { MenuNav } from '../src/menu/routes'
 import { APP_VERSION, COMMIT, versionLabel } from '../src/version'
 import pkg from '../package.json'
+import { MUSIC_KEY } from '../src/audio/musicSettings'
+import { TRACKS } from '../src/audio/musicTracks'
 
 const env = (over: Partial<DebugEnv> = {}): DebugEnv => ({
   version: '0.1.0',
@@ -71,6 +73,14 @@ describe('Copy debug info', () => {
     expect(debugInfo(env({ fps: null, gpu: null, discord: false, canvas: null }))).toContain('Renderer: WebGL2\n')
   })
 
+  it('says how the music is set, when there is a jukebox', () => {
+    const on = settingsText({ sound: true, volume: 0.7, perf: false, skin: 'hex', colour: 'grape', difficulty: 'hard', music: { on: true, volume: 0.35, track: 'singularity', default: 'fartysoup' } })
+    expect(on.music).toBe('on, 35%, singularity (default fartysoup)')
+    const off = settingsText({ sound: true, volume: 0.7, perf: false, skin: 'hex', colour: 'grape', difficulty: 'hard', music: { on: false, volume: 0.35, track: 'singularity', default: 'robotic-spaghetti' } })
+    expect(off.music).toBe('off (default robotic-spaghetti)')
+    expect(env().settings).not.toHaveProperty('music')
+  })
+
   it('leaves out anything personal: names, room codes, server addresses, maps', () => {
     const text = debugInfo(env())
     expect(env().switches).toEqual(['debug', 'server', 'frame_id'])
@@ -91,6 +101,10 @@ describe('Reset all preferences', () => {
     // The online name is the room screen's key (one name, two places to edit it).
     expect(PREF_KEYS.map((k) => k.key)).toEqual(expect.arrayContaining(['cc-online-name', 'cannon-capture:skin:v1', 'cannon-capture:colour:v1', 'cannon-capture:menu:v1', 'cannon-capture:audio:v1', 'cannon-capture:perf:v1']))
     expect(KEPT_KEYS.map((k) => k.key)).toEqual(expect.arrayContaining(['cannon-capture:maps:v1', 'cannon-capture:progress:v1']))
+  })
+
+  it('the music settings are a preference (reset forgets them)', () => {
+    expect(PREF_KEYS.map((k) => k.key)).toContain(MUSIC_KEY)
   })
 
   it('a blocked storage is fine', () => {
@@ -117,18 +131,26 @@ describe('menu pages', () => {
     expect(LINKS.repo).toBe('https://github.com/SleepyMieMoo/cannon-capture')
     expect(LINKS.pixabayLicense).toContain('pixabay.com/service/license')
     for (const href of Object.values(LINKS)) expect(href).toMatch(/^https:\/\//)
+    // Every song is credited, with its Pixabay page.
+    expect(mainMenuSource).toContain("row('Music'")
+    for (const t of TRACKS) expect(t.page).toMatch(/^https:\/\/pixabay\.com\/music\//)
     // No email address anywhere in the menu or the changelog.
     const email = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}/
     expect(mainMenuSource).not.toMatch(email)
     expect(JSON.stringify(rawWhatsNew)).not.toMatch(email)
   })
 
-  it('the home grid has Credits and Profile, Play vs AI first, and an even number of small buttons', () => {
+  it('the home grid: Play vs AI first, rows of two, then Settings, How to play and Credits as a row of three', () => {
     const grid = mainMenuSource.slice(mainMenuSource.indexOf("h('div.mm-grid'"), mainMenuSource.indexOf('soon,', mainMenuSource.indexOf("h('div.mm-grid'")))
     const ids = [...grid.matchAll(/this\.button\('([a-z]+)'/g)].map((m) => m[1])
+    const thirds = [...grid.matchAll(/this\.button\('([a-z]+)'[^\n]*cls: 'third'/g)].map((m) => m[1])
     expect(ids[0]).toBe('play')
-    expect(ids).toEqual(expect.arrayContaining(['profile', 'credits', 'settings', 'howto']))
-    expect((ids.length - 1) % 2).toBe(0)
+    expect(thirds).toEqual(['settings', 'howto', 'credits'])
+    expect((ids.length - 1 - thirds.length) % 2).toBe(0)
+    // Profile moved to the top-right corner, the jukebox sits top left.
+    expect(ids).not.toContain('profile')
+    expect(mainMenuSource).toContain("button.mm-corner.right")
+    expect(mainMenuSource).toContain("button.mm-corner.left")
     expect(mainMenuSource).not.toContain('Colours from ChocoNeko')
   })
 })

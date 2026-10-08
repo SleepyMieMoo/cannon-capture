@@ -137,8 +137,8 @@ export class SettingsPanel {
     const soundNoteY = sliderY + 18
     this.soundNote.setText(
       state.audio
-        ? 'Saved on this device. N mutes or unmutes. Pop sound: CreatorsHome (Pixabay).'
-        : 'No sound in this browser. Pop sound: CreatorsHome (Pixabay).',
+        ? 'Sound effects, saved on this device. N mutes or unmutes them. Music: Menu → Music.'
+        : 'No sound in this browser.',
     )
     // Performance overlay switch: below the sound note.
     const perfLineY = soundNoteY + this.soundNote.height + 12

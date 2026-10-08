@@ -19,6 +19,7 @@ import { loadColour } from '../menu/colourPref'
 import { settingsText } from '../menu/debugInfo'
 import { debugReport } from '../perf/debugEnv'
 import { DemoWatch, keepDemoRunning, type DemoScenes } from './demoWatch'
+import { music } from '../audio/music'
 
 let launchedFromUrl = false
 let joinedFromUrl = false
@@ -171,12 +172,22 @@ export class TitleScene extends Phaser.Scene {
           perf.setShown(false)
           resetAllPreferences()
           applyAudioSettings(this.sound, loadAudioSettings())
+          music.reload()
         },
+        music,
         debugInfo: () => {
           const audio = loadAudioSettings()
           return debugReport(
             this.game,
-            settingsText({ sound: !audio.muted, volume: audio.volume, perf: perf.shown, skin: loadSkin(), colour: loadColour(), difficulty: loadMenuPrefs().difficulty }),
+            settingsText({
+              sound: !audio.muted,
+              volume: audio.volume,
+              perf: perf.shown,
+              skin: loadSkin(),
+              colour: loadColour(),
+              difficulty: loadMenuPrefs().difficulty,
+              music: { on: music.playing, volume: music.settings.volume, track: music.current, default: music.settings.track },
+            }),
           )
         },
       },

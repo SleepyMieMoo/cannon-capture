@@ -12,6 +12,8 @@ import { BattleMenu } from '../ui/battleMenu'
 import { BattleHud, type HudButton } from '../ui/battleHud'
 import type { ClientMsg } from '../net/online'
 import { ICONS } from '../menu/art'
+import { music } from '../audio/music'
+import { jukeboxPanel } from '../ui/jukebox'
 import { nextPuzzle } from '../menu/menuModel'
 import { PauseHold } from '../menu/pauseHold'
 import { EDITOR_KEY, MAIN_MENU, backLabel as routeBackLabel, backRoute, editorReturn, type BattleCtx, type BattleFrom, type Route } from '../menu/routes'
@@ -1402,6 +1404,12 @@ export class BattleScene extends Phaser.Scene {
   private foldedItems(items: { id: string; label: string; run: () => void; primary?: boolean; icon?: string }[]): void {
     if (this.hud?.folded.has('settings') && !this.ended) items.push({ id: 'settings', label: 'Settings', run: () => (this.closeMenu(), this.settings.toggle()) })
     if (this.surrenderAllowed()) items.push({ id: 'surrender', label: 'Surrender…', run: () => (this.closeMenu(), this.askSurrender()) })
+    items.push({ id: 'music', label: 'Music', run: () => this.openJukebox(), icon: ICONS.music })
+  }
+
+  /** Menu → Music: the jukebox inside the battle menu (the song keeps playing, Back returns). */
+  private openJukebox(): void {
+    this.battleMenu.showPanel('Jukebox', 'Music carries on between the menu and battles', jukeboxPanel(music, { compact: true }))
   }
 
   closeMenu(): void {

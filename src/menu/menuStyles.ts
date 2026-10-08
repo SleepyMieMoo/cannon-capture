@@ -29,8 +29,91 @@ export function injectMenuStyles(): void {
 .mm-title span { color: ${gold}; }
 .mm-by { color: ${theme.textMuted}; font-size: clamp(12px, 2.1vmin, 17px); margin-top: -2px; }
 .mm-tag { color: ${theme.textMuted}; font-size: clamp(11px, 1.8vmin, 14px); opacity: .85; }
-.mm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(6px, 1.3vmin, 10px); width: 100%; margin-top: clamp(4px, 1.4vmin, 14px); }
+/* Six columns: Play spans all, then rows of two, then a row of three smaller buttons. */
+.mm-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: clamp(6px, 1.3vmin, 10px); width: 100%; margin-top: clamp(4px, 1.4vmin, 14px); }
+.mm-grid .mm-btn { grid-column: span 3; min-width: 0; }
 .mm-grid .mm-btn.big { grid-column: 1 / -1; }
+.mm-grid .mm-btn.third { grid-column: span 2; font-size: clamp(12px, 1.95vmin, 15px); padding: 6px 8px; gap: 8px; }
+@media (max-width: 420px) {
+  .mm-grid .mm-btn.third { flex-direction: column; gap: 3px; padding: 6px 4px; line-height: 1.15; }
+}
+/* The home screen's corner buttons: Jukebox (top left) and Profile (top right). */
+.mm-corner {
+  position: absolute; top: max(10px, var(--discord-safe-area-inset-top, env(safe-area-inset-top))); z-index: 2;
+  font: inherit; font-weight: bold; color: ${theme.text}; background: ${rgba(theme.board, 0.9)};
+  border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 999px; cursor: pointer;
+  min-height: 44px; min-width: 44px; padding: 4px 14px 4px 10px; display: inline-flex; align-items: center; gap: 8px;
+  font-size: clamp(12px, 1.9vmin, 15px); max-width: min(46vw, 300px); transition: background .12s, border-color .12s;
+}
+.mm-corner.left { left: max(10px, var(--discord-safe-area-inset-left, env(safe-area-inset-left))); }
+.mm-corner.right { right: max(10px, var(--discord-safe-area-inset-right, env(safe-area-inset-right))); }
+.mm-corner:hover { background: ${rgba(theme.grid, 0.97)}; border-color: ${gold}; }
+.mm-corner:focus-visible { outline: 3px solid ${gold}; outline-offset: 2px; }
+.mm-corner svg { width: 1.35em; height: 1.35em; flex: none; display: block; }
+.mm-corner .ic { display: inline-flex; color: ${gold}; }
+.mm-corner .txt { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.15; }
+.mm-corner .np { color: ${theme.textMuted}; font-weight: normal; font-size: .82em; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mm-corner .jb-eq { display: none; }
+.mm-corner.on .jb-eq { display: inline-flex; }
+@media (max-width: 640px) { .mm-corner .np { display: none; } }
+@media (max-width: 460px) {
+  .mm-corner { padding: 4px; justify-content: center; }
+  .mm-corner .txt { display: none; }
+}
+
+/* Jukebox panel (main menu page and the in-battle Menu). */
+.jb { display: flex; flex-direction: column; gap: 10px; max-width: 520px; margin-inline: auto; width: 100%; text-align: left; }
+.jb .ic { display: inline-flex; }
+.jb .ic svg { width: 100%; height: 100%; display: block; }
+.jb-now { display: flex; align-items: center; gap: 12px; background: ${rgba(theme.panel, 0.85)}; border: 1px solid ${cssHex(theme.boardEdge)}; border-radius: 14px; padding: 10px 12px; }
+.jb-disc { position: relative; flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: ${cssHex(theme.hud)}; border: 2px solid ${cssHex(theme.boardEdge)}; color: ${gold}; }
+.jb-disc > .ic { width: 26px; height: 26px; }
+.jb-disc .jb-eq { position: absolute; right: -4px; bottom: -4px; background: ${cssHex(theme.hud)}; border: 1.5px solid ${cssHex(theme.boardEdge)}; border-radius: 8px; padding: 3px 4px; visibility: hidden; }
+.jb.on .jb-disc .jb-eq { visibility: visible; }
+.jb.on .jb-disc { border-color: ${gold}; }
+.jb-meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.jb-label { font-size: 11px; font-weight: bold; letter-spacing: .06em; text-transform: uppercase; color: ${theme.textMuted}; }
+.jb-title { font-weight: bold; font-size: 1.12em; line-height: 1.25; overflow-wrap: anywhere; }
+.jb-artist { color: ${theme.textMuted}; font-size: .92em; }
+.jb-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.jb-eq i { display: block; width: 3px; height: 100%; background: ${gold}; border-radius: 1px; transform-origin: bottom; animation: jb-eq 0.9s ease-in-out infinite; }
+.jb-eq i:nth-child(2) { animation-delay: -.3s; }
+.jb-eq i:nth-child(3) { animation-delay: -.6s; }
+@keyframes jb-eq { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .jb-eq i { animation: none; transform: scaleY(.7); } }
+.jb-ctrl { display: flex; justify-content: center; align-items: center; gap: 12px; }
+.jb-btn { font: inherit; color: ${theme.text}; background: ${rgba(theme.board, 0.94)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 50%; width: 46px; height: 46px; padding: 0; display: grid; place-items: center; cursor: pointer; transition: background .12s, border-color .12s, transform .08s; }
+.jb-btn .ic { width: 20px; height: 20px; }
+.jb-btn.main { width: 58px; height: 58px; background: ${gold}; border-color: ${gold}; color: ${theme.ink}; }
+.jb-btn.main .ic { width: 24px; height: 24px; }
+.jb-btn:hover { border-color: ${gold}; background: ${rgba(theme.grid, 0.97)}; }
+.jb-btn.main:hover { background: ${cssHex(theme.playerHot)}; }
+.jb-btn:active { transform: translateY(1px); }
+.jb-btn:focus-visible, .jb-track:focus-visible, .jb-def:focus-visible { outline: 3px solid ${gold}; outline-offset: 2px; }
+.jb-status { text-align: center; color: ${theme.textMuted}; font-size: .92em; min-height: 1.3em; }
+.jb-status[data-status="locked"], .jb-status[data-status="missing"] { color: ${gold}; font-weight: bold; }
+.jb .mm-h { margin: 2px 0 0; }
+.jb-list { display: flex; flex-direction: column; gap: 6px; }
+.jb-row { display: flex; gap: 6px; }
+.jb-track { flex: 1; min-width: 0; font: inherit; color: ${theme.text}; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 12px; padding: 6px 10px; min-height: 46px; }
+.jb-track:hover { border-color: ${gold}; }
+.jb-track[aria-pressed="true"] { border-color: ${gold}; box-shadow: inset 0 0 0 1px ${gold}; background: ${rgba(theme.grid, 0.6)}; }
+.jb-track.missing { opacity: .6; }
+.jb-num { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: bold; background: ${cssHex(theme.hud)}; color: ${theme.textMuted}; }
+.jb-track[aria-pressed="true"] .jb-num { background: ${gold}; color: ${theme.ink}; }
+.jb-name { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.jb-name b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jb-name small { color: ${theme.textMuted}; font-size: .82em; }
+.jb-def { flex: none; width: 46px; font: inherit; cursor: pointer; display: grid; place-items: center; background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 12px; color: ${theme.textMuted}; }
+.jb-def .ic { width: 20px; height: 20px; }
+.jb-def:hover { border-color: ${gold}; color: ${theme.text}; }
+.jb-def[aria-pressed="true"] { color: ${gold}; border-color: ${gold}; }
+.jb-vol { margin: 0; }
+.jb-vol label { min-width: 0; }
+.mm-screen.narrow { width: min(620px, 100%); }
+.bm .jb { gap: 8px; font-size: 14px; }
+.bm .jb .jb-now { padding: 8px 10px; }
+.bm .jb .mm-note { font-size: 12px; }
 .mm-btn {
   font: inherit; font-weight: bold; color: ${theme.text}; background: ${rgba(theme.board, 0.94)};
   border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 14px; cursor: pointer;
@@ -202,7 +285,8 @@ export function injectMenuStyles(): void {
 
 @media (max-height: 540px) and (min-aspect-ratio: 4/3) {
   .mm-home { width: min(860px, 100%); gap: 4px; }
-  .mm-grid { grid-template-columns: repeat(4, 1fr); }
+  .mm-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .mm-grid .mm-btn.third { grid-column: span 4; }
   .mm-tag { display: none; }
   .mm-how { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .mm-tip svg { max-height: 50px; }

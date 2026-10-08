@@ -21,6 +21,9 @@ import { LINKS } from './credits'
 import { versionLabel } from '../version'
 import { dayLabel, KIND_LABEL, WHATS_NEW } from './whatsNew'
 import { KEPT_KEYS, PREF_KEYS } from './prefs'
+import type { MusicPlayer } from '../audio/music'
+import { MUSIC_ARTIST, TRACKS } from '../audio/musicTracks'
+import { jukeboxPanel } from '../ui/jukebox'
 
 /** What the menu asks the game to do. */
 export interface MenuActions {
@@ -43,6 +46,8 @@ export interface MenuActions {
   resetPrefs?(): void
   /** Copy debug info: the report text (version, browser, screen, settings; nothing personal). */
   debugInfo?(): string
+  /** The jukebox (left out in tests: no music there). */
+  music?: MusicPlayer
 }
 
 const link = (href: string, text: string): HTMLAnchorElement => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text)
@@ -171,6 +176,8 @@ export class MainMenu {
                   ? this.credits()
                   : screen === 'whatsnew'
                     ? this.whatsNew()
+                    : screen === 'jukebox'
+                      ? this.jukebox()
               : screen === 'friends' && this.actions.online
                 ? friendsScreen(this.kit, this.actions.online)
                 : screen === 'lobby' && this.actions.online
@@ -231,14 +238,53 @@ export class MainMenu {
         this.button('levels', BRAND.levelsLabel, () => this.actions.levels(), { icon: ICONS.levels }),
         this.button('editor', 'Map editor', () => this.actions.editor(), { icon: ICONS.editor }),
         this.button('maps', 'My maps', () => this.actions.myMaps(), { icon: ICONS.maps }),
-        this.button('profile', 'Profile', go('profile'), { icon: ICONS.profile }),
-        this.button('settings', 'Settings', go('settings'), { icon: ICONS.settings }),
-        this.button('howto', 'How to play', go('howto'), { icon: ICONS.help }),
-        this.button('credits', 'Credits', go('credits'), { icon: ICONS.credits }),
+        this.button('settings', 'Settings', go('settings'), { icon: ICONS.settings, cls: 'third' }),
+        this.button('howto', 'How to play', go('howto'), { icon: ICONS.help, cls: 'third' }),
+        this.button('credits', 'Credits', go('credits'), { icon: ICONS.credits, cls: 'third' }),
       ),
       soon,
       h('div.mm-foot', {}, this.versionButton()),
+      // The corners: Jukebox top left, Profile top right (after the grid, so Tab starts at Play).
+      this.jukeboxCorner(),
+      h('button.mm-corner.right', { type: 'button', title: 'Profile: your name, looks and difficulty', 'aria-label': 'Profile', dataset: { id: 'profile' }, onclick: go('profile') },
+        h('span.ic', { innerHTML: ICONS.profile }),
+        h('span.txt', {}, 'Profile'),
+      ),
     )
+  }
+
+  /** Top-left Jukebox button: the song playing, with a little equaliser while it plays. */
+  private jukeboxCorner(): HTMLButtonElement {
+    const music = this.actions.music
+    const np = h('span.np')
+    const eq = h('span.jb-eq', { 'aria-hidden': 'true' }, h('i'), h('i'), h('i'))
+    const b = h('button.mm-corner.left', { type: 'button', dataset: { id: 'jukebox' }, onclick: () => this.open('jukebox', 'jukebox') },
+      h('span.ic', { innerHTML: ICONS.music }),
+      h('span.txt', {}, 'Jukebox', np),
+      eq,
+    )
+    const update = (): void => {
+      const playing = music?.status === 'playing'
+      b.classList.toggle('on', playing)
+      np.textContent = music ? (music.playing ? music.track.short : 'Music off') : ''
+      const label = music ? `Jukebox: ${music.playing ? 'playing ' + music.track.title : 'music off'}` : 'Jukebox'
+      b.title = label
+      b.setAttribute('aria-label', label)
+    }
+    update()
+    if (music) this.teardown.push(music.onChange(update))
+    return b
+  }
+
+  private jukebox(): HTMLElement {
+    const music = this.actions.music
+    const body = music ? jukeboxPanel(music) : null
+    if (body) this.teardown.push(body.destroy)
+    const frame = this.screenFrame('Jukebox', 'Music, saved on this device', [
+      body?.el ?? h('div.mm-note', {}, 'Music isn’t available here.'),
+    ])
+    frame.classList.add('narrow')
+    return frame
   }
 
   private play(): HTMLElement {
@@ -442,7 +488,8 @@ export class MainMenu {
           h('div.mm-h', {}, 'Sound'),
           h('div.mm-row', {}, sw, h('label', { htmlFor: 'mm-sound' }, 'Sound effects')),
           h('div.mm-row', {}, h('label', { htmlFor: 'mm-volume' }, 'Volume'), range, val),
-          h('div.mm-note', {}, 'Shots pop; captures and broken barriers pop deeper. N mutes or unmutes during a battle. The title screen stays silent.'),
+          h('div.mm-note', {}, 'Shots pop; captures and broken barriers pop deeper. N mutes or unmutes them during a battle.'),
+          ...this.musicSettings(),
           h('div.mm-h', { style: 'margin-top:16px' }, 'In battle'),
           h('div.mm-note', {}, 'Auto-target (your guns re-aim by themselves when a target is captured) is switched in the battle’s own Settings, or per cannon with M. It starts on at the start of every game.'),
           ...(perfSw
@@ -465,6 +512,35 @@ export class MainMenu {
         ),
       ),
     ])
+  }
+
+  /** Settings → Music: on/off, its own volume, and the way to the jukebox. */
+  private musicSettings(): HTMLElement[] {
+    const music = this.actions.music
+    if (!music) return []
+    const sw = h('input.mm-switch', { type: 'checkbox', role: 'switch', id: 'mm-music', dataset: { id: 'music' } }) as HTMLInputElement
+    const val = h('span.mm-val')
+    const range = h('input.mm-range', { type: 'range', min: '0', max: '100', step: '5', id: 'mm-music-volume', dataset: { id: 'music-volume' }, 'aria-label': 'Music volume' }) as HTMLInputElement
+    const song = h('div.mm-note')
+    sw.addEventListener('change', () => (sw.checked ? music.play() : music.pause()))
+    range.addEventListener('input', () => music.setVolume(Number(range.value) / 100))
+    const update = (): void => {
+      sw.checked = music.playing
+      const v = Math.round(music.settings.volume * 100)
+      if (document.activeElement !== range) range.value = String(v)
+      val.textContent = `${v}%`
+      const def = TRACKS.find((t) => t.id === music.settings.track)
+      song.textContent = `Now: ${music.track.title}. Starts with: ${def?.short ?? music.track.short}.`
+    }
+    update()
+    this.teardown.push(music.onChange(update))
+    return [
+      h('div.mm-h', { style: 'margin-top:16px' }, 'Music'),
+      h('div.mm-row', {}, sw, h('label', { htmlFor: 'mm-music' }, 'Music')),
+      h('div.mm-row', {}, h('label', { htmlFor: 'mm-music-volume' }, 'Volume'), range, val),
+      song,
+      h('div.mm-row', {}, this.button('to-jukebox', 'Open jukebox', () => this.open('jukebox', 'to-jukebox'), { icon: ICONS.music, cls: 'small' })),
+    ]
   }
 
   /** "v0.1.0 · abc1234 · What's new": subtle, under the menu and on Profile and Credits. */
@@ -598,6 +674,7 @@ export class MainMenu {
       h('dl.mm-cred', {},
         row('Game', 'by ', h('b', {}, 'SleepyMie'), ' · ', link(LINKS.sleepyMie, 'sleepymiemoo.github.io')),
         row('Colours', 'Inspired by ', link(LINKS.choconeko, 'ChocoNeko’s Dark Choco theme')),
+        row('Music', ...TRACKS.flatMap((t, i) => [i ? h('br') : '', link(t.page, `“${t.title}”`)]), h('br'), 'by ', link(MUSIC_ARTIST.page, MUSIC_ARTIST.name), ' on Pixabay, under the ', link(LINKS.pixabayLicense, 'Pixabay Content License'), '. Trimmed at both ends so they loop; please get the originals from Pixabay.'),
         row('Pop sound', link(LINKS.pop, '“Pop Cartoon”'), ' by ', link(LINKS.creatorsHome, 'CreatorsHome'), ' on Pixabay, under the ', link(LINKS.pixabayLicense, 'Pixabay Content License'), '. Trimmed for the game; please get the original from Pixabay.'),
         row('Engine', link(LINKS.phaser, 'Phaser 3')),
         row('Online server', link(LINKS.workers, 'Cloudflare Workers'), ' with Durable Objects'),
