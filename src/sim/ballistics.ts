@@ -1,6 +1,6 @@
 import { TUNING } from '../config/tuning'
 import type { GlassDef, PillarDef, Rect, WallDef } from '../types'
-import { circleGlass, circlePillar, circleWall, reflect } from './geometry'
+import { circleGlass, circlePillar, circleWall, pillarReach, reflect } from './geometry'
 
 /** What a shot can bounce off (or be swallowed by). */
 export type Surface = 'wall' | 'pillar' | 'glass'
@@ -378,7 +378,7 @@ export class Broadphase {
       this.add(body.x - r, body.y - r, body.x + r, body.y + r, (c) => c.bodies.push(body))
     }
     for (const p of pillars) {
-      const r = p.r + margin
+      const r = pillarReach(p) + margin
       this.add(p.x - r, p.y - r, p.x + r, p.y + r, (c) => c.pillars.push(p))
     }
     for (const g of glass) {

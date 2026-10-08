@@ -35,14 +35,15 @@ import { Fan } from '../entities/Fan'
 import { Glass } from '../entities/Glass'
 import { Pillar } from '../entities/Pillar'
 import { Wall } from '../entities/Wall'
-import { GLASS, PILLAR_SIZES, VOID_COLOURS } from '../config/obstacles'
+import { GLASS, PILLAR_OVALS, PILLAR_SIZES, ROCK, VOID_COLOURS } from '../config/obstacles'
+import { pillarReach } from '../sim/geometry'
 import { MAP_SIZES, MAP_SIZE_IDS, boardFor, insideBoard } from '../levels/board'
 import { EXAMPLE_MAPS } from '../levels/examples'
 import { drawBoardSurface } from '../render/boardSurface'
 import { bindSceneResolution } from '../render/resolution'
 import { WorldCamera } from '../render/WorldCamera'
 import { Overlay, h } from '../ui/overlay'
-import type { CannonDef, CannonKind, GlassDef, LevelDef, MapSize, Point, Rect, Side, WallDef } from '../types'
+import type { CannonDef, CannonKind, GlassDef, LevelDef, MapSize, PillarDef, Point, Rect, Side, WallDef } from '../types'
 
 export interface EditorData {
   /** Open a saved map from My maps. */
@@ -81,7 +82,7 @@ const TOOL_TIPS: Record<Tool, string> = {
   neutral: 'Place a neutral cannon',
   wall: 'Place a wall',
   void: 'Place a void wall (absorbs shots)',
-  pillar: 'Place a round pillar',
+  pillar: 'Place a pillar (a rock: round or oval)',
   glass: 'Place one-way glass',
   fan: 'Place a fan',
   delete: 'Delete tool',
@@ -96,7 +97,7 @@ const TOOLS: { id: Tool; label: string; key: string; color?: number; side?: Side
   { id: 'wall', label: 'Wall', key: '4', color: theme.wall },
   { id: 'fan', label: 'Fan', key: '5', color: theme.fan },
   { id: 'void', label: 'Void', key: '6', color: VOID_COLOURS.rim },
-  { id: 'pillar', label: 'Pillar', key: '7', color: theme.wall },
+  { id: 'pillar', label: 'Pillar', key: '7', color: ROCK.light },
   { id: 'glass', label: 'Glass', key: '8', color: GLASS },
 ]
 
@@ -371,8 +372,7 @@ export class EditorScene extends Phaser.Scene {
         const w = this.level.walls[ref.index]
         strokeRotated(g, w, 6)
       } else if (ref.kind === 'pillar') {
-        const p = this.level.pillars![ref.index]
-        g.strokeCircle(p.x, p.y, p.r + 6)
+        strokeOval(g, this.level.pillars![ref.index], 6)
       } else if (ref.kind === 'glass') {
         strokeRotated(g, glassBox(this.level.glass![ref.index]), 6)
       } else if (ref.kind === 'fan') {
@@ -400,7 +400,7 @@ export class EditorScene extends Phaser.Scene {
         g.fillStyle(this.tool === 'void' ? VOID_COLOURS.rim : theme.wall, 0.4)
         g.fillRect(p.x - 110, p.y - 13, 220, 26)
       } else if (this.tool === 'pillar') {
-        g.fillStyle(theme.wall, 0.4)
+        g.fillStyle(ROCK.base, 0.5)
         g.fillCircle(p.x, p.y, PILLAR_SIZES[1])
       } else if (this.tool === 'glass') {
         g.lineStyle(6, GLASS, 0.45)
@@ -438,7 +438,7 @@ export class EditorScene extends Phaser.Scene {
     }
     const pillars = this.level.pillars ?? []
     for (let i = pillars.length - 1; i >= 0; i--) {
-      if (Math.hypot(pillars[i].x - x, pillars[i].y - y) <= pillars[i].r + 6) return { kind: 'pillar', index: i }
+      if (inOval(pillars[i], x, y, 6)) return { kind: 'pillar', index: i }
     }
     for (let i = this.level.walls.length - 1; i >= 0; i--) {
       if (inWall(this.level.walls[i], x, y, 6)) return { kind: 'wall', index: i }
@@ -485,7 +485,7 @@ export class EditorScene extends Phaser.Scene {
       w.y = Math.round(c.y - w.h / 2)
     } else if (ref.kind === 'pillar') {
       const p = this.level.pillars![ref.index]
-      const c = this.clampCenter(to, p.r)
+      const c = this.clampCenter(to, pillarReach(p))
       p.x = Math.round(c.x)
       p.y = Math.round(c.y)
     } else if (ref.kind === 'glass') {
@@ -778,10 +778,20 @@ export class EditorScene extends Phaser.Scene {
 
   private rotateSelected(dir: number): void {
     const ref = this.sel
-    if (!ref || ref.kind === 'cannon' || ref.kind === 'pillar') return
+    if (!ref || ref.kind === 'cannon') return
+    // A round pillar looks the same at any turn.
+    if (ref.kind === 'pillar' && !isOvalPillar(this.level.pillars![ref.index])) return
     this.edit(
       () => {
-        if (ref.kind === 'glass') {
+        if (ref.kind === 'pillar') {
+          const p = this.level.pillars![ref.index]
+          const a = normAngle(Math.round(((p.angle ?? 0) + dir * ROTATE_STEP) / ROTATE_STEP) * ROTATE_STEP, Math.PI)
+          if (a > 1e-3 && a < Math.PI - 1e-3) p.angle = a
+          else delete p.angle
+          const c = this.clampCenter(p, pillarReach(p))
+          p.x = Math.round(c.x)
+          p.y = Math.round(c.y)
+        } else if (ref.kind === 'glass') {
           const g = this.level.glass![ref.index]
           setGlassAngle(g, Math.round((glassAngle(g) + dir * ROTATE_STEP) / ROTATE_STEP) * ROTATE_STEP)
         } else if (ref.kind === 'wall') {
@@ -959,6 +969,8 @@ export class EditorScene extends Phaser.Scene {
     else if (key === 'p' || key === 'P') this.playtest()
     else if ((key === 't' || key === 'T') && this.sel?.kind === 'cannon') this.cycleKind(this.sel.index)
     else if ((key === 'f' || key === 'F') && this.sel?.kind === 'glass') this.flipGlass(this.sel.index)
+    else if ((key === '[' || key === ']') && this.sel?.kind === 'pillar') this.resizePillar(this.sel.index, key === ']' ? 4 : -4, 0)
+    else if ((key === '{' || key === '}') && this.sel?.kind === 'pillar') this.resizePillar(this.sel.index, 0, key === '}' ? 4 : -4)
     else if (key === '+' || key === '=') this.wc.zoomBy(1.25)
     else if (key === '-' || key === '_') this.wc.zoomBy(0.8)
     else if (key === '0') this.wc.fit()
@@ -1155,13 +1167,14 @@ export class EditorScene extends Phaser.Scene {
       ['6 7 8', 'Void wall / round pillar / one-way glass'],
       ['V · X', 'Move tool · Delete tool'],
       ['Del', 'Delete the selection'],
-      ['Q / E · F', 'Rotate wall, glass or fan 15° · flip glass'],
+      ['Q / E · F', 'Rotate wall, glass, oval or fan 15° · flip glass'],
+      ['[ ] · { }', 'Pillar width · height'],
       ['T', 'Next type for the selected cannon'],
       ['G · P', 'Snap · Playtest'],
       ['Ctrl+Z / Ctrl+Y', 'Undo / redo'],
       ['Esc', 'Close, cancel or deselect'],
     ]
-    pop('help', 610, 400, 314,
+    pop('help', 610, 400, 334,
       h('div.cc-h', {}, 'Controls'),
       h('div.cc-keys', {}, ...keys.flatMap(([k, v]) => [h('b', {}, k), h('span', {}, v)])),
     )
@@ -1370,27 +1383,53 @@ export class EditorScene extends Phaser.Scene {
 
     if (ref.kind === 'pillar') {
       const p = L.pillars![ref.index]
-      const names = ['Small', 'Medium', 'Large']
+      const ry = p.ry ?? p.r
+      const shape = (r: number, h: number): void => {
+        this.edit(() => {
+          p.r = r
+          if (h === r) {
+            delete p.ry
+            delete p.angle
+          } else p.ry = h
+          const c = this.clampCenter(p, pillarReach(p))
+          p.x = Math.round(c.x)
+          p.y = Math.round(c.y)
+        }, { rebuild: false })
+        this.refreshItem(ref)
+        this.refreshPanel(true)
+      }
+      const presets: { name: string; r: number; ry: number; title: string }[] = [
+        ...PILLAR_SIZES.map((r, i) => ({ name: ['S', 'M', 'L'][i], r, ry: r, title: `${['Small', 'Medium', 'Large'][i]} round rock, ${r * 2} px across` })),
+        ...PILLAR_OVALS.map((o) => ({ ...o, title: `Oval, ${o.r * 2}×${o.ry * 2} px` })),
+      ]
       return [
-        h('span.cc-field', {}, dot(theme.wall), h('b', {}, 'Pillar')),
+        h('span.cc-field', { title: 'A rock: shots glance off its curve. [ ] width · { } height · Q / E turn an oval' }, dot(ROCK.light), h('b', {}, 'Pillar')),
         h('span.cc-field', {},
-          h('label', {}, 'Size'),
-          ...PILLAR_SIZES.map((r, i) =>
-            h('button.cc-btn.xs', { className: `cc-btn xs${p.r === r ? ' on' : ''}`, title: `${r * 2} px across`, onclick: () => {
-              this.edit(() => {
-                p.r = r
-                const c = this.clampCenter(p, r)
-                p.x = Math.round(c.x)
-                p.y = Math.round(c.y)
-              }, { rebuild: false })
-              this.refreshItem(ref)
-              this.refreshPanel(true)
-            } }, names[i]),
+          ...presets.map((o) =>
+            h('button.cc-btn.xs', { className: `cc-btn xs${p.r === o.r && ry === o.ry ? ' on' : ''}`, title: o.title, onclick: () => shape(o.r, o.ry) }, o.name),
           ),
         ),
-        h('span.cc-note', {}, 'Shots glance off it like off a ball.'),
+        slider('W', p.r * 2, 24, 240, 4, (v) => {
+          p.r = v / 2
+          if ((p.ry ?? p.r) === p.r) delete p.ry
+          else p.ry ??= ry
+        }, `pw-${ref.index}`),
+        slider('H', ry * 2, 24, 240, 4, (v) => {
+          if (v / 2 === p.r) {
+            delete p.ry
+            delete p.angle
+          } else p.ry = v / 2
+        }, `ph-${ref.index}`),
+        isOvalPillar(p)
+          ? h('span.cc-field', {},
+            h('label', {}, 'Turn'),
+            h('button.cc-btn.xs', { title: 'Q', onclick: () => this.rotateSelected(-1) }, '⟲'),
+            h('span.cc-val', { style: 'min-width:34px;text-align:center' }, `${deg(normAngle(p.angle ?? 0, Math.PI))}°`),
+            h('button.cc-btn.xs', { title: 'E', onclick: () => this.rotateSelected(1) }, '⟳'),
+          )
+          : null,
         remove,
-      ]
+      ].filter(Boolean) as HTMLElement[]
     }
 
     if (ref.kind === 'glass') {
@@ -1430,6 +1469,26 @@ export class EditorScene extends Phaser.Scene {
       slider('Radius', f.radius, 60, 360, 10, (v) => (f.radius = v), `fr-${ref.index}`),
       remove,
     ]
+  }
+
+  /** Grow or shrink a pillar's width / height (keys [ ] and { }). Equal sides make it round again. */
+  private resizePillar(index: number, dw: number, dh: number): void {
+    const p = this.level.pillars?.[index]
+    if (!p) return
+    this.edit(() => {
+      const ry = p.ry ?? p.r
+      p.r = Math.min(120, Math.max(12, p.r + dw / 2))
+      const h = Math.min(120, Math.max(12, ry + dh / 2))
+      if (h === p.r) {
+        delete p.ry
+        delete p.angle
+      } else p.ry = h
+      const c = this.clampCenter(p, pillarReach(p))
+      p.x = Math.round(c.x)
+      p.y = Math.round(c.y)
+    }, { merge: `size-pillar-${index}`, rebuild: false })
+    this.refreshItem({ kind: 'pillar', index })
+    this.refreshPanel(true)
   }
 
   /** Swap the side of a glass pane that shots pass through. */
@@ -1592,4 +1651,36 @@ function placeGlass(g: GlassDef, cx: number, cy: number, angle: number, len: num
   g.y = Math.round(cy - hy)
   g.x2 = Math.round(cx + hx)
   g.y2 = Math.round(cy + hy)
+}
+
+/** A pillar that is an oval (it has a turn). */
+function isOvalPillar(p: PillarDef): boolean {
+  return p.ry !== undefined && p.ry !== p.r
+}
+
+/** True when (x, y) is on a pillar, give or take `pad`. */
+function inOval(p: PillarDef, x: number, y: number, pad: number): boolean {
+  const cos = Math.cos(p.angle ?? 0)
+  const sin = Math.sin(p.angle ?? 0)
+  const dx = x - p.x
+  const dy = y - p.y
+  const lx = (dx * cos + dy * sin) / (p.r + pad)
+  const ly = (-dx * sin + dy * cos) / ((p.ry ?? p.r) + pad)
+  return lx * lx + ly * ly <= 1
+}
+
+/** Outline a pillar (round or oval, turned), `pad` px outside it. */
+function strokeOval(g: Phaser.GameObjects.Graphics, p: PillarDef, pad: number): void {
+  const cos = Math.cos(p.angle ?? 0)
+  const sin = Math.sin(p.angle ?? 0)
+  const a = p.r + pad
+  const b = (p.ry ?? p.r) + pad
+  const pts: Phaser.Math.Vector2[] = []
+  for (let i = 0; i < 40; i++) {
+    const t = (i / 40) * Math.PI * 2
+    const lx = Math.cos(t) * a
+    const ly = Math.sin(t) * b
+    pts.push(new Phaser.Math.Vector2(p.x + lx * cos - ly * sin, p.y + lx * sin + ly * cos))
+  }
+  g.strokePoints(pts, true)
 }

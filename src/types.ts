@@ -19,11 +19,18 @@ export interface WallDef extends Rect {
   kind?: 'void'
 }
 
-/** A round pillar: shots reflect off the surface normal where they hit. */
+/**
+ * A pillar (a rock): a circle of radius `r`, or an oval when `ry` is set:
+ * `r` is then its half-width and `ry` its half-height before turning by
+ * `angle` (radians). Shots reflect off the surface normal where they hit.
+ * Old maps only have `r` (a circle).
+ */
 export interface PillarDef {
   x: number
   y: number
   r: number
+  ry?: number
+  angle?: number
 }
 
 /**

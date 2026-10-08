@@ -60,10 +60,11 @@ export const GLASS_GARDEN: LevelDef = {
   fans: [],
   pillars: [
     { x: 600, y: 392, r: 44 },
-    { x: 330, y: 254, r: 28 },
-    { x: 870, y: 254, r: 28 },
-    { x: 330, y: 530, r: 28 },
-    { x: 870, y: 530, r: 28 },
+    // Oval rocks, turned so each corner banks differently (mirrored left/right).
+    { x: 330, y: 254, r: 36, ry: 22, angle: 0.6 },
+    { x: 870, y: 254, r: 36, ry: 22, angle: Math.PI - 0.6 },
+    { x: 330, y: 530, r: 36, ry: 22, angle: Math.PI - 0.6 },
+    { x: 870, y: 530, r: 36, ry: 22, angle: 0.6 },
   ],
   glass: [
     // Solid side faces right (pink's shots bounce), open side left (gold's pass).
@@ -107,8 +108,9 @@ export const VOID_GATE: LevelDef = {
   ],
   fans: [],
   pillars: [
-    { x: 430, y: 392, r: 28 },
-    { x: 770, y: 392, r: 28 },
+    // Tall oval rocks beside the gate.
+    { x: 430, y: 392, r: 22, ry: 34 },
+    { x: 770, y: 392, r: 22, ry: 34 },
   ],
 }
 
