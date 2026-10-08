@@ -347,3 +347,10 @@ describe('connection numbers on screen', () => {
     expect(text).toContain('Online: ping 182 ms, server SIN (apac)')
   })
 })
+
+describe('server region picker', () => {
+  it('only offers regions Cloudflare actually runs rooms in', () => {
+    const offered = SERVER_REGIONS.filter((r) => !('pick' in r)).map((r) => r.id)
+    expect(offered).toEqual(['weur', 'eeur', 'apac', 'oc', 'enam', 'wnam'])
+  })
+})

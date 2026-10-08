@@ -153,16 +153,21 @@ export function pvpLevel(map: LevelDef): LevelDef {
  * they pick a region (between two far-apart players, the Middle East keeps
  * both pings about equal). Centres are rough, for picking the nearest.
  */
+/**
+ * Cloudflare's location hints for a room. `pick: false`: Cloudflare runs those rooms somewhere
+ * else (measured Oct 2026: Middle East in Vienna or Stockholm, South America in Atlanta, Africa
+ * in Amsterdam), so the menu does not offer them; they still serve as the nearest region.
+ */
 export const SERVER_REGIONS = [
   { id: 'weur', label: 'Western Europe', lat: 50.5, lon: 4 },
   { id: 'eeur', label: 'Eastern Europe', lat: 52.2, lon: 21 },
-  { id: 'me', label: 'Middle East', lat: 25.2, lon: 55.3 },
+  { id: 'me', label: 'Middle East', lat: 25.2, lon: 55.3, pick: false },
   { id: 'apac', label: 'Asia-Pacific', lat: 1.35, lon: 103.8 },
   { id: 'oc', label: 'Oceania', lat: -33.9, lon: 151.2 },
   { id: 'enam', label: 'North America (east)', lat: 39, lon: -77.5 },
   { id: 'wnam', label: 'North America (west)', lat: 37.3, lon: -121.9 },
-  { id: 'sam', label: 'South America', lat: -23.5, lon: -46.6 },
-  { id: 'afr', label: 'Africa', lat: -26.2, lon: 28 },
+  { id: 'sam', label: 'South America', lat: -23.5, lon: -46.6, pick: false },
+  { id: 'afr', label: 'Africa', lat: -26.2, lon: 28, pick: false },
 ] as const
 
 export type ServerRegion = (typeof SERVER_REGIONS)[number]['id']
