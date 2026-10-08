@@ -57,6 +57,10 @@ describe('online battle texts', () => {
     expect(endTexts('win', 1, info(), 'wipe', { mine: 6, theirs: 0 }).headline).toBe('You win')
     expect(endTexts('draw', 1, info(), 'time', { mine: 3, theirs: 3 })).toEqual({ headline: 'Draw', detail: "Time's up: 3 – 3 cannons." })
     expect(endTexts('win', null, info({ you: { seat: null, host: false } }), 'time', { mine: 4, theirs: 2 })).toEqual({ headline: 'Kim wins', detail: "Time's up: Kim 4 – 2 Nova." })
+    // Surrender: the winner and watchers see who gave up; the one who did sees it plainly.
+    expect(endTexts('win', 1, info(), 'surrender', { mine: 2, theirs: 5 })).toEqual({ headline: 'You win', detail: 'Kim surrendered.' })
+    expect(endTexts('lose', 1, info(), 'surrender', { mine: 5, theirs: 2 })).toEqual({ headline: 'You surrendered', detail: 'Kim wins this match.' })
+    expect(endTexts('lose', null, info({ you: { seat: null, host: false } }), 'surrender', { mine: 4, theirs: 2 })).toEqual({ headline: 'Nova wins', detail: 'Kim surrendered.' })
     expect(rematchLine(info({ phase: 'ended' }))).toContain('both press')
     expect(rematchLine(info({ rematch: [true, false] }))).toBe('Waiting for Kim to press Rematch…')
     expect(rematchLine(info({ rematch: [false, true] }))).toBe('Kim wants a rematch!')

@@ -25,6 +25,8 @@ export type ClientMsg =
   | { t: 'settings'; countdown?: CountdownChoice; pauses?: boolean }
   /** Host, between matches: swap which seat plays the left side next match. */
   | { t: 'swap' }
+  /** Give up the running match: the other seat wins (servers that list `surrender` in the room info). */
+  | { t: 'surrender' }
   /** Host: start the match (both seats taken). */
   | { t: 'start' }
   /** After a match: ask for (or cancel) a rematch. It starts when both players ask. */
@@ -74,7 +76,7 @@ export interface SeatInfo {
 export interface MatchResult {
   /** Seat that won (null: draw). */
   winner: 0 | 1 | null
-  why: 'wipe' | 'time' | 'empty'
+  why: 'wipe' | 'time' | 'empty' | 'surrender'
   /** Cannons held per seat at the end. */
   cannons: [number, number]
 }
@@ -100,6 +102,8 @@ export interface RoomInfo {
   settings?: RoomSettings
   /** The seat that plays the left side next match (older servers leave it out). */
   left?: 0 | 1
+  /** The server takes `surrender` (older servers leave it out: the game shows no Surrender button). */
+  surrender?: boolean
 }
 
 /** Server to game. */
@@ -190,6 +194,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'swap':
       return { t: 'swap' }
+    case 'surrender':
+      return { t: 'surrender' }
     case 'map':
       return typeof m.id === 'string' && m.id.length <= 40 ? { t: 'map', id: m.id } : null
     case 'start':

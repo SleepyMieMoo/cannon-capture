@@ -102,6 +102,14 @@ export function endTexts(outcome: ViewOutcome, me: 0 | 1 | null, info: RoomInfo 
   else headline = outcome === 'win' ? 'You win' : outcome === 'lose' ? 'You lost' : 'Draw'
   const score = me === null ? `${gold} ${cannons.mine} – ${cannons.theirs} ${pink}` : `${cannons.mine} – ${cannons.theirs} cannons`
   let detail: string
+  if (why === 'surrender' && outcome !== 'draw') {
+    // The loser gave up. Names by seat side: gold is side 0.
+    const winner = outcome === 'win' ? gold : pink
+    const loser = outcome === 'win' ? pink : gold
+    if (me === null) return { headline: `${winner} wins`, detail: `${loser} surrendered.` }
+    const them = nameOnSide(info, (1 - me) as 0 | 1)
+    return outcome === 'win' ? { headline: 'You win', detail: `${them} surrendered.` } : { headline: 'You surrendered', detail: `${them} wins this match.` }
+  }
   if (why === 'time') detail = `Time's up: ${score}.`
   else if (why === 'empty') detail = `Everyone left: ${score}.`
   else if (me === null) detail = outcome === 'draw' ? 'Nobody holds a cannon.' : `${outcome === 'win' ? pink : gold} has no cannons left.`

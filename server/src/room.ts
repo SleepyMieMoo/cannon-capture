@@ -301,6 +301,9 @@ export class RoomCore {
         if (st.rematch[0] && st.rematch[1] && this.bothHere()) return this.startMatch(now)
         return this.changed()
       }
+      case 'surrender':
+        if (seat === null || !this.running) return this.refuse(conn, 'There is no match to surrender.')
+        return this.surrender(seat, now)
       case 'order':
         if (seat === null) return this.sendTo(conn, { t: 'ack', seq: msg.seq, ok: false })
         return this.order(conn, seat, msg.seq, msg.o, now)
@@ -566,6 +569,17 @@ export class RoomCore {
     if (!sim.paused || now - m.lastSnap >= 250) this.sendSnaps(now)
   }
 
+  /** A player gives up: the other seat wins straight away (paused or not, even in the countdown). */
+  private surrender(seat: 0 | 1, now: number): void {
+    const m = this.match!
+    if (m.sim.ended) return
+    m.why = 'surrender'
+    m.pause = null
+    // endMatch's outcome is gold's ('player'): gold surrendering is gold losing.
+    m.sim.endMatch(m.sides[seat] === 'player' ? 'lose' : 'win', 'surrender')
+    this.endMatch(now)
+  }
+
   private takeOver(seat: 0 | 1): void {
     const m = this.match
     if (!m || m.over || m.ai[seat]) return
@@ -695,6 +709,7 @@ export class RoomCore {
       result: st.result,
       settings: this.settings(),
       left: this.leftSeat(),
+      surrender: true,
     }
   }
 

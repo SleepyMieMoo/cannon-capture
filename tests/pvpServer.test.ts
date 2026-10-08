@@ -650,3 +650,66 @@ describe('online protocol helpers', () => {
     expect(PVP_MAPS[1].cannons).toEqual(mirrored(3).cannons)
   })
 })
+
+describe('online room: surrender', () => {
+  const room3 = () => {
+    const s = setup()
+    const a = s.join(TOKEN_A, 'Nova')
+    const b = s.join(TOKEN_B, 'Kim')
+    const w = s.join('token-wwwwwwww', 'W')
+    return { ...s, a, b, w }
+  }
+
+  it('the room says this server takes it (older servers leave it out: no button)', () => {
+    const { a, w } = room3()
+    expect(a.room_.surrender).toBe(true)
+    expect(w.room_.surrender).toBe(true)
+    expect(parseClientMsg({ t: 'surrender' })).toEqual({ t: 'surrender' })
+  })
+
+  it('a player surrenders: the other wins at once, everyone sees why, and a rematch works after', () => {
+    const { a, b, w, room, run } = room3()
+    a.say({ t: 'start' })
+    run(PVP_RULES.countdownMs + 500)
+    b.say({ t: 'surrender' })
+    expect(room.match!.over).toBe(true)
+    for (const c of [a, b, w]) {
+      expect(c.room_.phase).toBe('ended')
+      expect(c.room_.result).toMatchObject({ winner: 0, why: 'surrender' })
+      expect(c.snap.x?.why).toBe('surrender')
+    }
+    // Nothing more happens to the finished match.
+    b.say({ t: 'surrender' })
+    expect(b.last('error').code).toBe('notallowed')
+    a.say({ t: 'rematch', on: true })
+    b.say({ t: 'rematch', on: true })
+    expect(room.match!.over).toBe(false)
+    expect(a.room_.phase).toBe('playing')
+    // Sides swapped for the rematch: Nova is pink now; her surrender gives Kim (gold) the match.
+    expect(a.last('start').side).toBe('enemy')
+    a.say({ t: 'surrender' })
+    expect(a.room_.result).toMatchObject({ winner: 1, why: 'surrender' })
+  })
+
+  it('watchers cannot surrender, nor anyone between matches; during the countdown or a pause works', () => {
+    const { a, b, w, room, run } = room3()
+    a.say({ t: 'surrender' })
+    expect(a.last('error').code).toBe('notallowed')
+    a.say({ t: 'start' })
+    w.say({ t: 'surrender' })
+    expect(w.last('error').code).toBe('notallowed')
+    expect(room.match!.over).toBe(false)
+    run(PVP_RULES.countdownMs + 300)
+    b.say({ t: 'order', seq: 1, o: { t: 'pause' } })
+    expect(room.match!.sim.paused).toBe(true)
+    a.say({ t: 'surrender' })
+    expect(room.match!.over).toBe(true)
+    expect(a.room_.result).toMatchObject({ winner: 1, why: 'surrender' })
+    // Countdown: a fresh match can be given up before Go.
+    a.say({ t: 'rematch', on: true })
+    b.say({ t: 'rematch', on: true })
+    expect(room.match!.sim.countdown).toBeGreaterThan(0)
+    b.say({ t: 'surrender' })
+    expect(room.match!.over).toBe(true)
+  })
+})
