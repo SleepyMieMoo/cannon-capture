@@ -206,6 +206,12 @@ export class BattleScene extends Phaser.Scene {
       {
       bounce: (x, y) => this.sparks.push({ x, y, life: 1, color: theme.spark }),
       hit: (x, y, side, kind) => this.sparks.push({ x, y, life: 1, color: sideColor(side), size: kind === 'machinegun' ? 0.45 : 1 }),
+      blocked: (x, y, shield, _side, kind) => {
+        this.sparks.push({ x, y, life: 1, color: sideColor(shield.side), size: kind === 'machinegun' ? 0.5 : 1.1 })
+        this.sparks.push({ x, y, life: 0.7, color: 0xffffff, size: kind === 'machinegun' ? 0.3 : 0.6 })
+      },
+      shieldBroken: (shield) => this.popup(shield.x, shield.y - 8, 'Shield down', cssHex(sideColor(shield.side))),
+      shieldBack: (shield) => this.popup(shield.x, shield.y - 8, 'Shield up', cssHex(sideColor(shield.side))),
       captured: (cannon) => this.popup(cannon.x, cannon.y, 'Captured', cssHex(sideColor(cannon.side))),
       healed: (cannon, amount) => this.tallyHeal(cannon, amount),
       noAims: (cannon) => this.popup(cannon.x, cannon.y, 'No aims left', theme.textMuted),
@@ -629,13 +635,18 @@ export class BattleScene extends Phaser.Scene {
     if (pill && this.swapMenu.cannon) {
       const c = this.swapMenu.cannon
       if (pill === c.kind) return `${c.name} is a ${kindLabel(c.kind)}: ${KINDS[c.kind].blurb}.`
-      return `Swap ${c.name} to ${kindLabel(pill)}: ${KINDS[pill].blurb}. It reloads before its first shot.`
+      return `Swap ${c.name} to ${kindLabel(pill)}: ${KINDS[pill].blurb}. ${KINDS[pill].fires ? 'It reloads before its first shot.' : 'Its barrier comes up after the reload.'}`
     }
     if (!this.selected) {
       if (this.hover && this.hover.side === 'player') return `Click to select ${this.hover.name}, or pick a type above it (long-press on touch).`
       return 'Click one of your gold cannons to select it, then click where it should aim.'
     }
     const name = this.selected.name
+    if (!this.selected.fires) {
+      if (this.hover === this.selected) return `Click ${name} again to deselect.`
+      if (this.hover && this.hover.side === 'player' && !this.hover.damaged) return `Click to select ${this.hover.name} instead.`
+      return `${name} is a shield: click where its barrier should face (enemy shots stop on it; yours pass through).`
+    }
     if (this.hover && this.hover !== this.selected) {
       if (this.hover.side === 'player' && this.hover.damaged) return `${name} → heal ${this.hover.name} (it goes back to its old aim once ${this.hover.name} is whole).`
       if (this.hover.side === 'player') return `Click to select ${this.hover.name} instead.`
@@ -829,6 +840,8 @@ export class BattleScene extends Phaser.Scene {
 
     for (const cannon of this.cannons) {
       if (cannon.side === 'neutral') continue
+      // A shield's barrier shows where it faces; no aim line (it doesn't shoot).
+      if (!cannon.fires) continue
       const aim = cannon.aim()
       if (!aim) continue
       const mine = cannon.side === 'player'
@@ -845,7 +858,20 @@ export class BattleScene extends Phaser.Scene {
 
     // Live preview from the selected cannon to wherever the pointer is.
     const sel = this.selected
-    if (sel && !this.ended) {
+    if (sel && !this.ended && !sel.fires) {
+      // A shield: a ghost of the barrier, turned toward the pointer.
+      const at = this.hover && this.hover !== sel ? this.hover : this.pointer
+      if (at) {
+        const s = TUNING.shield
+        const facing = Math.atan2(at.y - sel.y, at.x - sel.x)
+        const half = (s.arcDeg * Math.PI) / 360
+        g.lineStyle(6, theme.select, 0.45 + 0.2 * Math.sin(time / 140))
+        g.beginPath()
+        g.arc(sel.x, sel.y, s.reach, facing - half, facing + half, false)
+        g.strokePath()
+        crosshair(g, at.x, at.y, 9, theme.select, 0.6)
+      }
+    } else if (sel && !this.ended) {
       const hover = this.hover && this.hover !== sel ? this.hover : null
       if (hover && (hover.side !== 'player' || hover.damaged)) {
         const end = clipToWalls(sel.x, sel.y, hover.x, hover.y, walls)

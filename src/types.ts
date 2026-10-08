@@ -21,7 +21,7 @@ export type MapSize = 'small' | 'medium' | 'large' | 'huge'
 export const AI_LEVELS = ['easy', 'normal', 'hard', 'impossible'] as const
 export type AiLevel = (typeof AI_LEVELS)[number]
 
-export const CANNON_KINDS = ['normal', 'sniper', 'machinegun'] as const
+export const CANNON_KINDS = ['normal', 'sniper', 'machinegun', 'shield'] as const
 
 export type CannonKind = (typeof CANNON_KINDS)[number]
 

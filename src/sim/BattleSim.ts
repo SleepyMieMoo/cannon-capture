@@ -6,7 +6,7 @@ import { Cannon } from '../entities/Cannon'
 import { Shot } from '../entities/Shot'
 import { boardFor } from '../levels/board'
 import type { AiLevel, CannonKind, LevelDef, Point, Rect, Side } from '../types'
-import { Broadphase, type BallisticsOpts, type Body } from './ballistics'
+import { Broadphase, type BallisticsOpts, type Barrier, type Body } from './ballistics'
 import { LaneBuilder, lanesOf, levelFans, shotOpts, type LaneTable } from './solver'
 
 export type Outcome = 'win' | 'lose'
@@ -19,6 +19,7 @@ export const PUZZLE_STALL_MS = 5000
  * stay under it, so in practice no shot is ever dropped.
  */
 export const MAX_SHOTS = 800
+const NO_BARRIERS: Barrier[] = []
 
 export interface SimEvents {
   bounce?(x: number, y: number): void
@@ -29,6 +30,12 @@ export interface SimEvents {
   noAims?(cannon: Cannon): void
   /** A cannon changed tower type mid-round. */
   swapped?(cannon: Cannon): void
+  /** A shot from `side` hit `shield`'s barrier at (x, y). */
+  blocked?(x: number, y: number, shield: Cannon, side: Side, kind: CannonKind): void
+  /** That hit broke the barrier (it is down for TUNING.shield.downMs). */
+  shieldBroken?(shield: Cannon): void
+  /** A broken barrier came back. */
+  shieldBack?(shield: Cannon): void
   aimed?(point: Point): void
 }
 
@@ -59,6 +66,8 @@ export class BattleSim {
   private readonly fans
   private readonly bodies: Body[]
   private readonly near: Broadphase
+  /** Scratch list: shields with their barrier up this step. */
+  private readonly upShields: Cannon[] = []
 
   constructor(
     level: LevelDef,
@@ -135,6 +144,7 @@ export class BattleSim {
       fans: this.fans,
       bodies: this.bodies,
       near: this.near,
+      upShields: [],
       events: {},
     })
     return f
@@ -183,7 +193,11 @@ export class BattleSim {
       this.events.noAims?.(cannon)
       return false
     }
-    if (aim instanceof Cannon && aim.side === cannon.side) cannon.startHeal(aim)
+    // A shield just turns its barrier: toward a foe (and keeps facing it), or toward any point.
+    if (!cannon.fires) {
+      if (aim instanceof Cannon && aim.side !== cannon.side) cannon.setTarget(aim)
+      else if (aim !== cannon) cannon.setAimPoint({ x: aim.x, y: aim.y })
+    } else if (aim instanceof Cannon && aim.side === cannon.side) cannon.startHeal(aim)
     else if (aim instanceof Cannon) cannon.setTarget(aim)
     else cannon.setAimPoint(aim)
     if (this.level.aims !== undefined) this.aimsUsed += 1
@@ -205,21 +219,36 @@ export class BattleSim {
 
   private stepShots(dt: number): void {
     // Every side fires at the same rate: difficulty is intelligence only.
+    const shields = this.upShields
+    shields.length = 0
     for (const cannon of this.cannons) {
       const spawned = cannon.update(dt, false, TUNING.fireIntervalMs)
       if (spawned) this.shots.push(new Shot(spawned, cannon.side, cannon.damage, cannon.kind))
+      if (cannon.shieldReturned) {
+        cannon.shieldReturned = false
+        this.events.shieldBack?.(cannon)
+      }
+      if (cannon.shieldUp) shields.push(cannon)
     }
+    const barriers = shields.length ? shields.map((c) => c.barrier()!) : NO_BARRIERS
 
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const shot = this.shots[i]
       const near = this.near.at(shot.ball.x, shot.ball.y)
-      const result = shot.step(dt, near.walls, this.fans, near.bodies, this.opts)
+      const result = shot.step(dt, near.walls, this.fans, near.bodies, this.opts, barriers.length ? this.barriersFor(shot, shields, barriers, dt) : undefined)
       if (result.bounced) this.events.bounce?.(shot.ball.x, shot.ball.y)
+      if (result.blockedBy && !this.ended) {
+        const shield = this.byId(result.blockedBy)!
+        this.events.blocked?.(shot.ball.x, shot.ball.y, shield, shot.side, shot.kind)
+        if (shield.absorb(shot.damage).broke) this.events.shieldBroken?.(shield)
+        for (const ai of this.ais) ai.sawHit(shield, shot, true)
+      }
       if (result.hitId && !this.ended) {
         const cannon = this.byId(result.hitId)
         this.events.hit?.(shot.ball.x, shot.ball.y, shot.side, shot.kind)
         if (cannon) {
           if (cannon.side === 'neutral') this.lastPuzzleProgress = this.clock
+          for (const ai of this.ais) ai.sawHit(cannon, shot, false)
           const hit = cannon.receiveHit(shot.side, shot.damage)
           if (hit.healed > 0) this.events.healed?.(cannon, hit.healed)
           if (hit.flipped) this.onCaptured(cannon)
@@ -227,11 +256,28 @@ export class BattleSim {
       }
       if (!shot.ball.alive) {
         // Let the AIs see where their shots went (Easy and Normal correct their aim after a miss).
-        for (const ai of this.ais) ai.shotLanded(shot.ball.ownerId, result.hitId)
+        for (const ai of this.ais) ai.shotLanded(shot.ball.ownerId, result.hitId, result.blockedBy)
         this.shots.splice(i, 1)
       }
     }
     if (this.shots.length > MAX_SHOTS) this.shots.splice(0, this.shots.length - MAX_SHOTS)
+  }
+
+  /** Barriers that could stop this shot this step: other sides' only, and only nearby ones. */
+  private barriersFor(shot: Shot, shields: Cannon[], barriers: Barrier[], dt: number): Barrier[] | undefined {
+    let out: Barrier[] | undefined
+    const { x, y, vx, vy } = shot.ball
+    const travel = (Math.hypot(vx, vy) * dt) / 1000 + 2
+    for (let i = 0; i < shields.length; i++) {
+      if (shields[i].side === shot.side) continue
+      const b = barriers[i]
+      const reach = b.r + b.band + travel
+      const dx = x - b.x
+      const dy = y - b.y
+      if (dx * dx + dy * dy > reach * reach) continue
+      ;(out ??= []).push(b)
+    }
+    return out
   }
 
   private onCaptured(cannon: Cannon): void {

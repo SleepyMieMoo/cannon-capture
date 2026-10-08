@@ -31,6 +31,64 @@ export interface Body {
   radius: number
 }
 
+/**
+ * A shield's barrier: an arc of radius `r` round (x, y), `half` radians
+ * either side of `facing`. A shot touching it (within `band` px of the arc,
+ * `pad` radians past its ends) is absorbed.
+ */
+export interface Barrier {
+  id: string
+  x: number
+  y: number
+  r: number
+  facing: number
+  half: number
+  band: number
+  pad: number
+}
+
+/** True when a ball centred at (x, y) touches the barrier. */
+export function touchesBarrier(x: number, y: number, b: Barrier): boolean {
+  const dx = x - b.x
+  const dy = y - b.y
+  const d2 = dx * dx + dy * dy
+  const lo = b.r - b.band
+  const hi = b.r + b.band
+  if (d2 < lo * lo || d2 > hi * hi) return false
+  let diff = Math.atan2(dy, dx) - b.facing
+  diff = Math.atan2(Math.sin(diff), Math.cos(diff))
+  return Math.abs(diff) <= b.half + b.pad
+}
+
+/**
+ * True when a polyline [x0, y0, x1, y1, ...] crosses the barrier's arc
+ * (treated as its centre line, padded by `pad` at the ends).
+ */
+export function pathCrossesBarrier(path: readonly number[], b: Barrier): boolean {
+  for (let i = 0; i + 3 < path.length; i += 2) {
+    const x0 = path[i]
+    const y0 = path[i + 1]
+    const dx = path[i + 2] - x0
+    const dy = path[i + 3] - y0
+    const fx = x0 - b.x
+    const fy = y0 - b.y
+    const a = dx * dx + dy * dy
+    if (a < 1e-9) continue
+    const bb = 2 * (fx * dx + fy * dy)
+    const c = fx * fx + fy * fy - b.r * b.r
+    const disc = bb * bb - 4 * a * c
+    if (disc < 0) continue
+    const sq = Math.sqrt(disc)
+    for (const t of [(-bb - sq) / (2 * a), (-bb + sq) / (2 * a)]) {
+      if (t < 0 || t > 1) continue
+      let diff = Math.atan2(fy + dy * t, fx + dx * t) - b.facing
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff))
+      if (Math.abs(diff) <= b.half + b.pad) return true
+    }
+  }
+  return false
+}
+
 export interface BallisticsOpts {
   radius: number
   maxSpeed: number
@@ -44,6 +102,8 @@ export interface StepResult {
   hitId: string | null
   bounced: boolean
   pushed: boolean
+  /** The shield whose barrier absorbed the shot, if one did. */
+  blockedBy?: string
 }
 
 export function aimShot(
@@ -94,6 +154,7 @@ export function stepBall(
   fans: FanField[],
   bodies: Body[],
   opts: BallisticsOpts,
+  barriers?: Barrier[],
 ): StepResult {
   const dt = Math.max(0, dtMs) / 1000
   const speed = Math.hypot(ball.vx, ball.vy)
@@ -130,6 +191,14 @@ export function stepBall(
       if (next.bounces > opts.maxBounces) {
         next.alive = false
         return { ball: next, hitId: null, bounced, pushed }
+      }
+    }
+
+    if (barriers) {
+      for (const b of barriers) {
+        if (!touchesBarrier(next.x, next.y, b)) continue
+        next.alive = false
+        return { ball: next, hitId: null, bounced, pushed, blockedBy: b.id }
       }
     }
 
