@@ -21,6 +21,9 @@ import { isTypingTarget } from '../ui/typing'
 import { Sfx, preloadSfx } from '../audio/Sfx'
 import { Cannon, haloR, setRingScale } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
+import { Glass } from '../entities/Glass'
+import { VOID_COLOURS } from '../config/obstacles'
+import { Pillar } from '../entities/Pillar'
 import { Wall } from '../entities/Wall'
 import { CAMPAIGN, SKIRMISH, campaignIndex, findLevel } from '../levels'
 import { recordWin } from '../progress'
@@ -35,9 +38,9 @@ import { currentFx, currentFxConfig, fxLabel, noteSlowDevice, onFxChange } from 
 import { clampPoint } from '../sim/aim'
 import { BattleSim, type Outcome } from '../sim/BattleSim'
 import { MirrorBot, makeBot, type Bot } from '../sim/bots'
-import { clipToWalls } from '../sim/geometry'
+import { clipToGlass, clipToPillars, clipToWalls } from '../sim/geometry'
 import { starsFor } from '../sim/stars'
-import type { LevelDef, Point, Rect } from '../types'
+import type { LevelDef, Point, Rect, WallDef } from '../types'
 import { makeButton } from '../ui/button'
 import { ResultPanel } from '../ui/resultPanel'
 import { motionOK } from '../ui/motion'
@@ -144,6 +147,8 @@ export class BattleScene extends Phaser.Scene {
   private bot: Bot | null = null
   private walls: Wall[] = []
   private fans: Fan[] = []
+  private pillars: Pillar[] = []
+  private glass: Glass[] = []
   private sparks: Spark[] = []
   /** Gameplay effects (auras, flashes, trails, bursts): render/vfx/Vfx.ts. */
   private vfx: Vfx | null = null
@@ -380,6 +385,8 @@ export class BattleScene extends Phaser.Scene {
     this.drawBoard()
     this.fx = this.add.graphics().setDepth(3)
     this.level.walls.forEach((rect) => this.walls.push(new Wall(this, rect)))
+    this.level.pillars?.forEach((def) => this.pillars.push(new Pillar(this, def)))
+    this.level.glass?.forEach((def) => this.glass.push(new Glass(this, def)))
     this.level.fans.forEach((def) => this.fans.push(new Fan(this, def)))
 
     this.sfx = new Sfx(this, () => ({ rect: this.wc.visibleRect(), zoom: this.wc.zoom }))
@@ -418,7 +425,8 @@ export class BattleScene extends Phaser.Scene {
         this.vfx?.fired(cannon)
       },
       // Effects off: the plain sparks; otherwise the effects' own.
-      bounce: (x, y) => (this.plainSparks ? this.sparks.push({ x, y, life: 1, color: theme.spark }) : this.vfx?.bounce(x, y)),
+      bounce: (x, y, surface) => (this.plainSparks ? this.sparks.push({ x, y, life: 1, color: theme.spark }) : this.vfx?.bounce(x, y, surface)),
+      absorbed: (x, y) => (this.plainSparks ? this.sparks.push({ x, y, life: 1, color: VOID_COLOURS.spark }) : this.vfx?.absorbed(x, y)),
       hit: (x, y, side, kind) =>
         this.plainSparks ? this.sparks.push({ x, y, life: 1, color: sideColor(side), size: kind === 'machinegun' ? 0.45 : 1 }) : this.vfx?.hit(x, y, side, kind),
       blocked: (x, y, shield, _side, kind) => {
@@ -618,6 +626,9 @@ export class BattleScene extends Phaser.Scene {
 
   update(time: number, delta: number): void {
     const dt = Math.min(delta, 32)
+    const moving = this.vfx?.cfg.rings ?? false
+    for (const wall of this.walls) wall.tick(time, moving)
+    for (const pane of this.glass) pane.draw(time, moving)
     for (const fan of this.fans) fan.draw(time)
 
     this.wc.update(dt)
@@ -2163,7 +2174,7 @@ export class BattleScene extends Phaser.Scene {
       const fires = firesAs(kind ?? c.kind)
       if (aim) {
         if (fires) {
-          const end = clipToWalls(c.x, c.y, aim.x, aim.y, walls)
+          const end = this.clipAim(c.x, c.y, aim.x, aim.y, walls)
           const onCannon = aim instanceof Cannon
           const blocked = end.x !== aim.x || end.y !== aim.y
           dash(g, c.x, c.y, end.x, end.y, haloR() + 2, onCannon && !blocked ? haloR() : 4, theme.select, pulse)
@@ -2265,7 +2276,7 @@ export class BattleScene extends Phaser.Scene {
       const mine = cannon.side === 'player'
       const color = sideColor(cannon.side)
       const alpha = mine ? (cannon.selected ? 0.85 : 0.4) : 0.34
-      const end = clipToWalls(cannon.x, cannon.y, aim.x, aim.y, walls)
+      const end = this.clipAim(cannon.x, cannon.y, aim.x, aim.y, walls)
       const blocked = end.x !== aim.x || end.y !== aim.y
       const endInset = cannon.target && !blocked ? TUNING.cannonRadius + 14 : 4
       dash(g, cannon.x, cannon.y, end.x, end.y, TUNING.cannonRadius + 14, endInset, color, alpha)
@@ -2292,13 +2303,13 @@ export class BattleScene extends Phaser.Scene {
     } else if (sel && !this.ended) {
       const hover = this.hover && this.hover !== sel ? this.hover : null
       if (hover && (hover.side !== 'player' || hover.damaged)) {
-        const end = clipToWalls(sel.x, sel.y, hover.x, hover.y, walls)
+        const end = this.clipAim(sel.x, sel.y, hover.x, hover.y, walls)
         const blocked = end.x !== hover.x || end.y !== hover.y
         dash(g, sel.x, sel.y, end.x, end.y, haloR() + 2, blocked ? 4 : haloR() + 2, theme.select, 0.9)
         g.lineStyle(2, theme.select, 0.6 + 0.3 * Math.sin(time / 120))
         g.strokeCircle(hover.x, hover.y, haloR())
       } else if (!this.hover && this.pointer) {
-        const end = clipToWalls(sel.x, sel.y, this.pointer.x, this.pointer.y, walls)
+        const end = this.clipAim(sel.x, sel.y, this.pointer.x, this.pointer.y, walls)
         dash(g, sel.x, sel.y, end.x, end.y, haloR() + 2, 4, theme.select, 0.55)
         crosshair(g, this.pointer.x, this.pointer.y, 10, theme.select, 0.75)
       }
@@ -2319,6 +2330,13 @@ export class BattleScene extends Phaser.Scene {
       g.fillStyle(spark.color, spark.life * 0.7)
       g.fillCircle(spark.x, spark.y, (4 + (1 - spark.life) * 10) * k)
     }
+  }
+
+  /** The aim line stops at the first wall, pillar or solid side of a glass pane. */
+  private clipAim(x1: number, y1: number, x2: number, y2: number, walls: WallDef[]): Point {
+    const a = clipToWalls(x1, y1, x2, y2, walls)
+    const b = clipToPillars(x1, y1, a.x, a.y, this.level.pillars ?? [])
+    return clipToGlass(x1, y1, b.x, b.y, this.level.glass ?? [])
   }
 
   private fadeSparks(dt: number): void {

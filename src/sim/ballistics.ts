@@ -1,6 +1,9 @@
 import { TUNING } from '../config/tuning'
-import type { Rect, WallDef } from '../types'
-import { circleWall, reflect } from './geometry'
+import type { GlassDef, PillarDef, Rect, WallDef } from '../types'
+import { circleGlass, circlePillar, circleWall, reflect } from './geometry'
+
+/** What a shot can bounce off (or be swallowed by). */
+export type Surface = 'wall' | 'pillar' | 'glass'
 
 /** How far a normal shot flies (px, path length including bounces): shotSpeed for shotLifetimeMs. */
 export const DEFAULT_RANGE = (TUNING.shotSpeed * TUNING.shotLifetimeMs) / 1000
@@ -117,6 +120,10 @@ export interface StepResult {
   pushed: boolean
   /** The shield whose barrier absorbed the shot, if one did. */
   blockedBy?: string
+  /** A void wall swallowed the shot. */
+  absorbed?: boolean
+  /** What it banked off last this step, when it bounced. */
+  surface?: Surface
 }
 
 export function aimShot(
@@ -169,6 +176,8 @@ export function stepBall(
   bodies: Body[],
   opts: BallisticsOpts,
   barriers?: Barrier[],
+  pillars?: readonly PillarDef[],
+  glass?: readonly GlassDef[],
 ): StepResult {
   const dt = Math.max(0, dtMs) / 1000
   const speed = Math.hypot(ball.vx, ball.vy)
@@ -178,6 +187,7 @@ export function stepBall(
   let bounced = false
   let pushed = false
   let hitId: string | null = null
+  let surface: Surface | undefined
   const range = next.range ?? opts.range ?? DEFAULT_RANGE
   let travelled = next.travelled ?? 0
 
@@ -200,24 +210,46 @@ export function stepBall(
     travelled += move * k
     next.travelled = travelled
 
-    // Several walls touched in one sub-step (a corner) count as one bounce.
+    // Several surfaces touched in one sub-step (a corner) count as one bounce.
     let banked = false
     for (const wall of walls) {
       const hit = circleWall(next.x, next.y, opts.radius, wall)
       if (!hit) continue
-      next.x += hit.nx * (hit.pen + 0.75)
-      next.y += hit.ny * (hit.pen + 0.75)
-      const reflected = reflect(next.vx, next.vy, hit.nx, hit.ny)
-      next.vx = reflected.vx
-      next.vy = reflected.vy
+      if (wall.kind === 'void') {
+        // A void wall swallows the shot where it touches.
+        next.alive = false
+        return { ball: next, hitId: null, bounced, pushed, absorbed: true }
+      }
+      bank(next, hit.nx, hit.ny, hit.pen)
       banked = true
+      surface = 'wall'
+    }
+    if (pillars) {
+      for (const p of pillars) {
+        // A true circle: the shot reflects off the surface normal where it hits.
+        const hit = circlePillar(next.x, next.y, opts.radius, p)
+        if (!hit) continue
+        bank(next, hit.nx, hit.ny, hit.pen)
+        banked = true
+        surface = 'pillar'
+      }
+    }
+    if (glass) {
+      for (const g of glass) {
+        const hit = circleGlass(next.x, next.y, opts.radius, g)
+        // Through from the open side; a bounce only off the solid side, heading into it.
+        if (!hit || !hit.solid || next.vx * hit.nx + next.vy * hit.ny >= 0) continue
+        bank(next, hit.nx, hit.ny, hit.pen)
+        banked = true
+        surface = 'glass'
+      }
     }
     if (banked) {
       next.bounces += 1
       bounced = true
       if (next.bounces > opts.maxBounces) {
         next.alive = false
-        return { ball: next, hitId: null, bounced, pushed }
+        return { ball: next, hitId: null, bounced, pushed, surface }
       }
     }
 
@@ -237,7 +269,7 @@ export function stepBall(
       if (dx * dx + dy * dy <= reach * reach) {
         next.alive = false
         hitId = body.id
-        return { ball: next, hitId, bounced, pushed }
+        return { ball: next, hitId, bounced, pushed, surface }
       }
     }
 
@@ -259,7 +291,16 @@ export function stepBall(
     }
   }
 
-  return { ball: next, hitId, bounced, pushed }
+  return { ball: next, hitId, bounced, pushed, surface }
+}
+
+/** Push the ball out along the normal and reflect it. */
+function bank(ball: Ball, nx: number, ny: number, pen: number): void {
+  ball.x += nx * (pen + 0.75)
+  ball.y += ny * (pen + 0.75)
+  const r = reflect(ball.vx, ball.vy, nx, ny)
+  ball.vx = r.vx
+  ball.vy = r.vy
 }
 
 export interface TraceResult {
@@ -278,6 +319,7 @@ export function traceShot(
   opts: BallisticsOpts,
   maxMs: number = TUNING.shotMaxFlightMs,
   near?: Broadphase,
+  extra?: { pillars?: readonly PillarDef[]; glass?: readonly GlassDef[] },
 ): TraceResult {
   let ball = start
   let bounced = false
@@ -287,7 +329,9 @@ export function traceShot(
 
   for (let elapsed = 0; elapsed < maxMs && ball.alive && hitId === null; elapsed += 16) {
     const cell = near?.at(ball.x, ball.y)
-    const step = stepBall(ball, 16, cell ? cell.walls : walls, fans, cell ? cell.bodies : bodies, opts)
+    const step = cell
+      ? stepBall(ball, 16, cell.walls, fans, cell.bodies, opts, undefined, cell.pillars, cell.glass)
+      : stepBall(ball, 16, walls, fans, bodies, opts, undefined, extra?.pillars, extra?.glass)
     ball = step.ball
     if (step.bounced) bounced = true
     if (step.pushed) pushed = true
@@ -304,12 +348,20 @@ export function traceShot(
  * within a safe margin of it and the result is identical to testing everything.
  */
 export class Broadphase {
-  private readonly cells = new Map<number, { walls: WallDef[]; bodies: Body[] }>()
-  private static readonly EMPTY = { walls: [] as WallDef[], bodies: [] as Body[] }
+  private readonly cells = new Map<number, Cell>()
+  private static readonly EMPTY: Cell = { walls: [], bodies: [], pillars: [], glass: [] }
   private readonly size: number
 
   /** `reach`: the furthest a ball can travel in one step (px). */
-  constructor(walls: WallDef[], bodies: Body[], shotRadius: number, reach = 24, cellSize = 128) {
+  constructor(
+    walls: WallDef[],
+    bodies: Body[],
+    shotRadius: number,
+    reach = 24,
+    cellSize = 128,
+    pillars: readonly PillarDef[] = [],
+    glass: readonly GlassDef[] = [],
+  ) {
     this.size = cellSize
     const margin = shotRadius + reach
     for (const wall of walls) {
@@ -325,25 +377,40 @@ export class Broadphase {
       const r = body.radius + margin
       this.add(body.x - r, body.y - r, body.x + r, body.y + r, (c) => c.bodies.push(body))
     }
+    for (const p of pillars) {
+      const r = p.r + margin
+      this.add(p.x - r, p.y - r, p.x + r, p.y + r, (c) => c.pillars.push(p))
+    }
+    for (const g of glass) {
+      this.add(Math.min(g.x, g.x2) - margin, Math.min(g.y, g.y2) - margin, Math.max(g.x, g.x2) + margin, Math.max(g.y, g.y2) + margin, (c) => c.glass.push(g))
+    }
   }
 
   private key(ix: number, iy: number): number {
     return (iy + 1024) * 4096 + (ix + 1024)
   }
 
-  private add(x0: number, y0: number, x1: number, y1: number, put: (c: { walls: WallDef[]; bodies: Body[] }) => void): void {
+  private add(x0: number, y0: number, x1: number, y1: number, put: (c: Cell) => void): void {
     const s = this.size
     for (let iy = Math.floor(y0 / s); iy <= Math.floor(y1 / s); iy++) {
       for (let ix = Math.floor(x0 / s); ix <= Math.floor(x1 / s); ix++) {
         const k = this.key(ix, iy)
         let cell = this.cells.get(k)
-        if (!cell) this.cells.set(k, (cell = { walls: [], bodies: [] }))
+        if (!cell) this.cells.set(k, (cell = { walls: [], bodies: [], pillars: [], glass: [] }))
         put(cell)
       }
     }
   }
 
-  at(x: number, y: number): { walls: WallDef[]; bodies: Body[] } {
+  at(x: number, y: number): Cell {
     return this.cells.get(this.key(Math.floor(x / this.size), Math.floor(y / this.size))) ?? Broadphase.EMPTY
   }
+}
+
+/** What is near one grid cell. */
+export interface Cell {
+  walls: WallDef[]
+  bodies: Body[]
+  pillars: PillarDef[]
+  glass: GlassDef[]
 }

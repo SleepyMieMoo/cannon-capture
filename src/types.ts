@@ -12,6 +12,31 @@ export interface Rect {
 /** A wall: a rectangle, optionally rotated by `angle` radians about its centre. */
 export interface WallDef extends Rect {
   angle?: number
+  /**
+   * 'void': absorbs shots on contact instead of bouncing them. Older maps
+   * leave it out (a normal wall).
+   */
+  kind?: 'void'
+}
+
+/** A round pillar: shots reflect off the surface normal where they hit. */
+export interface PillarDef {
+  x: number
+  y: number
+  r: number
+}
+
+/**
+ * One-way glass: a segment from (x, y) to (x2, y2). Shots bounce off the
+ * solid side (the normal's side) and pass through the other. `flip` swaps
+ * which side is solid.
+ */
+export interface GlassDef {
+  x: number
+  y: number
+  x2: number
+  y2: number
+  flip?: boolean
 }
 
 export type MapSize = 'small' | 'medium' | 'large' | 'huge'
@@ -88,5 +113,9 @@ export interface LevelDef {
   size?: MapSize
   cannons: CannonDef[]
   walls: WallDef[]
+  /** Round pillars (added later: older maps leave them out). */
+  pillars?: PillarDef[]
+  /** One-way glass segments (added later: older maps leave them out). */
+  glass?: GlassDef[]
   fans: FanDef[]
 }

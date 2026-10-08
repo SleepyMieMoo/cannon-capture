@@ -1,5 +1,6 @@
 import { cssHex, lerpColor, shade, sideColor, theme } from '../config/theme'
 import { SKIN_SHAPE, type SkinId } from '../config/skins'
+import { GLASS, GLASS_RIM, VOID_COLOURS } from '../config/obstacles'
 
 /** Small inline SVGs for the menu (static strings, crisp at any DPI). */
 
@@ -103,6 +104,14 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
   const pink = cssHex(sideColor('enemy'))
   const tinted = cssHex(lerpColor(sideColor('enemy'), sideColor('player'), 0.55))
   const healing = cssHex(lerpColor(sideColor('player'), sideColor('enemy'), 0.32))
+  const voidFill = cssHex(VOID_COLOURS.fill)
+  const voidEdge = cssHex(VOID_COLOURS.edge)
+  const voidRim = cssHex(VOID_COLOURS.rim)
+  const voidSpark = cssHex(VOID_COLOURS.spark)
+  const wallFill = cssHex(theme.wall)
+  const wallEdge = cssHex(theme.wallEdge)
+  const glass = cssHex(GLASS)
+  const glassRim = cssHex(GLASS_RIM)
   return [
   {
     title: 'Aim',
@@ -146,6 +155,27 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
     text: 'Big maps: scroll or pinch to zoom, drag empty space (or WASD / arrows) to pan. Fit shows the whole board.',
     art: svg(
       `<rect x="24" y="18" width="110" height="64" rx="8" fill="none" stroke="${edge}" stroke-width="2"/><rect x="48" y="32" width="58" height="36" rx="5" fill="none" stroke="${gold}" stroke-width="2" stroke-dasharray="5 4"/><path d="M77 50h22m-4-4 4 4-4 4M77 50H55m4-4-4 4 4 4" stroke="${gold}" stroke-width="2" fill="none"/>${key(176, 32, '+  −', 44)}${key(176, 68, 'WASD', 52)}`,
+    ),
+  },
+  {
+    title: 'Void walls',
+    text: 'The dark purple walls with a slow swirl swallow any shot that touches them: no bounce, just a puff. Aim around them; the AI won’t waste shots into them either.',
+    art: svg(
+      `${cannon(40, 50, gold, 0)}<circle cx="92" cy="50" r="4" fill="${gold}"/><circle cx="122" cy="50" r="4" fill="${gold}" fill-opacity=".7"/><rect x="150" y="18" width="22" height="64" rx="4" fill="${voidFill}" stroke="${voidEdge}" stroke-width="3"/><path d="M155 30q8 8 0 16t0 16" stroke="${voidRim}" stroke-opacity=".7" stroke-width="2" fill="none"/><circle cx="146" cy="50" r="9" fill="${voidRim}" fill-opacity=".35"/><circle cx="141" cy="44" r="2" fill="${voidSpark}"/><circle cx="140" cy="57" r="1.6" fill="${voidSpark}"/>${label(120, 92, 'swallows shots')}`,
+    ),
+  },
+  {
+    title: 'Round pillars',
+    text: 'Shots glance off a pillar like a ball off a post: the bounce follows the curve, so hitting it off-centre sends the shot off at a wide angle. Great for bank shots around a crowd.',
+    art: svg(
+      `${cannon(36, 66, gold, -0.32)}<polyline points="62,58 128,40 206,72" fill="none" stroke="${sel}" stroke-width="2.5" stroke-dasharray="6 5"/><circle cx="129" cy="22" r="15" fill="${wallFill}" stroke="${wallEdge}" stroke-width="3"/><ellipse cx="124" cy="16" rx="5" ry="3.5" fill="#fff" fill-opacity=".18"/>${cannon(212, 74, grey, Math.PI + 0.4, 12)}${label(120, 92, 'bounces off the curve')}`,
+    ),
+  },
+  {
+    title: 'One-way glass',
+    text: 'Shots pass through a glass pane the way its arrows point and bounce off the bright side. Use it to guard a cannon from one side while you still fire out through it.',
+    art: svg(
+      `${cannon(34, 36, gold, 0, 13)}<line x1="56" y1="36" x2="196" y2="36" stroke="${gold}" stroke-width="2.5" stroke-dasharray="6 5"/><rect x="116" y="14" width="8" height="72" rx="2" fill="${glass}" fill-opacity=".2"/><line x1="124" y1="14" x2="124" y2="86" stroke="${glassRim}" stroke-width="2.5"/>${[26, 50, 74].map((y) => `<path d="M114 ${y - 5}l7 5-7 5z" fill="${glassRim}" fill-opacity=".8"/>`).join('')}${cannon(206, 66, pink, Math.PI, 13)}<polyline points="182,66 128,66 170,80" fill="none" stroke="${pink}" stroke-width="2.5" stroke-dasharray="6 5"/>${label(120, 96, 'through one way, bounce the other', muted, 9)}`,
     ),
   },
   {

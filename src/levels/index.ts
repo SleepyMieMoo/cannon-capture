@@ -1,8 +1,9 @@
 import type { LevelDef } from '../types'
 import { CAMPAIGN } from './campaign'
 import { SKIRMISH } from './skirmish'
+import { EXAMPLE_MAPS } from './examples'
 
-export { CAMPAIGN, SKIRMISH }
+export { CAMPAIGN, SKIRMISH, EXAMPLE_MAPS }
 
 export const ALL_LEVELS: LevelDef[] = [...CAMPAIGN, SKIRMISH]
 

@@ -1,5 +1,5 @@
 import { PVP_LIMITS } from '../config/pvpRules'
-import { SKIRMISH } from '../levels'
+import { EXAMPLE_MAPS, SKIRMISH } from '../levels'
 import { MAP_SIZES } from '../levels/board'
 import { mirrored } from '../levels/mirrored'
 import type { Order } from '../sim/orders'
@@ -135,6 +135,8 @@ export const PVP_MAPS: LevelDef[] = [
   fair(3, 'mirror-wind', 'Wind Gap'),
   fair(8, 'mirror-walls', 'Four Walls'),
   fair(10, 'mirror-duel', 'Narrow Duel'),
+  // The obstacle examples (mirrored too).
+  ...EXAMPLE_MAPS,
 ].filter((l) => (l.size ?? 'small') !== 'huge' && MAP_SIZES[l.size ?? 'small'])
 
 export const pvpMap = (id: string): LevelDef | undefined => PVP_MAPS.find((l) => l.id === id)

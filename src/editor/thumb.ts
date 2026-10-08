@@ -2,6 +2,7 @@ import { TUNING } from '../config/tuning'
 import { cssHex, sideColor, theme } from '../config/theme'
 import { boardFor } from '../levels/board'
 import type { LevelDef } from '../types'
+import { GLASS, VOID_COLOURS } from '../config/obstacles'
 
 /** Draws a small preview of a map onto a 2D canvas (My maps list). */
 export function drawThumb(canvas: HTMLCanvasElement, level: LevelDef, width = 150): void {
@@ -30,14 +31,28 @@ export function drawThumb(canvas: HTMLCanvasElement, level: LevelDef, width = 15
     ctx.fill()
   }
   ctx.globalAlpha = 1
-  ctx.fillStyle = cssHex(theme.wall)
   for (const w of level.walls) {
+    ctx.fillStyle = w.kind === 'void' ? cssHex(VOID_COLOURS.rim) : cssHex(theme.wall)
     ctx.save()
     ctx.translate(w.x + w.w / 2, w.y + w.h / 2)
     ctx.rotate(w.angle ?? 0)
     const t = Math.max(w.h, 2 * px)
     ctx.fillRect(-w.w / 2, -t / 2, w.w, t)
     ctx.restore()
+  }
+  ctx.fillStyle = cssHex(theme.wall)
+  for (const p of level.pillars ?? []) {
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, Math.max(p.r, 2 * px), 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.strokeStyle = cssHex(GLASS)
+  ctx.lineWidth = Math.max(6, 2 * px)
+  for (const g of level.glass ?? []) {
+    ctx.beginPath()
+    ctx.moveTo(g.x, g.y)
+    ctx.lineTo(g.x2, g.y2)
+    ctx.stroke()
   }
   const r = Math.max(TUNING.cannonRadius, 3.2 * px)
   for (const c of level.cannons) {

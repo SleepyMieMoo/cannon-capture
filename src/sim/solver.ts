@@ -6,8 +6,10 @@ import { Broadphase, aimShot, stepBall, type BallisticsOpts, type Body, type Fan
 
 /**
  * Lane finder: fires a test shot from a cannon at every angle (1° apart) and
- * records which cannon it hits. Cannons never move and shots pass through
- * nothing but walls and cannons, so a level's lanes can be computed once.
+ * records which cannon it hits. Cannons never move and shots meet nothing
+ * but walls (void walls swallow them), pillars, glass, fans and cannons, so
+ * a level's lanes can be computed once. Banks off pillars and glass count as
+ * trick shots like wall banks.
  * Used by the enemy AI, the level-solvability tests and the debug bot.
  */
 
@@ -94,7 +96,7 @@ function traceCtx(level: LevelDef): TraceCtx {
     fans: levelFans(level),
     bodies,
     opts: shotOpts(level),
-    near: new Broadphase(level.walls, bodies, TUNING.shotRadius),
+    near: new Broadphase(level.walls, bodies, TUNING.shotRadius, 24, 128, level.pillars ?? [], level.glass ?? []),
   }
 }
 
@@ -133,7 +135,7 @@ function traceFull(ctx: TraceCtx, fromId: string, angle: number, kind: CannonKin
   let hitId: string | null = null
   for (let elapsed = 0; elapsed < maxMs && ball.alive && hitId === null; elapsed += 16) {
     const cell = ctx.near.at(ball.x, ball.y)
-    const step = stepBall(ball, 16, cell.walls, ctx.fans, cell.bodies, ctx.opts)
+    const step = stepBall(ball, 16, cell.walls, ctx.fans, cell.bodies, ctx.opts, undefined, cell.pillars, cell.glass)
     ball = step.ball
     if (step.pushed) pushed = true
     if (step.hitId) hitId = step.hitId
