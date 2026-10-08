@@ -66,6 +66,14 @@ export class BattleSim {
   private readonly fans
   private readonly bodies: Body[]
   private readonly near: Broadphase
+  /**
+   * Global auto-target for your cannons (the Settings toggle). On: your
+   * cannons whose own toggle (Cannon.autoTarget) is on pick a new target by
+   * themselves when theirs is captured, and newly captured cannons aim at the
+   * nearest foe. Off: none of yours ever does (their own toggles are kept for
+   * when it comes back on). Every round starts with it on. AI sides ignore it.
+   */
+  autoTarget = true
   /** Scratch list: shields with their barrier up this step. */
   private readonly upShields: Cannon[] = []
 
@@ -138,6 +146,7 @@ export class BattleSim {
       aiOff: true,
       clock: this.clock,
       aimsUsed: this.aimsUsed,
+      autoTarget: this.autoTarget,
       ended: this.ended,
       endReason: '',
       lastPuzzleProgress: this.lastPuzzleProgress,
@@ -184,6 +193,29 @@ export class BattleSim {
     if (!this.isPuzzle && !this.aiOff) for (const ai of this.ais) ai.update(dt, this.cannons)
     this.stepShots(dt)
     this.checkOutcome()
+  }
+
+  /**
+   * Whether `cannon` picks targets by itself right now. Your cannons: the
+   * global toggle and its own toggle both on, and never in puzzles (every aim
+   * there is yours to spend). Other sides without an AI (look-ahead copies)
+   * always do; sides an AI plays are left to the AI.
+   */
+  autoTargets(cannon: Cannon): boolean {
+    if (cannon.side !== 'player') return !this.isPuzzle
+    return !this.isPuzzle && this.autoTarget && cannon.autoTarget
+  }
+
+  /** The Settings toggle: auto-target on or off for all your cannons. */
+  setAutoTarget(on: boolean): void {
+    this.autoTarget = on
+  }
+
+  /** Flip one of your cannons' own auto-target toggle. Returns its new value (null if it isn't yours). */
+  toggleCannonAuto(cannon: Cannon): boolean | null {
+    if (cannon.side !== 'player') return null
+    cannon.autoTarget = !cannon.autoTarget
+    return cannon.autoTarget
   }
 
   /** A player aim order. Returns false when the puzzle aim budget is spent. */
@@ -282,15 +314,18 @@ export class BattleSim {
 
   private onCaptured(cannon: Cannon): void {
     this.events.captured?.(cannon)
-    if (this.isPuzzle) return // puzzles: every aim is yours to spend, nothing auto-aims
-    // Your cannons re-aim by themselves when their target falls; the AI's
-    // cannons are left to the AI, which reacts after its reaction time.
+    // A cannon that just became yours starts with its own toggle on: it follows the global setting.
+    if (cannon.side === 'player') cannon.autoTarget = true
+    // Your cannons re-aim by themselves when their target falls (if auto-target
+    // is on for them); the AI's cannons are left to the AI, which reacts after
+    // its reaction time. With it off, a cannon whose target fell drops it and
+    // holds its fire, barrel where it was, until you aim it.
     const aiSide = (side: Side) => this.ais.some((ai) => ai.side === side)
     for (const other of this.cannons) {
-      if (aiSide(other.side)) continue
+      if (aiSide(other.side) || !this.autoTargets(other)) continue
       if (other.target && other.target.side === other.side && other.target !== other.healing) other.setTarget(this.nearestFoe(other))
     }
-    if (!aiSide(cannon.side) && !cannon.aim()) {
+    if (!aiSide(cannon.side) && this.autoTargets(cannon) && !cannon.aim()) {
       const foe = this.nearestFoe(cannon)
       if (foe) aimViaLane(cannon, foe, lanesOf(this.lanes, cannon)?.get(foe.id), this.board)
     }

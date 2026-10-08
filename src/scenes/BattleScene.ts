@@ -20,7 +20,8 @@ import { clipToWalls } from '../sim/geometry'
 import { starsFor } from '../sim/stars'
 import type { LevelDef, Point, Rect, Side } from '../types'
 import { drawStar, makeButton } from '../ui/button'
-import { SwapMenu } from '../ui/swapMenu'
+import { SwapMenu, type AutoState } from '../ui/swapMenu'
+import { SettingsPanel } from '../ui/settingsPanel'
 import { layoutScale } from '../render/resolution'
 import { KINDS, fmtNum, kindLabel, nextKind } from '../config/kinds'
 
@@ -98,6 +99,7 @@ export class BattleScene extends Phaser.Scene {
   private aimsText: Phaser.GameObjects.Text | null = null
   private banner: Phaser.GameObjects.Container | null = null
   private swapMenu!: SwapMenu
+  private settings!: SettingsPanel
   /** Layout-space pointer position, for the swap menu. */
   private pointerLayout: Point | null = null
   /** A press on one of your cannons that may become a long-press. */
@@ -239,7 +241,8 @@ export class BattleScene extends Phaser.Scene {
         : makeBot(this.sim)
 
     this.uiBlock(() => this.createHud())
-    this.swapMenu = new SwapMenu(this, (obj) => this.ui(obj))
+    this.swapMenu = new SwapMenu(this, (obj) => this.ui(obj), (c) => this.autoState(c))
+    this.settings = new SettingsPanel(this, (obj) => this.ui(obj), GAME_WIDTH - 16, HUD_H + 8)
     if (this.wc.canZoomOut) this.createZoomUi()
     if (this.level.hint) this.showBanner(this.level.hint)
     else if (this.wc.canZoomOut) this.showBanner('Big map: scroll or pinch to zoom out, drag empty space or use WASD to pan.')
@@ -267,9 +270,14 @@ export class BattleScene extends Phaser.Scene {
     this.pings = this.pings.filter((ping) => ping.life > 0)
     this.drawFx(time)
     this.updateSwapMenu(dt, time)
+    if (this.ended) this.settings.hide()
+    const lp = this.pointerLayout
+    this.settings.setHot(lp ? this.settings.hitAt(lp.x, lp.y) : null)
+    this.settings.draw({ autoTarget: this.sim.autoTarget, puzzle: this.sim.isPuzzle })
     for (const cannon of this.cannons) {
       cannon.hovered = cannon === this.hover
       cannon.selected = cannon === this.selected
+      cannon.manualBadge = cannon.side === 'player' && !this.sim.isPuzzle && !this.sim.autoTargets(cannon)
       cannon.draw(time)
     }
     this.refreshHud()
@@ -304,7 +312,9 @@ export class BattleScene extends Phaser.Scene {
     keyboard.off('keydown-ESC', this.onCancelKey, this)
     keyboard.off('keydown-N', this.onNextKey, this)
     keyboard.off('keydown-T', this.onTypeKey, this)
+    keyboard.off('keydown-M', this.onAutoKey, this)
     keyboard.on('keydown-T', this.onTypeKey, this)
+    keyboard.on('keydown-M', this.onAutoKey, this)
     keyboard.on('keydown-R', this.onRestartKey, this)
     keyboard.on('keydown-ESC', this.onCancelKey, this)
     keyboard.on('keydown-N', this.onNextKey, this)
@@ -314,8 +324,35 @@ export class BattleScene extends Phaser.Scene {
     this.restart()
   }
 
+  /** M: flip auto-target for the cannon under the pointer (or the selected one). */
+  private onAutoKey(): void {
+    const c = this.hover && this.hover.side === 'player' ? this.hover : this.selected
+    if (c) this.toggleCannonAuto(c)
+  }
+
+  /** The auto-target pill's state for one of your cannons (null in puzzles: it isn't shown). */
+  private autoState(c: Cannon): AutoState {
+    if (this.sim.isPuzzle) return null
+    if (!this.sim.autoTarget) return 'all-off'
+    return c.autoTarget ? 'on' : 'off'
+  }
+
+  private toggleCannonAuto(c: Cannon): void {
+    if (this.ended || this.sim.isPuzzle) return
+    const on = this.sim.toggleCannonAuto(c)
+    if (on === null) return
+    const note = !this.sim.autoTarget ? (on ? 'Auto on (when Settings is on)' : 'Auto off') : on ? 'Auto-target on' : 'Manual: auto-target off'
+    this.popup(c.x, c.y - 30, note, on ? cssHex(theme.player) : theme.textMuted)
+  }
+
+  private toggleGlobalAuto(): void {
+    if (this.sim.isPuzzle || this.ended) return
+    this.sim.setAutoTarget(!this.sim.autoTarget)
+  }
+
   private onCancelKey(): void {
-    if (this.swapMenu.open) this.swapMenu.hide()
+    if (this.settings.open) this.settings.hide()
+    else if (this.swapMenu.open) this.swapMenu.hide()
     else this.selected = null
   }
 
@@ -373,11 +410,29 @@ export class BattleScene extends Phaser.Scene {
     // The type menu sits above the board: a press on it never reaches the board.
     const lp = this.toLayout(pointer)
     this.pointerLayout = lp
+    // The Settings panel, then the type menu, sit above the board: a press on them never reaches it.
+    if (this.settings?.open) {
+      const hit = this.settings.hitAt(lp.x, lp.y)
+      if (hit) {
+        this.pressOnUi = true
+        if (hit === 'auto') this.toggleGlobalAuto()
+        else if (hit === 'close') this.settings.hide()
+        return
+      }
+      // A press elsewhere (but not on the HUD's Settings link) closes it, and does nothing else.
+      if (!(over && over.length > 0)) {
+        this.settings.hide()
+        this.pressOnUi = true
+        return
+      }
+    }
     if (this.swapMenu.open && this.swapMenu.contains(lp.x, lp.y)) {
       this.pressOnUi = true
       const kind = this.swapMenu.pillAt(lp.x, lp.y)
       const cannon = this.swapMenu.cannon
-      if (kind && cannon) {
+      if (kind === 'auto') {
+        if (cannon) this.toggleCannonAuto(cannon)
+      } else if (kind && cannon) {
         this.sim.playerSwap(cannon, kind)
         if (this.swapMenu.pinned) this.swapMenu.hide()
       }
@@ -458,6 +513,13 @@ export class BattleScene extends Phaser.Scene {
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
     this.pointerLayout = this.toLayout(pointer)
+    if (this.settings.open && this.settings.contains(this.pointerLayout.x, this.pointerLayout.y)) {
+      const hit = this.settings.hitAt(this.pointerLayout.x, this.pointerLayout.y)
+      this.input.setDefaultCursor(hit === 'auto' || hit === 'close' ? 'pointer' : 'default')
+      this.hover = null
+      this.pointer = null
+      return
+    }
     if (this.swapMenu.open && this.swapMenu.contains(this.pointerLayout.x, this.pointerLayout.y)) {
       this.input.setDefaultCursor(this.swapMenu.pillAt(this.pointerLayout.x, this.pointerLayout.y) ? 'pointer' : 'default')
       this.pointer = null
@@ -565,10 +627,10 @@ export class BattleScene extends Phaser.Scene {
 
     const legend = this.add.graphics().setDepth(10)
     const groups: { side: Side; x: number; label: string }[] = [
-      { side: 'player', x: 600, label: 'You' },
-      { side: 'neutral', x: 712, label: 'Neutral' },
+      { side: 'player', x: 564, label: 'You' },
+      { side: 'neutral', x: 676, label: 'Neutral' },
     ]
-    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 852, label: 'Enemy' })
+    if (!this.isPuzzle) groups.push({ side: 'enemy', x: 816, label: 'Enemy' })
     const counts: Partial<Record<Side, Phaser.GameObjects.Text>> = {}
     this.counts = counts
     for (const group of groups) {
@@ -590,7 +652,7 @@ export class BattleScene extends Phaser.Scene {
     }
     if (this.isPuzzle && this.level.aims !== undefined) {
       this.aimsText = this.add
-        .text(870, HUD_ROW, '', { fontFamily: theme.font, fontSize: '15px', fontStyle: 'bold', color: theme.text })
+        .text(816, HUD_ROW, '', { fontFamily: theme.font, fontSize: '15px', fontStyle: 'bold', color: theme.text })
         .setOrigin(0, 0.5)
         .setDepth(10)
     }
@@ -607,6 +669,7 @@ export class BattleScene extends Phaser.Scene {
     }
     link(GAME_WIDTH - 28, 'Restart', () => this.restart())
     link(GAME_WIDTH - 112, this.backLabel(true), () => this.goBack())
+    link(GAME_WIDTH - 196, 'Settings', () => this.settings.toggle())
   }
 
   private refreshHud(): void {
@@ -632,6 +695,12 @@ export class BattleScene extends Phaser.Scene {
     if (this.ended) return this.ended === 'win' ? 'You hold every cannon.' : 'Not this time.'
     const lp = this.pointerLayout
     const pill = lp && this.swapMenu.open ? this.swapMenu.pillAt(lp.x, lp.y) : null
+    if (pill === 'auto') {
+      const c = this.swapMenu.cannon!
+      if (!this.sim.autoTarget) return `Auto-target is off for all your cannons (Settings). ${c.name}'s own toggle is ${c.autoTarget ? 'on' : 'off'}: click to flip it for when Settings is back on.`
+      if (c.autoTarget) return `${c.name} auto-targets: when its target is captured it picks the nearest foe itself. Click (or M) for manual: it keeps your aim and waits for orders.`
+      return `${c.name} is on manual: it never picks a target by itself. Click (or M) to turn auto-target back on.`
+    }
     if (pill && this.swapMenu.cannon) {
       const c = this.swapMenu.cannon
       if (pill === c.kind) return `${c.name} is a ${kindLabel(c.kind)}: ${KINDS[c.kind].blurb}.`
