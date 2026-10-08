@@ -43,6 +43,8 @@ export interface MusicEnv {
 const XFADE = 0.45
 const FADE_IN = 0.12
 const FADE_OUT = 0.25
+/** How often the audio clock is tied to the page clock again (ms). */
+const CLOCK_REFRESH_MS = 250
 /** Events that count as a user gesture for audio, in every browser we care about. */
 const GESTURES = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const
 
@@ -99,6 +101,9 @@ export class MusicPlayer {
   private unlocking = false
   private suspendTimer: ReturnType<typeof setTimeout> | null = null
   private readonly listeners = new Set<() => void>()
+  /** The audio clock against the page clock: the context time being heard at a page time (refreshed now and then). */
+  private heardCtx = 0
+  private heardAt = -Infinity
 
   constructor(private readonly env: MusicEnv) {
     this.settings = loadMusicSettings(env.store)
@@ -149,6 +154,52 @@ export class MusicPlayer {
     if (p < v.loop.end) return p
     const span = v.loop.end - v.loop.start
     return span > 0 ? v.loop.start + ((p - v.loop.start) % span) : 0
+  }
+
+  /**
+   * The song position being heard right now (s), from the audio clock, with
+   * the output's latency taken off; NaN when nothing is audible (off, volume
+   * 0, loading, locked, or the tab's music paused). No allocation per call.
+   */
+  audiblePosition(nowMs: number): number {
+    const v = this.voice
+    const ctx = this.ctx
+    if (!v || !ctx || !this.settings.on || this.settings.volume <= 0 || ctx.state !== 'running') return NaN
+    if (v.track !== this.current || this.loading === this.current) return NaN
+    if (nowMs - this.heardAt > CLOCK_REFRESH_MS || nowMs < this.heardAt) this.syncClock(ctx, nowMs)
+    const heard = this.heardCtx + (nowMs - this.heardAt) / 1000
+    const p = v.offset + (heard - v.startedAt)
+    if (p < v.offset) return NaN
+    if (p < v.loop.end) return p
+    const span = v.loop.end - v.loop.start
+    return span > 0 ? v.loop.start + ((p - v.loop.start) % span) : NaN
+  }
+
+  /**
+   * Tie the audio clock to the page clock. getOutputTimestamp says which
+   * context time the speakers are playing at a page time (latency included);
+   * without it, currentTime less the reported output and base latency.
+   */
+  private syncClock(ctx: AudioContext, nowMs: number): void {
+    const ts = typeof ctx.getOutputTimestamp === 'function' ? ctx.getOutputTimestamp() : null
+    const now = ctx.currentTime
+    if (ts && ts.performanceTime && ts.contextTime !== undefined && ts.performanceTime > 0) {
+      const heard = ts.contextTime + (nowMs - ts.performanceTime) / 1000
+      if (heard <= now + 0.05 && heard >= now - 0.6) {
+        this.heardCtx = heard
+        this.heardAt = nowMs
+        return
+      }
+    }
+    this.heardCtx = now - (ctx.outputLatency || 0) - (ctx.baseLatency || 0)
+    this.heardAt = nowMs
+  }
+
+  /** Settings → Music → Pulse to the music (saved). */
+  setPulse(on: boolean): void {
+    this.settings.pulse = on
+    this.save()
+    this.emit()
   }
 
   onChange(fn: () => void): () => void {

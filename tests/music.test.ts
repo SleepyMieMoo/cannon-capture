@@ -190,15 +190,15 @@ describe('music settings', () => {
   it('default to about half the sound effects’ volume, on, on the title song', () => {
     expect(MUSIC_DEFAULT_VOLUME).toBeGreaterThanOrEqual(SFX.defaultVolume * 0.4)
     expect(MUSIC_DEFAULT_VOLUME).toBeLessThanOrEqual(SFX.defaultVolume * 0.6)
-    expect(MUSIC_DEFAULTS).toEqual({ volume: MUSIC_DEFAULT_VOLUME, on: true, track: DEFAULT_TRACK, keepHidden: true })
+    expect(MUSIC_DEFAULTS).toEqual({ volume: MUSIC_DEFAULT_VOLUME, on: true, track: DEFAULT_TRACK, keepHidden: true, pulse: true })
     expect(TRACKS.find((t) => t.theme)?.id).toBe(DEFAULT_TRACK)
     expect(loadMusicSettings({ getItem: () => null, setItem: () => {} })).toEqual({ ...MUSIC_DEFAULTS })
   })
 
   it('saves and loads the song, the volume and play/pause, and ignores broken values', () => {
     const store = new MemoryStore()
-    saveMusicSettings({ volume: 0.2, on: false, track: 'singularity', keepHidden: false }, store)
-    expect(loadMusicSettings(store)).toEqual({ volume: 0.2, on: false, track: 'singularity', keepHidden: false })
+    saveMusicSettings({ volume: 0.2, on: false, track: 'singularity', keepHidden: false, pulse: false }, store)
+    expect(loadMusicSettings(store)).toEqual({ volume: 0.2, on: false, track: 'singularity', keepHidden: false, pulse: false })
     store.setItem(MUSIC_KEY, JSON.stringify({ volume: 7, on: 'yes', track: 'no-such-song' }))
     expect(loadMusicSettings(store)).toEqual({ ...MUSIC_DEFAULTS, volume: 1 })
     store.setItem(MUSIC_KEY, JSON.stringify({ volume: 'loud' }))
@@ -355,7 +355,7 @@ describe('MusicPlayer', () => {
     await flush()
     r.player.setDefault('singularity')
     r.player.setVolume(0.1)
-    expect(loadMusicSettings(r.store)).toEqual({ volume: 0.1, on: true, track: 'singularity', keepHidden: true })
+    expect(loadMusicSettings(r.store)).toEqual({ volume: 0.1, on: true, track: 'singularity', keepHidden: true, pulse: true })
     expect(r.player.current).toBe('fartysoup')
     r.player.reload()
     expect(r.player.settings.track).toBe('singularity')
@@ -393,5 +393,50 @@ describe('MusicPlayer', () => {
     await flush()
     expect(r.player.status).toBe('off')
     expect(r.fetched).toHaveLength(0)
+  })
+})
+
+describe('the audible position (for the beat pulses)', () => {
+  it('is NaN unless music is really audible', async () => {
+    const r = rig()
+    expect(r.player.audiblePosition(0)).toBeNaN()
+    r.player.boot()
+    await flush()
+    r.ctx.tick(5)
+    expect(r.player.audiblePosition(1000)).toBeCloseTo(5, 5)
+    r.player.setVolume(0)
+    expect(r.player.audiblePosition(1000)).toBeNaN()
+    r.player.setVolume(0.4)
+    r.player.pause()
+    expect(r.player.audiblePosition(1000)).toBeNaN()
+  })
+
+  it('takes off the output latency the context reports', async () => {
+    const r = rig()
+    Object.assign(r.ctx, { outputLatency: 0.05, baseLatency: 0.01 })
+    r.player.boot()
+    await flush()
+    r.ctx.tick(5)
+    expect(r.player.audiblePosition(1000)).toBeCloseTo(4.94, 5)
+  })
+
+  it('follows getOutputTimestamp, moving with the page clock between samples, and wraps at the loop', async () => {
+    const r = rig()
+    let perf = 1000
+    Object.assign(r.ctx, { getOutputTimestamp: () => ({ contextTime: r.ctx.currentTime - 0.04, performanceTime: perf }) })
+    r.player.boot()
+    await flush()
+    r.ctx.tick(5)
+    expect(r.player.audiblePosition(perf)).toBeCloseTo(4.96, 5)
+    // 100 ms on, no new sample needed: the page clock carries it.
+    r.ctx.tick(0.1)
+    perf += 100
+    expect(r.player.audiblePosition(perf)).toBeCloseTo(5.06, 5)
+    // Past the loop end (the test song loops 0..~100 s).
+    r.ctx.tick(100)
+    perf += 100_000
+    const pos = r.player.audiblePosition(perf)
+    expect(pos).toBeGreaterThan(4.9)
+    expect(pos).toBeLessThan(5.2)
   })
 })

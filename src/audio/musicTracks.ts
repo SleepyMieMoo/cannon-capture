@@ -7,6 +7,8 @@
  * loudness, and re-encoded to 128 kbps MP3 (about 1.2 to 1.9 MB each). Only
  * the song being played is downloaded, after the menu is on screen.
  */
+import type { BeatGrid } from './beatGrid'
+
 export interface MusicTrack {
   id: TrackId
   /** The title on Pixabay. */
@@ -20,6 +22,12 @@ export interface MusicTrack {
   file: string
   /** The title screen's song. */
   theme?: boolean
+  /**
+   * Its beat, for the UI's pulses: tempo, a beat and where bars start, in the
+   * decoded song's seconds. Measured from the audio (onsets, kick and bass
+   * changes against a fitted grid) and checked against the song's sections.
+   */
+  beat: BeatGrid
 }
 
 export type TrackId = 'fartysoup' | 'robotic-spaghetti' | 'singularity'
@@ -35,6 +43,8 @@ export const TRACKS: readonly MusicTrack[] = [
     page: 'https://pixabay.com/music/upbeat-fartysoup-mctriple-414508/',
     file: 'music/fartysoup.mp3',
     theme: true,
+    // Two quiet beats, then the first hit on beat 2: the bar starts there.
+    beat: { bpm: 115.002, firstBeat: 0.4812, barOffset: 2 },
   },
   {
     id: 'robotic-spaghetti',
@@ -43,6 +53,7 @@ export const TRACKS: readonly MusicTrack[] = [
     artist: MUSIC_ARTIST.name,
     page: 'https://pixabay.com/music/beats-robotic-spaghetti-414385/',
     file: 'music/robotic-spaghetti.mp3',
+    beat: { bpm: 107.498, firstBeat: 0.0229, barOffset: 0 },
   },
   {
     id: 'singularity',
@@ -51,6 +62,7 @@ export const TRACKS: readonly MusicTrack[] = [
     artist: MUSIC_ARTIST.name,
     page: 'https://pixabay.com/music/funk-singularity-funkyglitchy-videogame-music-512162/',
     file: 'music/singularity.mp3',
+    beat: { bpm: 120, firstBeat: 0.0234, barOffset: 0 },
   },
 ]
 

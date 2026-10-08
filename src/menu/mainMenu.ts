@@ -582,6 +582,8 @@ export class MainMenu {
     const range = h('input.mm-range', { type: 'range', min: '0', max: '100', step: '5', id: 'mm-music-volume', dataset: { id: 'music-volume' }, 'aria-label': 'Music volume' }) as HTMLInputElement
     const song = h('span', { dataset: { id: 'now-playing' } })
     sw.addEventListener('change', () => (sw.checked ? music.play() : music.pause()))
+    const pulse = h('input.mm-switch', { type: 'checkbox', role: 'switch', id: 'mm-pulse', dataset: { id: 'pulse' } }) as HTMLInputElement
+    pulse.addEventListener('change', () => music.setPulse(pulse.checked))
     range.addEventListener('input', () => music.setVolume(Number(range.value) / 100))
     const helpText = (): string => {
       const def = TRACKS.find((t) => t.id === music.settings.track)
@@ -590,6 +592,7 @@ export class MainMenu {
     const jukebox = settingRow({ id: 'jukebox', label: 'Jukebox', sub: song, help: helpText(), control: [this.button('to-jukebox', 'Open jukebox', () => this.open('jukebox', 'to-jukebox'), { icon: ICONS.music, cls: 'small' })] })
     const update = (): void => {
       sw.checked = music.playing
+      pulse.checked = music.settings.pulse
       const v = Math.round(music.settings.volume * 100)
       if (document.activeElement !== range) range.value = String(v)
       val.textContent = `${v}%`
@@ -603,6 +606,13 @@ export class MainMenu {
       h('div.mm-h', {}, 'Music'),
       settingRow({ id: 'music', label: 'Music', for: 'mm-music', control: [sw] }),
       settingRow({ id: 'music-volume', label: 'Volume', for: 'mm-music-volume', control: [range, val] }),
+      settingRow({
+        id: 'pulse',
+        label: 'Pulse to the music',
+        for: 'mm-pulse',
+        help: 'Small things like the jukebox bars and the title glow pulse on the beat while music plays. Never anything in play. Off when music is off or Reduce motion is on.',
+        control: [pulse],
+      }),
       jukebox,
     ]
   }

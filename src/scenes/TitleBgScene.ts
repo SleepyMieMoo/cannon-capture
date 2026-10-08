@@ -15,6 +15,7 @@ import { drawBoardSurface } from '../render/boardSurface'
 import { SideGlow, glowColours, glowEdges } from '../render/sideGlow'
 import { bindSceneResolution } from '../render/resolution'
 import { BattleSim } from '../sim/BattleSim'
+import { beatPulse } from '../ui/beatPulse'
 import type { LevelDef } from '../types'
 
 /** Boards the title's background battle cycles through (both sides played by the Normal AI). */
@@ -33,6 +34,7 @@ export class TitleBgScene extends Phaser.Scene {
   private fans: Fan[] = []
   private fx!: Phaser.GameObjects.Graphics
   private index = 0
+  private glow?: SideGlow
 
   constructor() {
     super('titlebg')
@@ -60,6 +62,7 @@ export class TitleBgScene extends Phaser.Scene {
     applyTeamColours(vsAiColours(loadColour()))
     // Each side's half glows in its colour, like a round.
     const glow = new SideGlow(this, board, glowEdges(this.sim.cannons, board))
+    this.glow = glow
     glow.paint(glowColours(vsAiColours(loadColour())))
     const offColour = onColourChange((c) => {
       applyTeamColours(vsAiColours(c))
@@ -76,6 +79,7 @@ export class TitleBgScene extends Phaser.Scene {
 
   update(time: number, delta: number): void {
     const dt = Math.min(delta, 50)
+    this.glow?.breathe(beatPulse.pulsing, beatPulse.barLevel(performance.now()))
     this.sim.pumpLanes(3)
     if (!this.sim.ended) this.sim.step(dt)
     for (const fan of this.fans) fan.draw(time)
