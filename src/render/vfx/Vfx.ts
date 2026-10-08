@@ -4,9 +4,9 @@ import { lerpColor, sideColor, theme } from '../../config/theme'
 import type { Cannon, CannonFx } from '../../entities/Cannon'
 import type { Shot } from '../../entities/Shot'
 import type { Fan } from '../../entities/Fan'
-import { GLASS, GLASS_RIM, VOID_COLOURS } from '../../config/obstacles'
+import { BRICK, GLASS, GLASS_RIM, VOID_COLOURS } from '../../config/obstacles'
 import type { Surface } from '../../sim/ballistics'
-import type { CannonKind, Rect, Side } from '../../types'
+import type { CannonKind, Rect, Side, WallDef } from '../../types'
 import { FADE_INOUT, FADE_LATE, ParticlePool, type Spawn } from './particlePool'
 import { FX_TEX, FX_TEX_W, HALO_TEX, HALO_W, SWEEP_TEX, SWEEP_W, TEX, TRAIL_H, TRAIL_TEX, TRAIL_W, bakeFxTextures } from './fxTextures'
 import type { FxConfig } from './fxQuality'
@@ -248,6 +248,54 @@ export class Vfx {
     this.add(this.smoke, { x, y, lifeMs: 420, size0: 10, size1: 26, alpha: 0.5, tint: VOID_PUFF, tex: TEX.smoke })
     this.glow(x, y, 8, 14, 0.6, VOID_SPARK, 160)
     this.sparks(x, y, this.count(2), VOID_SPARK, 60, 120, 10)
+  }
+
+  /** A shot wore down a breakable wall: a puff of brick dust and a chip or two. */
+  wallHit(x: number, y: number): void {
+    if (!this.cfg.particles || !this.onScreen(x, y, 30)) return
+    this.add(this.smoke, { x, y, lifeMs: 380, size0: 8, size1: 20, alpha: 0.4, tint: BRICK.dust, tex: TEX.smoke })
+    const n = this.count(2)
+    for (let i = 0; i < n; i++) {
+      const a = this.rand() * 6.28
+      const sp = 50 + this.rand() * 70
+      this.add(this.smoke, {
+        x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, drag: 0.08, gravity: 60,
+        lifeMs: 380 + this.rand() * 200, size0: 4 + this.rand() * 3, alpha: 0.95,
+        tint: i % 2 ? BRICK.light : BRICK.base, tex: TEX.chip, rot: this.rand() * 6.28, spin: (this.rand() - 0.5) * 12, fade: FADE_LATE,
+      })
+    }
+  }
+
+  /** A breakable wall broke for good: bricks tumble off along its length in a cloud of dust. */
+  wallBroken(wall: WallDef): void {
+    const cx = wall.x + wall.w / 2
+    const cy = wall.y + wall.h / 2
+    const len = Math.max(wall.w, wall.h)
+    if (!this.cfg.particles || !this.onScreen(cx, cy, len / 2 + 60)) return
+    const turn = wall.angle ?? 0
+    // The long axis in world space.
+    const ux = wall.w >= wall.h ? Math.cos(turn) : -Math.sin(turn)
+    const uy = wall.w >= wall.h ? Math.sin(turn) : Math.cos(turn)
+    const n = this.count(Math.min(26, 8 + Math.round(len / 10)))
+    for (let i = 0; i < n; i++) {
+      const t = (this.rand() - 0.5) * len
+      const x = cx + ux * t
+      const y = cy + uy * t
+      const a = this.rand() * 6.28
+      const sp = 60 + this.rand() * 130
+      this.add(this.smoke, {
+        x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, drag: 0.07, gravity: 80,
+        lifeMs: 600 + this.rand() * 450, size0: 6 + this.rand() * 6, alpha: 1,
+        tint: i % 4 === 0 ? BRICK.light : i % 3 === 0 ? BRICK.dark : BRICK.base, tex: TEX.chip, rot: this.rand() * 6.28, spin: (this.rand() - 0.5) * 14, fade: FADE_LATE,
+      })
+    }
+    const puffs = this.count(Math.min(8, 2 + Math.round(len / 40)))
+    for (let i = 0; i < puffs; i++) {
+      const t = ((i + 0.5) / puffs - 0.5) * len
+      this.add(this.smoke, { x: cx + ux * t, y: cy + uy * t, vx: (this.rand() - 0.5) * 30, vy: (this.rand() - 0.5) * 30, lifeMs: 700 + this.rand() * 300, size0: 18, size1: 46, alpha: 0.5, tint: BRICK.dust, tex: TEX.smoke })
+    }
+    if (this.cfg.rings) this.ring(cx, cy, 10, Math.min(140, len * 0.7), 0.35, BRICK.dust, 360)
+    this.shake(0.0014, 100)
   }
 
   /** A shot struck a cannon. */

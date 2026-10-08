@@ -2,7 +2,7 @@ import { TUNING } from '../config/tuning'
 import { cssHex, sideColor, theme } from '../config/theme'
 import { boardFor } from '../levels/board'
 import type { LevelDef } from '../types'
-import { GLASS, ROCK, VOID_COLOURS } from '../config/obstacles'
+import { GLASS, ROCK, VOID_COLOURS, BRICK } from '../config/obstacles'
 
 /** Draws a small preview of a map onto a 2D canvas (My maps list). */
 export function drawThumb(canvas: HTMLCanvasElement, level: LevelDef, width = 150): void {
@@ -32,7 +32,7 @@ export function drawThumb(canvas: HTMLCanvasElement, level: LevelDef, width = 15
   }
   ctx.globalAlpha = 1
   for (const w of level.walls) {
-    ctx.fillStyle = w.kind === 'void' ? cssHex(VOID_COLOURS.rim) : cssHex(theme.wall)
+    ctx.fillStyle = w.kind === 'void' ? cssHex(VOID_COLOURS.rim) : w.kind === 'breakable' ? cssHex(BRICK.base) : cssHex(theme.wall)
     ctx.save()
     ctx.translate(w.x + w.w / 2, w.y + w.h / 2)
     ctx.rotate(w.angle ?? 0)

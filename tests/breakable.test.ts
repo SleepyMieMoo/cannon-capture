@@ -115,7 +115,7 @@ describe('breakable wall', () => {
   it.each(['easy', 'normal', 'hard', 'impossible'] as const)('the AI (%s) shoots a breakable wall down when it hides every foe, then goes through', (ai) => {
     // Pink is shut in a box whose only door is a breakable wall.
     const level: LevelDef = {
-      id: 'breach', name: 'Breach', kind: 'battle', fans: [], ai,
+      id: 'breach', name: 'Breach', kind: 'battle', fans: [], ai: { difficulty: ai },
       walls: [
         { x: 600, y: 100, w: 24, h: 250 },
         { x: 600, y: 450, w: 24, h: 250 },

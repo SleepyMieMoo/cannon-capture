@@ -5,6 +5,8 @@
  * - Pillar: a round stone; shots reflect off its surface normal.
  * - Glass: an icy pane (clearly not a team colour) with a bright solid rim;
  *   shots pass one way and bounce off the other.
+ * - Breakable wall: old clay bricks (warmer and lighter than a plain wall)
+ *   that crack as they take hits and crumble for good.
  */
 export const VOID_COLOURS = { edge: 0x2a1840, fill: 0x0f0916, rim: 0x7a55b8, puff: 0x241433, spark: 0xb48cff } as const
 export const GLASS = 0xcfe8ff
@@ -31,3 +33,20 @@ export const PILLAR_OVALS: readonly { name: string; r: number; ry: number }[] = 
   { name: 'Oval', r: 40, ry: 24 },
   { name: 'Long', r: 60, ry: 20 },
 ]
+/** Breakable walls: clay bricks with dark mortar; cracks show the damage. */
+export const BRICK = {
+  edge: 0x3b2117,
+  mortar: 0x4a2a1c,
+  base: 0x9a5534,
+  dark: 0x7d4228,
+  light: 0xc07a4e,
+  crack: 0x1a0d08,
+  dust: 0xb58a68,
+} as const
+/** A breakable wall's crack stage for a health fraction: 0 whole, 1 cracked, 2 crumbling, 3 broken. */
+export function crackStage(health: number): 0 | 1 | 2 | 3 {
+  if (health <= 0) return 3
+  if (health <= 1 / 3 + 1e-6) return 2
+  if (health <= 2 / 3 + 1e-6) return 1
+  return 0
+}

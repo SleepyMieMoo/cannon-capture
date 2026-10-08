@@ -68,6 +68,8 @@ export class TitleBgScene extends Phaser.Scene {
       hit: (x, y, side, kind) => this.vfx?.hit(x, y, side, kind),
       blocked: (x, y, shield, _side, kind) => this.vfx?.blocked(x, y, shield, kind),
       shieldBroken: (c) => this.vfx?.shieldBroken(c),
+      wallHit: (_i, x, y) => this.vfx?.wallHit(x, y),
+      wallBroken: (i) => level.walls[i] && this.vfx?.wallBroken(level.walls[i]),
       captured: (c) => this.vfx?.captured(c),
       healed: (c) => this.vfx?.healed(c),
     }
@@ -109,7 +111,10 @@ export class TitleBgScene extends Phaser.Scene {
     if (!this.sim.ended) this.sim.step(dt)
     for (const fan of this.fans) fan.draw(time)
     const moving = this.vfx?.cfg.rings ?? false
-    for (const wall of this.walls) wall.tick(time, moving)
+    this.walls.forEach((wall, i) => {
+      wall.tick(time, moving)
+      if (wall.isBreakable) wall.setHealth(this.sim.wallHealth(i))
+    })
     for (const pane of this.glass) pane.draw(time, moving)
     setRingScale(this.cameras.main.zoom / (this.scale.displayScale.x || 1))
     this.vfx?.update(dt, time, this.sim.cannons, this.sim.shots, this.fans)

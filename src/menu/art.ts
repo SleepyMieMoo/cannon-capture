@@ -1,6 +1,6 @@
 import { cssHex, lerpColor, shade, sideColor, theme } from '../config/theme'
 import { SKIN_SHAPE, type SkinId } from '../config/skins'
-import { GLASS, GLASS_RIM, ROCK, VOID_COLOURS } from '../config/obstacles'
+import { BRICK, GLASS, GLASS_RIM, ROCK, VOID_COLOURS } from '../config/obstacles'
 
 /** Small inline SVGs for the menu (static strings, crisp at any DPI). */
 
@@ -108,6 +108,20 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
   const voidEdge = cssHex(VOID_COLOURS.edge)
   const voidRim = cssHex(VOID_COLOURS.rim)
   const voidSpark = cssHex(VOID_COLOURS.spark)
+  const brick = cssHex(BRICK.base)
+  const brickDark = cssHex(BRICK.dark)
+  const brickLight = cssHex(BRICK.light)
+  const brickEdge = cssHex(BRICK.edge)
+  const brickCrack = cssHex(BRICK.crack)
+  // A short brick wall (two courses, offset), standing at x 140..164.
+  const bricks = (x: number, y: number, rows: number): string => {
+    let out = `<rect x="${x}" y="${y}" width="24" height="${rows * 11 + 2}" rx="3" fill="${brickEdge}"/>`
+    for (let r = 0; r < rows; r++) {
+      const off = r % 2 ? 6 : 0
+      for (const [bx, bw] of off ? [[1, 5], [7, 10], [18, 5]] : [[1, 10], [12, 11]]) out += `<rect x="${x + bx}" y="${y + 1.5 + r * 11}" width="${bw}" height="9.5" fill="${(r + bx) % 3 ? brick : brickDark}"/><rect x="${x + bx}" y="${y + 1.5 + r * 11}" width="${bw}" height="1.6" fill="${brickLight}" fill-opacity=".5"/>`
+    }
+    return out
+  }
   const rockEdge = cssHex(ROCK.edge)
   const rockBase = cssHex(ROCK.base)
   const rockMid = cssHex(ROCK.mid)
@@ -180,6 +194,13 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
     text: 'Shots pass through a glass pane the way its arrows point and bounce off the bright side. Use it to guard a cannon from one side while you still fire out through it.',
     art: svg(
       `${cannon(34, 36, gold, 0, 13)}<line x1="56" y1="36" x2="196" y2="36" stroke="${gold}" stroke-width="2.5" stroke-dasharray="6 5"/><rect x="116" y="14" width="8" height="72" rx="2" fill="${glass}" fill-opacity=".2"/><line x1="124" y1="14" x2="124" y2="86" stroke="${glassRim}" stroke-width="2.5"/>${[26, 50, 74].map((y) => `<path d="M114 ${y - 5}l7 5-7 5z" fill="${glassRim}" fill-opacity=".8"/>`).join('')}${cannon(206, 66, pink, Math.PI, 13)}<polyline points="182,66 128,66 170,80" fill="none" stroke="${pink}" stroke-width="2.5" stroke-dasharray="6 5"/>${label(120, 96, 'through one way, bounce the other', muted, 9)}`,
+    ),
+  },
+  {
+    title: 'Breakable walls',
+    text: 'Brick walls bounce shots like any wall, but every hit wears them down, whichever side fired it. They crack, then crumble for good and never come back, opening a new lane. The AI shoots them down when they hide its targets.',
+    art: svg(
+      `${cannon(34, 50, gold, 0, 13)}<line x1="56" y1="50" x2="136" y2="50" stroke="${gold}" stroke-width="2.5" stroke-dasharray="6 5"/>${bricks(140, 16, 6)}<path d="M146 18l4 9-3 8 5 9-2 10M158 50l-4 8 3 9-2 9" stroke="${brickCrack}" stroke-width="1.8" fill="none"/><rect x="172" y="30" width="7" height="5" rx="1" fill="${brick}" transform="rotate(25 175 32)"/><rect x="182" y="52" width="6" height="4" rx="1" fill="${brickLight}" transform="rotate(-30 185 54)"/><rect x="176" y="68" width="5" height="4" rx="1" fill="${brickDark}" transform="rotate(40 178 70)"/>${cannon(212, 50, pink, Math.PI, 12)}${label(120, 96, 'cracks, then crumbles for good', muted, 9)}`,
     ),
   },
   {
