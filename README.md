@@ -22,6 +22,8 @@ The title screen shows a live AI-vs-AI battle, dimmed and silent, behind the men
 - **Back** (top left of every screen) or **Esc** goes up one screen. Arrow keys and Tab move between buttons, Enter picks, and everything works by touch. Phone and embedded-frame sizes fit without the page scrolling; long lists scroll inside their panel.
 - The game's name ("Cannon Capture", a working name), the "by SleepyMie" line and the Levels label all live in `src/config/brand.ts`. `index.html` has the page title for before the code loads.
 
+**Playtesting from the editor**, the top bar starts with **← Editor (E)**: it goes straight back to the editor with your map and unsaved edits, even while paused or on the result screen. **E** does the same (not while typing in a text field). It only shows for editor playtests.
+
 **In battle**, the top bar has **Menu** (or press **Esc** when nothing is selected). It pauses the round while open and has Resume, Restart, Back to where you came from, and Main menu. Inside it, Esc resumes and R restarts. A tactical pause you started yourself stays on after the menu closes.
 
 ## How to play

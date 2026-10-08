@@ -31,6 +31,18 @@ export function backRoute(ctx: BattleCtx): Route {
   return { scene: 'title' }
 }
 
+/** Playtest shortcut: the key that goes back to the editor (also shown on the top bar button). */
+export const EDITOR_KEY = 'E'
+
+/**
+ * Where the playtest shortcut (top bar button and E) goes: the editor, with
+ * its working copy, for battles started from the editor; null otherwise (no
+ * button, the key does nothing).
+ */
+export function editorReturn(ctx: BattleCtx): Route | null {
+  return ctx.from === 'editor' ? backRoute(ctx) : null
+}
+
 /** The label for that Back (short: for the HUD). */
 export function backLabel(ctx: BattleCtx, short: boolean): string {
   if (ctx.from === 'editor') return short ? 'Editor' : 'Back to editor'
