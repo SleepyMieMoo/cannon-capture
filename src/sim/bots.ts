@@ -1,9 +1,9 @@
-import { AiController, aimViaLane, healViaLane, planHeals, planSwaps, pointAlong } from '../ai/AiController'
+import { AiController, aimViaLane, healViaLane, planCover, planHeals, pointAlong } from '../ai/AiController'
+import { SwapGovernor, canReach, swapPolicy } from '../ai/towerChoice'
 import { TUNING } from '../config/tuning'
-import { minLaneFor } from '../config/kinds'
 import type { Cannon } from '../entities/Cannon'
 import type { BattleSim } from './BattleSim'
-import { MIN_LANE_DEG, lanesOf, planPuzzle } from './solver'
+import { lanesOf, planPuzzle } from './solver'
 
 /**
  * Autoplayers for your side, used to prove levels can be beaten (tests and
@@ -52,22 +52,36 @@ export class BattleBot implements Bot {
   private timer = 0
   private focus: Cannon | null = null
   private readonly aims = new Map<string, string>()
+  private readonly swaps: SwapGovernor
 
   constructor(
     private readonly sim: BattleSim,
     private readonly everyMs = TUNING.aiRetargetMs,
-  ) {}
+  ) {
+    // Same type-choice rules as the enemy AI (and as you: every swap reloads).
+    this.swaps = new SwapGovernor(swapPolicy({ ai: undefined }))
+  }
+
+  /** Fit `m` for its job and aim it (re-aims when the type changed). */
+  private fitAndAim(m: Cannon, target: Cannon): void {
+    const { sim } = this
+    const swapped = this.swaps.consider(m, target, sim.lanes, (c, kind) => sim.playerSwap(c, kind))
+    if (!swapped && this.aims.get(m.id) === target.id && m.aim()) return
+    aimViaLane(m, target, lanesOf(sim.lanes, m)?.get(target.id), sim.board)
+    this.aims.set(m.id, target.id)
+  }
 
   update(dt: number): void {
+    this.swaps.tick(dt)
     this.timer -= dt
     if (this.timer > 0) return
     this.timer = this.everyMs
     const { sim } = this
-    // Swap a cannon's type when that is the only way to reach a foe.
-    for (const { cannon, kind } of planSwaps('player', sim.cannons, sim.lanes)) sim.playerSwap(cannon, kind)
     const mine = sim.cannons.filter((c) => c.side === 'player')
     const foes = sim.cannons.filter((c) => c.side !== 'player')
-    const canHit = (m: Cannon, foe: Cannon) => (lanesOf(sim.lanes, m)?.get(foe.id)?.widthDeg ?? 0) >= minLaneFor(m.kind, MIN_LANE_DEG)
+    const canHit = (m: Cannon, foe: Cannon) => canReach(m, foe, sim.lanes)
+    // A foe nobody can reach as fitted: send the cannon that can after a swap.
+    const cover = new Map(planCover('player', sim.cannons, sim.lanes).map((o) => [o.cannon, o.foe]))
 
     let focus: Cannon | null = null
     let bestScore = -Infinity
@@ -85,13 +99,20 @@ export class BattleBot implements Bot {
 
     // Heal a cannon that is close to flipping, the way a player would.
     for (const { helper, friend } of planHeals('player', sim.cannons, sim.lanes)) {
+      this.swaps.consider(helper, friend, sim.lanes, (c, kind) => sim.playerSwap(c, kind))
       healViaLane(helper, friend, lanesOf(sim.lanes, helper)?.get(friend.id), sim.board)
       this.aims.delete(helper.id)
     }
 
     for (const m of mine) {
-      if (m.healing && m.healing.side === 'player' && m.healing.damaged) continue
-      let target = focus && canHit(m, focus) ? focus : null
+      if (m.healing && m.healing.side === 'player' && m.healing.damaged) {
+        const friend = m.healing
+        if (this.swaps.consider(m, friend, sim.lanes, (c, kind) => sim.playerSwap(c, kind))) {
+          healViaLane(m, friend, lanesOf(sim.lanes, m)?.get(friend.id), sim.board)
+        }
+        continue
+      }
+      let target = cover.get(m) ?? (focus && canHit(m, focus) ? focus : null)
       if (!target) {
         let best = Infinity
         for (const foe of foes) {
@@ -103,9 +124,8 @@ export class BattleBot implements Bot {
           }
         }
       }
-      if (!target || (this.aims.get(m.id) === target.id && m.aim())) continue
-      aimViaLane(m, target, lanesOf(sim.lanes, m)?.get(target.id), sim.board)
-      this.aims.set(m.id, target.id)
+      if (!target) continue
+      this.fitAndAim(m, target)
     }
   }
 }
@@ -115,7 +135,7 @@ export class MirrorBot implements Bot {
   private readonly ai = new AiController('player')
 
   constructor(private readonly sim: BattleSim) {
-    this.ai.reset(sim.lanes, TUNING.aiRetargetMs, sim.board)
+    this.ai.reset(sim.lanes, TUNING.aiRetargetMs, sim.board, swapPolicy({ ai: undefined }))
   }
 
   update(dt: number): void {

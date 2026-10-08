@@ -69,11 +69,19 @@ export const TUNING = {
    */
   swapLockMs: 1000,
   /**
-   * The AI swaps a normal cannon to a machine gun when the foe it is shooting
-   * is within this share of the machine gun's range (and its lane is wide
-   * enough for the spread).
+   * How the AI (and the test bot) choose a tower type for a cannon's current
+   * job (the foe it attacks or the friend it heals). Each type gets an
+   * estimated time to finish that job: the swap reload, plus the damage
+   * still needed divided by its expected damage rate on that lane (damage /
+   * fire interval x the share of its spread that lands on the lane). It
+   * swaps only when the best type beats the current one by `gain`, and at
+   * most once per `cooldownMs` per cannon (unless the current type can't hit
+   * the job at all). Keyed by the map's difficulty.
    */
-  aiMachineGunReach: 0.75,
+  aiSwap: {
+    cooldownMs: { easy: 6000, normal: 3500, hard: 2500 },
+    gain: { easy: 1.4, normal: 1.15, hard: 1.08 },
+  },
   /** Keep the current target unless a new one is clearly better, in pixels. */
   aiRetargetSlack: 200,
 } as const

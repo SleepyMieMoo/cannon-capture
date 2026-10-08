@@ -5,8 +5,6 @@ import { BattleSim, MAX_SHOTS } from '../src/sim/BattleSim'
 import { MirrorBot } from '../src/sim/bots'
 import { applyCaptureHit } from '../src/sim/capture'
 import { decodeShare, encodeShare, sanitizeLevel } from '../src/editor/maps'
-import { planSwaps } from '../src/ai/AiController'
-import { levelLanes } from '../src/sim/solver'
 import { boardFor } from '../src/levels/board'
 import type { CannonDef, CannonKind, LevelDef, Side, WallDef } from '../src/types'
 
@@ -231,33 +229,6 @@ describe('AI and machine guns', () => {
     expect(minLaneFor('machinegun')).toBe(TUNING.towers.machinegun.spreadDeg)
     expect(minLaneFor('normal')).toBe(2)
     expect(minLaneFor('sniper')).toBe(2)
-  })
-
-  it('swaps a normal cannon to a machine gun when a foe is close, and back once nothing is in reach', () => {
-    const level: LevelDef = {
-      id: 'mg-ai',
-      name: 'MG AI',
-      kind: 'battle',
-      cannons: [
-        { id: 'e1', name: 'E1', x: 700, y: 400, side: 'enemy' },
-        { id: 'e2', name: 'E2', x: 1000, y: 200, side: 'enemy' },
-        { id: 'p1', name: 'P1', x: 400, y: 400, side: 'player' },
-        { id: 'p2', name: 'P2', x: 100, y: 650, side: 'player' },
-      ],
-      walls: [],
-      fans: [],
-    }
-    const lanes = levelLanes(level)
-    const sim = new BattleSim(level, null, {}, lanes)
-    const orders = planSwaps('enemy', sim.cannons, lanes)
-    // E1 is 300 px from P1: well inside the gun's reach. E2 is too far from everything.
-    expect(orders.map((o) => [o.cannon.id, o.kind])).toEqual([['e1', 'machinegun']])
-    for (const o of orders) o.cannon.setKind(o.kind)
-    // Once its prey is gone (P1 captured), E1 has nothing in reach and goes back.
-    sim.byId('p1')!.side = 'enemy'
-    sim.byId('e1')!.update(1100, true) // let the swap reload finish
-    const back = planSwaps('enemy', sim.cannons, lanes)
-    expect(back.map((o) => [o.cannon.id, o.kind])).toContainEqual(['e1', 'normal'])
   })
 })
 

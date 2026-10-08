@@ -3,15 +3,17 @@ import type { Rect } from '../types'
 import { TUNING } from '../config/tuning'
 import { pickAiTarget } from '../sim/targeting'
 import { MIN_LANE_DEG, lanesOf, type Lane, type LaneTable } from '../sim/solver'
-import { KIND_IDS, laneKey, minLaneFor, shotRangeFor } from '../config/kinds'
+import { KIND_IDS, laneKey } from '../config/kinds'
 import type { Cannon } from '../entities/Cannon'
 import type { CannonKind, Point, Side } from '../types'
+import { SwapGovernor, canReach, type SwapPolicy } from './towerChoice'
 
 /**
  * Periodically aims every cannon of one side at the nearest weak foe it can
- * actually hit. It knows the level's lanes (including bank shots and fan
- * curves), so it aims at a point when a straight shot would be blocked.
- * Its cannons obey the same turn speed as yours.
+ * actually hit, and fits each cannon with the tower type that suits its job
+ * (see towerChoice.ts). It knows the level's lanes (including bank shots and
+ * fan curves), so it aims at a point when a straight shot would be blocked.
+ * Its cannons obey the same turn speed and swap rules as yours.
  */
 export class AiController {
   private elapsed = 0
@@ -19,19 +21,22 @@ export class AiController {
   private retargetMs: number = TUNING.aiRetargetMs
   private readonly picks = new Map<string, string>()
   private board: Rect = BOARD
+  readonly swaps = new SwapGovernor()
 
   constructor(readonly side: Side = 'enemy') {}
 
-  reset(lanes: LaneTable = new Map(), retargetMs: number = TUNING.aiRetargetMs, board: Rect = BOARD): void {
+  reset(lanes: LaneTable = new Map(), retargetMs: number = TUNING.aiRetargetMs, board: Rect = BOARD, policy?: SwapPolicy): void {
     this.board = board
     // Keep the level's opening targets for one full retarget interval.
     this.elapsed = 0
     this.lanes = lanes
     this.retargetMs = retargetMs
     this.picks.clear()
+    this.swaps.reset(policy)
   }
 
   update(dt: number, cannons: Cannon[]): void {
+    this.swaps.tick(dt)
     this.elapsed += dt
     if (this.elapsed < this.retargetMs) return
     this.elapsed = 0
@@ -41,33 +46,38 @@ export class AiController {
   retarget(cannons: Cannon[]): void {
     const prey = cannons.filter((cannon) => cannon.side !== this.side)
     const busy = this.assignHealers(cannons)
-    for (const { cannon, kind } of planSwaps(this.side, cannons, this.lanes, busy)) cannon.setKind(kind)
+    // A foe nobody can reach as fitted gets one cannon that can, after a swap.
+    const cover = new Map<Cannon, Cannon>()
+    for (const o of planCover(this.side, cannons, this.lanes, busy)) cover.set(o.cannon, o.foe)
     for (const cannon of cannons) {
       if (cannon.side !== this.side || busy.has(cannon)) continue
       const lanes = lanesOf(this.lanes, cannon)
-      // Lanes narrower than the cannon's spread miss too often to count.
-      const need = minLaneFor(cannon.kind, MIN_LANE_DEG)
-      const reachable = prey.filter((other) => (lanes?.get(other.id)?.widthDeg ?? 0) >= need)
-      const pool = reachable.length ? reachable : prey
+      // Prefer foes it can hit as it is; otherwise any it could hit after a swap.
+      const now = prey.filter((other) => (lanes?.get(other.id)?.widthDeg ?? 0) >= MIN_LANE_DEG)
+      const later = now.length ? now : prey.filter((other) => canReach(cannon, other, this.lanes))
+      const pool = later.length ? later : prey
       const currentId = this.picks.get(cannon.id) ?? cannon.target?.id ?? null
-      const choice = pickAiTarget(
-        cannon,
-        pool.map((other) => ({
-          id: other.id,
-          x: other.x,
-          y: other.y,
-          attacker: other.captureAttacker === this.side ? 'enemy' : null,
-          progress: other.captureProgress,
-        })),
-        TUNING.aiFinishBias,
-        currentId,
-        TUNING.aiRetargetSlack,
-      )
-      if (!choice) continue
-      if (choice.id === currentId && cannon.aim()) continue
-      const target = cannons.find((other) => other.id === choice.id)
+      let target = cover.get(cannon) ?? null
+      if (!target) {
+        const choice = pickAiTarget(
+          cannon,
+          pool.map((other) => ({
+            id: other.id,
+            x: other.x,
+            y: other.y,
+            attacker: other.captureAttacker === this.side ? 'enemy' : null,
+            progress: other.captureProgress,
+          })),
+          TUNING.aiFinishBias,
+          currentId,
+          TUNING.aiRetargetSlack,
+        )
+        target = choice ? (cannons.find((other) => other.id === choice.id) ?? null) : null
+      }
       if (!target) continue
-      aimViaLane(cannon, target, lanes?.get(target.id), this.board)
+      const swapped = this.swaps.consider(cannon, target, this.lanes, (c, kind) => c.setKind(kind))
+      if (!swapped && target.id === currentId && cannon.aim()) continue
+      aimViaLane(cannon, target, lanesOf(this.lanes, cannon)?.get(target.id), this.board)
       this.picks.set(cannon.id, target.id)
     }
   }
@@ -75,46 +85,47 @@ export class AiController {
   /** Send helpers to cannons close to flipping; returns every cannon busy healing. */
   private assignHealers(cannons: Cannon[]): Set<Cannon> {
     for (const { helper, friend } of planHeals(this.side, cannons, this.lanes)) {
+      this.swaps.consider(helper, friend, this.lanes, (c, kind) => c.setKind(kind))
       healViaLane(helper, friend, lanesOf(this.lanes, helper)?.get(friend.id), this.board)
       this.picks.delete(helper.id)
     }
     const busy = new Set<Cannon>()
-    for (const c of cannons) if (c.side === this.side && c.healing && c.healing.damaged) busy.add(c)
+    for (const c of cannons) {
+      if (c.side !== this.side || !c.healing || !c.healing.damaged) continue
+      busy.add(c)
+      // Already healing: switch to a better type for the job if it is worth it (re-aim on the new lane).
+      const friend = c.healing
+      if (this.swaps.consider(c, friend, this.lanes, (h, kind) => h.setKind(kind))) {
+        healViaLane(c, friend, lanesOf(this.lanes, c)?.get(friend.id), this.board)
+      }
+    }
     return busy
   }
 }
 
-export interface SwapOrder {
+export interface CoverOrder {
   cannon: Cannon
   kind: CannonKind
+  foe: Cannon
 }
 
 /**
- * Tower swaps, kept simple (used by the AI and the test bot):
- * 1. A foe that none of the side's cannons can reach as they are fitted, but
- *    one could after a swap: swap the cannon with the widest such lane.
- * 2. A cannon that can't reach any foe as it is, but could as another type,
- *    swaps to the type that reaches the most foes.
- * 3. A normal cannon with a foe close by (within TUNING.aiMachineGunReach of
- *    the machine gun's range, on a lane wide enough for its spread) swaps to
- *    a machine gun, unless it is about to finish a capture.
- * A lane only counts when it is at least as wide as that type's spread.
- * Only uses lanes that are already built.
+ * A foe that none of the side's cannons can reach as they are fitted, but one
+ * could after a swap (a sniper through a headwind, say): pick the cannon with
+ * the widest such lane to go after it. A machine gun counts as covering what
+ * it could hit as a normal cannon (it is only a gun because something is close).
  */
-export function planSwaps(side: Side, cannons: Cannon[], lanes: LaneTable, skip: Set<Cannon> = new Set()): SwapOrder[] {
+export function planCover(side: Side, cannons: Cannon[], lanes: LaneTable, skip: Set<Cannon> = new Set()): CoverOrder[] {
   const mine = cannons.filter((c) => c.side === side && !skip.has(c) && !c.swapping)
   const prey = cannons.filter((c) => c.side !== side)
-  const width = (c: Cannon, kind: CannonKind, foe: Cannon): number =>
-    lanes.get(laneKey(c.id, kind))?.get(foe.id)?.widthDeg ?? 0
-  const hits = (c: Cannon, kind: CannonKind, foe: Cannon): boolean => width(c, kind, foe) >= minLaneFor(kind, MIN_LANE_DEG)
-  const orders: SwapOrder[] = []
+  const width = (c: Cannon, kind: CannonKind, foe: Cannon): number => lanes.get(laneKey(c.id, kind))?.get(foe.id)?.widthDeg ?? 0
+  const hits = (c: Cannon, kind: CannonKind, foe: Cannon): boolean => width(c, kind, foe) >= MIN_LANE_DEG
+  const orders: CoverOrder[] = []
   const taken = new Set<Cannon>()
   const fitted = cannons.filter((c) => c.side === side)
   for (const foe of prey) {
-    // A machine gun counts as covering what it could hit as a normal cannon,
-    // so rule 3 and this rule never swap the same cannon back and forth.
     if (fitted.some((c) => hits(c, c.kind, foe) || (c.kind === 'machinegun' && hits(c, 'normal', foe)))) continue
-    let best: SwapOrder | null = null
+    let best: CoverOrder | null = null
     let bestW = 0
     for (const c of mine) {
       if (taken.has(c)) continue
@@ -122,7 +133,7 @@ export function planSwaps(side: Side, cannons: Cannon[], lanes: LaneTable, skip:
         if (kind === c.kind) continue
         const w = width(c, kind, foe)
         if (hits(c, kind, foe) && w > bestW) {
-          best = { cannon: c, kind }
+          best = { cannon: c, kind, foe }
           bestW = w
         }
       }
@@ -132,34 +143,12 @@ export function planSwaps(side: Side, cannons: Cannon[], lanes: LaneTable, skip:
       taken.add(best.cannon)
     }
   }
-  for (const c of mine) {
-    if (taken.has(c) || !lanes.has(laneKey(c.id, c.kind))) continue
-    const reach = (kind: CannonKind) => prey.filter((p) => hits(c, kind, p)).length
-    if (reach(c.kind) > 0) {
-      if (c.kind === 'normal' && closeFoeForGun(c)) orders.push({ cannon: c, kind: 'machinegun' })
-      continue
-    }
-    let best = c.kind
-    let bestReach = 0
-    for (const kind of KIND_IDS) {
-      if (!lanes.has(laneKey(c.id, kind))) continue
-      const r = reach(kind)
-      if (r > bestReach) {
-        best = kind
-        bestReach = r
-      }
-    }
-    if (best !== c.kind) orders.push({ cannon: c, kind: best })
-  }
   return orders
+}
 
-  function closeFoeForGun(c: Cannon): boolean {
-    if (!lanes.has(laneKey(c.id, 'machinegun'))) return false
-    const prey0 = c.target
-    if (prey0 && prey0.side !== side && prey0.captureAttacker === side && prey0.captureProgress >= TUNING.captureThreshold - 2) return false
-    const reach = shotRangeFor('machinegun') * TUNING.aiMachineGunReach
-    return prey.some((p) => Math.hypot(p.x - c.x, p.y - c.y) <= reach && hits(c, 'machinegun', p))
-  }
+/** Older name for planCover (the swap each cover order implies). */
+export function planSwaps(side: Side, cannons: Cannon[], lanes: LaneTable, skip: Set<Cannon> = new Set()): CoverOrder[] {
+  return planCover(side, cannons, lanes, skip)
 }
 
 export interface HealOrder {
@@ -170,8 +159,9 @@ export interface HealOrder {
 /**
  * Healing: each own cannon that is close to flipping (at least
  * TUNING.aiHealAtProgress of the meter gone) gets one helper, the nearest
- * other own cannon with a clear lane to it. Helpers that are about to finish
- * their own capture are left alone. Returns every cannon now busy healing.
+ * other own cannon with a clear lane to it as some tower type (it swaps if
+ * that pays off). Helpers that are about to finish their own capture are
+ * left alone.
  */
 export function planHeals(side: Side, cannons: Cannon[], lanes: LaneTable): HealOrder[] {
   const mine = cannons.filter((c) => c.side === side)
@@ -188,7 +178,7 @@ export function planHeals(side: Side, cannons: Cannon[], lanes: LaneTable): Heal
     let best = Infinity
     for (const c of mine) {
       if (c === friend || busy.has(c)) continue
-      if ((lanesOf(lanes, c)?.get(friend.id)?.widthDeg ?? 0) < minLaneFor(c.kind, MIN_LANE_DEG)) continue
+      if (!canReach(c, friend, lanes)) continue
       const prey = c.target
       if (prey && prey.side !== side && prey.captureAttacker === side && prey.captureProgress >= TUNING.captureThreshold - 2) continue
       const d = Math.hypot(c.x - friend.x, c.y - friend.y)
