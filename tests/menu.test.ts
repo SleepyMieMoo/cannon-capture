@@ -3,7 +3,8 @@ import { BRAND } from '../src/config/brand'
 import { CAMPAIGN, SKIRMISH } from '../src/levels'
 import { DEFAULT_PREFS, DIFFICULTY, loadMenuPrefs, nextPuzzle, pickMap, puzzleChoices, saveMenuPrefs, vsAiMaps } from '../src/menu/menuModel'
 import { PauseHold } from '../src/menu/pauseHold'
-import { MAIN_MENU, MenuNav, backLabel, backRoute, vsAiLevel } from '../src/menu/routes'
+import { EDITOR_KEY, MAIN_MENU, MenuNav, backLabel, backRoute, editorReturn, vsAiLevel } from '../src/menu/routes'
+import { isTypingTarget } from '../src/ui/typing'
 import { BattleSim } from '../src/sim/BattleSim'
 import { levelLanes } from '../src/sim/solver'
 import { AI_LEVELS, type LevelDef } from '../src/types'
@@ -59,6 +60,27 @@ describe('battle routes', () => {
     expect(backLabel(ctx({ levelIndex: 2 }), false)).toBe('Back to map')
     expect(backLabel(ctx({ from: 'editor' }), true)).toBe('Editor')
     expect(backLabel(ctx({ custom: true }), false)).toBe('My maps')
+  })
+
+  it('the playtest shortcut (top bar button and E) only exists for battles from the editor, and goes back to its working copy', () => {
+    expect(EDITOR_KEY).toBe('E')
+    expect(editorReturn(ctx({ from: 'editor', custom: true }))).toEqual({ scene: 'editor', data: { resume: true } })
+    for (const o of [{ from: 'menu' as const, custom: true }, { from: 'puzzles' as const, levelIndex: 0 }, { from: 'maps' as const, custom: true }, { levelIndex: 3 }, { custom: true }, {}]) {
+      expect(editorReturn(ctx(o))).toBeNull()
+    }
+  })
+
+  it('shortcuts skip text fields', () => {
+    expect(isTypingTarget({ tagName: 'INPUT', type: 'text' })).toBe(true)
+    expect(isTypingTarget({ tagName: 'input' })).toBe(true)
+    expect(isTypingTarget({ tagName: 'TEXTAREA' })).toBe(true)
+    expect(isTypingTarget({ tagName: 'SELECT' })).toBe(true)
+    expect(isTypingTarget({ tagName: 'DIV', isContentEditable: true })).toBe(true)
+    expect(isTypingTarget({ tagName: 'INPUT', type: 'range' })).toBe(false)
+    expect(isTypingTarget({ tagName: 'INPUT', type: 'checkbox' })).toBe(false)
+    expect(isTypingTarget({ tagName: 'BUTTON' })).toBe(false)
+    expect(isTypingTarget({ tagName: 'CANVAS' })).toBe(false)
+    expect(isTypingTarget(null)).toBe(false)
   })
 })
 

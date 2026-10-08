@@ -97,6 +97,7 @@ export const KEYS: [string, string][] = [
   ['M', 'auto-target'],
   ['N', 'mute'],
   ['R', 'restart'],
+  ['E', 'back to editor (playtest)'],
   ['Esc', 'menu / back'],
   ['F3', 'performance'],
 ]

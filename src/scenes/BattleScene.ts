@@ -9,7 +9,8 @@ import { BattleMenu } from '../ui/battleMenu'
 import { ICONS } from '../menu/art'
 import { nextPuzzle } from '../menu/menuModel'
 import { PauseHold } from '../menu/pauseHold'
-import { MAIN_MENU, backLabel as routeBackLabel, backRoute, type BattleCtx, type BattleFrom, type Route } from '../menu/routes'
+import { EDITOR_KEY, MAIN_MENU, backLabel as routeBackLabel, backRoute, editorReturn, type BattleCtx, type BattleFrom, type Route } from '../menu/routes'
+import { isTypingTarget } from '../ui/typing'
 import { Sfx, preloadSfx } from '../audio/Sfx'
 import { Cannon } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
@@ -165,6 +166,8 @@ export class BattleScene extends Phaser.Scene {
   private queuedLabels = new Map<Cannon, Phaser.GameObjects.Text>()
   private counts!: Partial<Record<Side, Phaser.GameObjects.Text>>
   private aimsText: Phaser.GameObjects.Text | null = null
+  /** Playtest: the top bar's "Editor (E)" button (null when not launched from the editor). */
+  editorButton: Phaser.GameObjects.Container | null = null
   private banner: Phaser.GameObjects.Container | null = null
   private swapMenu!: SwapMenu
   private settings!: SettingsPanel
@@ -265,6 +268,7 @@ export class BattleScene extends Phaser.Scene {
     this.shownEnd = false
     this.restarting = false
     this.aimsText = null
+    this.editorButton = null
     this.banner = null
     this.pressOnUi = false
     this.pointerLayout = null
@@ -668,6 +672,8 @@ export class BattleScene extends Phaser.Scene {
     keyboard.off('keydown-T', this.onTypeKey, this)
     keyboard.off('keydown-M', this.onAutoKey, this)
     keyboard.off('keydown-SPACE', this.onSpaceKey, this)
+    keyboard.off(`keydown-${EDITOR_KEY}`, this.onEditorKey, this)
+    keyboard.on(`keydown-${EDITOR_KEY}`, this.onEditorKey, this)
     keyboard.on('keydown-SPACE', this.onSpaceKey, this)
     // Space never scrolls the page or presses a focused button.
     keyboard.addCapture('SPACE')
@@ -784,6 +790,15 @@ export class BattleScene extends Phaser.Scene {
     const p = this.wc.toScreen(c.x, c.y)
     const k = layoutScale(this)
     menu.draw({ x: p.x / k, y: p.y / k }, TUNING.cannonRadius * this.wc.zoom, HUD_H + 6)
+  }
+
+  /** E: back to the editor from a playtest (never while typing in a text field, or with Ctrl/Cmd/Alt). */
+  private onEditorKey(event?: KeyboardEvent): void {
+    const route = editorReturn(this.ctx)
+    if (!route || this.restarting) return
+    if (event && (event.ctrlKey || event.metaKey || event.altKey)) return
+    if (typeof document !== 'undefined' && isTypingTarget(document.activeElement as HTMLElement | null)) return
+    this.go(route)
   }
 
   private onNextKey(): void {
@@ -1081,19 +1096,40 @@ export class BattleScene extends Phaser.Scene {
       : this.levelIndex >= 0
         ? `${this.levelIndex + 1}. ${this.level.name}${this.isPuzzle ? '  ·  Puzzle' : ''}`
         : this.custom
-          ? `${this.level.name}  ·  ${this.isPuzzle ? 'Puzzle' : 'Battle'}${this.from === 'editor' ? '  ·  Playtest' : ''}`
+          ? this.from === 'editor'
+            ? `${this.level.name}  ·  ${this.isPuzzle ? 'Puzzle playtest' : 'Playtest'}`
+            : `${this.level.name}  ·  ${this.isPuzzle ? 'Puzzle' : 'Battle'}`
           : `${BRAND.title}  ·  ${this.level.name}`
-    this.add
-      .text(24, 8, title, {
+    // Playtest: "← Editor (E)" first in the bar, always on top (paused, result screen); the title moves over for it.
+    const toEditor = editorReturn(this.ctx)
+    let left = 24
+    if (toEditor) {
+      const w = 124
+      this.editorButton = makeButton(this, 14 + w / 2, HUD_H / 2, `← Editor (${EDITOR_KEY})`, () => this.go(toEditor), { width: w, height: 34, primary: false, fontSize: 14 })
+        .setDepth(25)
+        .setName('editor-back')
+      left = 14 + w + 14
+    }
+    const titleText = this.add
+      .text(left, 8, title, {
         fontFamily: theme.font,
         fontSize: '18px',
         fontStyle: 'bold',
         color: theme.text,
       })
       .setDepth(10)
+    // Never run into the cannon counts (long map names get an ellipsis).
+    const maxTitle = 504 - 28 - left
+    if (titleText.width > maxTitle) {
+      let name = this.level.name
+      while (name.length > 1 && titleText.width > maxTitle) {
+        name = name.slice(0, -1)
+        titleText.setText(title.replace(this.level.name, name.trimEnd() + '…'))
+      }
+    }
 
     this.hint = this.add
-      .text(24, 32, '', { fontFamily: theme.font, fontSize: '13px', color: theme.textMuted })
+      .text(left, 32, '', { fontFamily: theme.font, fontSize: '13px', color: theme.textMuted })
       .setDepth(10)
 
     const legend = this.add.graphics().setDepth(10)
