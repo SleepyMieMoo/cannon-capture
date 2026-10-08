@@ -13,10 +13,14 @@ export interface Rect {
 export interface WallDef extends Rect {
   angle?: number
   /**
-   * 'void': absorbs shots on contact instead of bouncing them. Older maps
+   * 'void': absorbs shots on contact instead of bouncing them. 'breakable':
+   * bounces shots while it holds, but every shot that hits it (either
+   * side's) takes its damage off `hp`; at 0 it breaks for good. Older maps
    * leave it out (a normal wall).
    */
-  kind?: 'void'
+  kind?: 'void' | 'breakable'
+  /** Breakable walls: hit points (default TUNING.breakable.hp). */
+  hp?: number
 }
 
 /**

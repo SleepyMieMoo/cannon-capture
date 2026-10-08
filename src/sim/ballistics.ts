@@ -124,6 +124,8 @@ export interface StepResult {
   absorbed?: boolean
   /** What it banked off last this step, when it bounced. */
   surface?: Surface
+  /** A breakable wall it banked off this step (it takes the shot's damage). */
+  wall?: WallDef
 }
 
 export function aimShot(
@@ -188,6 +190,7 @@ export function stepBall(
   let pushed = false
   let hitId: string | null = null
   let surface: Surface | undefined
+  let hitWall: WallDef | undefined
   const range = next.range ?? opts.range ?? DEFAULT_RANGE
   let travelled = next.travelled ?? 0
 
@@ -223,6 +226,7 @@ export function stepBall(
       bank(next, hit.nx, hit.ny, hit.pen)
       banked = true
       surface = 'wall'
+      if (wall.kind === 'breakable') hitWall = wall
     }
     if (pillars) {
       for (const p of pillars) {
@@ -249,7 +253,7 @@ export function stepBall(
       bounced = true
       if (next.bounces > opts.maxBounces) {
         next.alive = false
-        return { ball: next, hitId: null, bounced, pushed, surface }
+        return { ball: next, hitId: null, bounced, pushed, surface, wall: hitWall }
       }
     }
 
@@ -257,7 +261,7 @@ export function stepBall(
       for (const b of barriers) {
         if (!touchesBarrier(next.x, next.y, b)) continue
         next.alive = false
-        return { ball: next, hitId: null, bounced, pushed, blockedBy: b.id }
+        return { ball: next, hitId: null, bounced, pushed, blockedBy: b.id, surface, wall: hitWall }
       }
     }
 
@@ -269,7 +273,7 @@ export function stepBall(
       if (dx * dx + dy * dy <= reach * reach) {
         next.alive = false
         hitId = body.id
-        return { ball: next, hitId, bounced, pushed, surface }
+        return { ball: next, hitId, bounced, pushed, surface, wall: hitWall }
       }
     }
 
@@ -281,17 +285,17 @@ export function stepBall(
       next.y > bounds.y + bounds.h
     ) {
       next.alive = false
-      return { ball: next, hitId: null, bounced, pushed }
+      return { ball: next, hitId: null, bounced, pushed, surface, wall: hitWall }
     }
 
     // Out of range (or, as a safety net, flying absurdly long, e.g. held up by fans).
     if (travelled >= range - 1e-6 || next.age > TUNING.shotMaxFlightMs) {
       next.alive = false
-      return { ball: next, hitId: null, bounced, pushed }
+      return { ball: next, hitId: null, bounced, pushed, surface, wall: hitWall }
     }
   }
 
-  return { ball: next, hitId, bounced, pushed, surface }
+  return { ball: next, hitId, bounced, pushed, surface, wall: hitWall }
 }
 
 /** Push the ball out along the normal and reflect it. */

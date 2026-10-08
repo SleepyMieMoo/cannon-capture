@@ -93,6 +93,14 @@ export const TUNING = {
    */
   shield: { reach: 50, arcDeg: 110, thickness: 8, hp: 6, downMs: 5000, returnHp: 2, regenDelayMs: 2000, regenPerSec: 1 },
   /**
+   * Breakable walls: `hp` by default (6 = 6 normal shots, 3 sniper shots, 20
+   * machine gun bullets, like a shield's barrier), editable up to `maxHp`.
+   * Unlike a barrier it bounces shots, any side's shot wears it down, and it
+   * never comes back. After one breaks, the AI's lanes are rebuilt a few
+   * hundred traces per step (`relaneTraces`), so the round never stalls.
+   */
+  breakable: { hp: 6, maxHp: 40, relaneTraces: 60 },
+  /**
    * Swapping a cannon's type in play: it reloads for its new type's full
    * fire interval (at least this long) before it can shoot again.
    */

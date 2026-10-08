@@ -9,6 +9,7 @@ import { angleDelta } from '../sim/aim'
 import { gaussian, hash01, seededRandom } from '../sim/random'
 import type { Cannon } from '../entities/Cannon'
 import type { BattleSim } from '../sim/BattleSim'
+import { clipToPillars, clipToWalls } from '../sim/geometry'
 import type { CannonKind, Point, Side } from '../types'
 import {
   SwapGovernor,
@@ -206,6 +207,8 @@ export class AiController {
   private guardAt = 0
   /** When Impossible last weighed a shield for each cannon. */
   private readonly guardTried = new Map<Cannon, number>()
+  /** Cannons shooting at a breakable wall (index into level.walls) to open lanes. */
+  private readonly breaching = new Map<Cannon, number>()
   readonly lookahead: LookaheadStats = { thinks: 0, sims: 0, totalMs: 0, maxThinkMs: 0, maxFrameMs: 0, steps: 0, frames: 0, maxFrameSteps: 0, pumpMs: 0 }
 
   constructor(readonly side: Side = 'enemy') {}
@@ -244,6 +247,7 @@ export class AiController {
     this.routes.clear()
     this.guardAt = 0
     this.guardTried.clear()
+    this.breaching.clear()
     Object.assign(this.lookahead, { thinks: 0, sims: 0, totalMs: 0, maxThinkMs: 0, maxFrameMs: 0, steps: 0, frames: 0, maxFrameSteps: 0, pumpMs: 0 })
     this.seed = `${world?.level.id ?? 'level'}:${this.side}:${difficulty}`
     this.rng = seededRandom(this.seed)
@@ -341,6 +345,56 @@ export class AiController {
     this.refreshView(cannons)
     this.assignHelpers(cannons)
     for (const c of cannons) if (c.side === this.side && !c.healing) this.think(c, cannons, 'forced')
+  }
+
+  /**
+   * The lane table was rebuilt (a breakable wall broke and opened new ways
+   * through): see the new lanes and let every cannon think again.
+   */
+  lanesChanged(cannons: Cannon[]): void {
+    this.viewOf = -1
+    this.routes.clear()
+    this.breaching.clear()
+    this.retarget(cannons)
+  }
+
+  /**
+   * Nothing to shoot at (no lane to any foe): if a breakable wall stands
+   * between this cannon and foes, and it can hit the wall straight on, shoot
+   * the wall down to open the way (the lanes are rebuilt once it breaks).
+   * Picks the wall that hides the most foes, then the nearest.
+   */
+  private breach(c: Cannon, cannons: Cannon[]): boolean {
+    const world = this.world
+    if (!world || c.kind === 'shield') return false
+    const walls = world.intactWalls
+    let best: { point: Point; hides: number; dist: number; index: number } | null = null
+    world.level.walls.forEach((wall, index) => {
+      if (wall.kind !== 'breakable' || !(world.wallHp[index] > 0)) return
+      const point = { x: wall.x + wall.w / 2, y: wall.y + wall.h / 2 }
+      const dist = Math.hypot(point.x - c.x, point.y - c.y)
+      // It must be the first thing a straight shot meets.
+      const others = walls.filter((w) => w !== wall)
+      const a = clipToWalls(c.x, c.y, point.x, point.y, others)
+      const b = clipToPillars(c.x, c.y, a.x, a.y, world.level.pillars ?? [])
+      if (Math.hypot(b.x - point.x, b.y - point.y) > 1) return
+      let hides = 0
+      for (const foe of cannons) {
+        if (foe.side === this.side) continue
+        const end = clipToWalls(c.x, c.y, foe.x, foe.y, [wall])
+        if (end.x !== foe.x || end.y !== foe.y) hides += 1
+      }
+      if (!hides) return
+      if (!best || hides > best.hides || (hides === best.hides && dist < best.dist)) best = { point, hides, dist, index }
+    })
+    if (!best) return false
+    const pick = best as { point: Point; hides: number; dist: number; index: number }
+    if (this.breaching.get(c) === pick.index) return true
+    this.breaching.set(c, pick.index)
+    this.jobs.delete(c)
+    c.setAimPoint(pick.point)
+    this.note(c, `breach wall ${pick.index}`)
+    return true
   }
 
   /** The lanes this AI will use: all of them, or only those within its trick-shot level. */
@@ -550,9 +604,13 @@ export class AiController {
     }
     const best = this.bestJob(c, cannons)
     if (!best) {
-      if (!kept) this.jobs.delete(c)
+      if (!kept) {
+        this.jobs.delete(c)
+        this.breach(c, cannons)
+      }
       return
     }
+    this.breaching.delete(c)
     if (kept) {
       if (best.target === kept.target) return this.refit(c, kept)
       const current = this.score(c, kept.target, cannons)

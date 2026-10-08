@@ -113,8 +113,13 @@ export function sanitizeLevel(raw: unknown): LevelDef {
       w: ww,
       h: hh,
     }
-    // Wall type (added later): anything but 'void' is a plain wall, so old maps and codes load as before.
+    // Wall type (added later): anything else is a plain wall, so old maps and codes load as before.
     if (o.kind === 'void') wall.kind = 'void'
+    else if (o.kind === 'breakable') {
+      wall.kind = 'breakable'
+      const hp = Number(o.hp)
+      if (Number.isFinite(hp)) wall.hp = Math.max(1, Math.min(TUNING.breakable.maxHp, Math.round(hp)))
+    }
     walls.push(tidyWall(wall, num(o.angle, 0, -Math.PI * 4, Math.PI * 4)))
   }
 
@@ -196,7 +201,7 @@ export function tidyWall(wall: WallDef, angle: number): WallDef {
   if (a < 0) a += Math.PI
   const eps = 1e-3
   const { x, y, w, h } = wall
-  const kind = wall.kind ? { kind: wall.kind } : {}
+  const kind = { ...(wall.kind ? { kind: wall.kind } : {}), ...(wall.kind === 'breakable' && wall.hp !== undefined ? { hp: wall.hp } : {}) }
   if (a < eps || a > Math.PI - eps) return { x, y, w, h, ...kind }
   if (Math.abs(a - Math.PI / 2) < eps) {
     const cx = x + w / 2
