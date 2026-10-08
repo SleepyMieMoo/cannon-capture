@@ -142,6 +142,8 @@ export class Cannon {
   private readonly body?: Phaser.GameObjects.Graphics
   private readonly barrel?: Phaser.GameObjects.Graphics
   private cooldown: number
+  /** This cannon's offset in a volley (ms), so a side's cannons don't all fire on one frame. */
+  private stagger: number
   private hitFlash = 0
   private healFlash = 0
   /** Swap reload: ms total and ms left, for the reload ring. */
@@ -186,6 +188,7 @@ export class Cannon {
     this.side = side
     this.kind = KINDS[kind] ? kind : 'normal'
     this.cooldown = staggerMs
+    this.stagger = staggerMs
     this.rng = seededRandom(id)
     this.angle = side === 'enemy' ? Math.PI : side === 'player' ? 0 : -Math.PI / 2
     if (scene) {
@@ -208,6 +211,7 @@ export class Cannon {
     c.captureProgress = this.captureProgress
     c.aimPoint = this.aimPoint ? { ...this.aimPoint } : null
     c.cooldown = this.cooldown
+    c.stagger = this.stagger
     c.swapTotal = this.swapTotal
     c.swapLeft = this.swapLeft
     c.sideMs = this.sideMs
@@ -311,6 +315,15 @@ export class Cannon {
   /** Milliseconds between shots if it were fitted as `kind` (same side rate). */
   fireMsAs(kind: CannonKind): number {
     return fireMsFor(kind, this.sideMs)
+  }
+
+  /**
+   * The countdown's Go: the fire timer starts fresh, at this cannon's volley
+   * offset `stagger` (or the rest of a type swap made during the countdown).
+   */
+  armAtGo(stagger: number): void {
+    this.stagger = stagger
+    this.cooldown = Math.max(stagger, this.swapLeft)
   }
 
   /** Still reloading after a type swap. */

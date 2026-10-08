@@ -44,6 +44,8 @@ export interface Snap {
   /** The recipient's own queued orders (the other player's stay hidden). */
   q: QueuedRow[]
   ev: EventRow[]
+  /** Pre-round countdown left (ms); left out once the round runs (older hosts never send it). */
+  cd?: number
   /** Online matches: the server's match state. */
   x?: SnapExtra
 }
@@ -151,6 +153,7 @@ export function encodeSnap(sim: BattleSim, tick: number, forSide: Side, events: 
     s,
     q,
     ev: events,
+    ...(sim.countdown > 0 ? { cd: Math.round(sim.countdown) } : {}),
     ...(extra ? { x: extra } : {}),
   }
 }
@@ -247,6 +250,8 @@ export function applySnap(view: BattleSim, a: Snap, b: Snap, t: number, latest: 
   view.shots = shots
 
   view.clock = lerp(a.clock, b.clock, t)
+  // The countdown runs at the view's render time (so the 3-2-1 lines up with the board it shows).
+  view.countdown = lerp(a.cd ?? 0, b.cd ?? 0, t)
   view.paused = latest.paused
   const winner = latest.winner === null ? null : map(latest.winner)
   view.ended = winner === null ? null : winner === 'player' ? 'win' : winner === 'enemy' ? 'lose' : 'draw'

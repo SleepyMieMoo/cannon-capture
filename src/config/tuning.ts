@@ -10,6 +10,14 @@ export const TUNING = {
    * Applied as (index % 3) * fireStaggerMs, so neither side fires first.
    */
   fireStaggerMs: 90,
+  /**
+   * Pre-round countdown (3-2-1-Go), in ms. Nothing fires during it, but
+   * barrels turn, orders work and the AI plans and aims, so the first shots
+   * are lined up at Go. Round clocks (the PvP time limit) start at Go.
+   */
+  countdownMs: 3000,
+  /** The title screen's AI-vs-AI demo: a shorter, silent planning grace (no overlay). */
+  demoCountdownMs: 1500,
   /** Delay before a newly captured cannon starts shooting. */
   captureKickoffMs: 280,
   /** Hits from one side required to flip a cannon. */

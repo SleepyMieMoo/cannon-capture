@@ -40,6 +40,12 @@ export const SFX = {
   /** A barrier breaks: lowest pop. */
   shieldBreak: { volume: 0.45, rate: 0.55, jitterCents: 30 } satisfies PopSpec,
 
+  /** The pre-round countdown: a crisp tick on 3, 2 and 1, and a brighter pop on Go. */
+  countdown: {
+    tick: { volume: 0.4, rate: 1.3, jitterCents: 0 },
+    go: { volume: 0.55, rate: 1.75, jitterCents: 0 },
+  } satisfies Record<'tick' | 'go', PopSpec>,
+
   /** At most this many pops at once. Past that, a new pop replaces the quietest one only if it is clearly louder. */
   maxVoices: 6,
   /** A louder pop replaces the quietest playing one only when it is at least this much louder. */

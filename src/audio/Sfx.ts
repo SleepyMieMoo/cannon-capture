@@ -106,6 +106,13 @@ export class Sfx {
     this.pop('shieldBreak', c, c.id + ':shield')
   }
 
+  /** The countdown's tick (3, 2, 1) or Go. Not spatial and not rate-limited; muted and volume apply. */
+  cue(kind: 'tick' | 'go'): void {
+    if (this.settings.muted || this.settings.volume <= 0 || !this.available || this.scene.sound.locked) return
+    const spec = SFX.countdown[kind]
+    this.scene.sound.play(SFX.key, { volume: spec.volume, rate: spec.rate })
+  }
+
   stopAll(): void {
     for (const s of this.playing.values()) s.destroy()
     this.playing.clear()

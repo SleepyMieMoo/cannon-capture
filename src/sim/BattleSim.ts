@@ -28,6 +28,8 @@ export interface SimEvents {
   hit?(x: number, y: number, side: Side, kind: CannonKind): void
   /** A friendly shot took `amount` capture progress off one of its own cannons. */
   healed?(cannon: Cannon, amount: number): void
+  /** The countdown ended: firing starts. */
+  go?(): void
   captured?(cannon: Cannon): void
   noAims?(cannon: Cannon): void
   /** A cannon changed tower type mid-round. */
@@ -94,6 +96,12 @@ export class BattleSim {
    * are queued, then all applied the instant you resume (see resume()).
    */
   paused = false
+  /**
+   * Countdown before the round (ms left; 0 = running). During it nothing
+   * fires and the clock stands still, but barrels turn, orders apply and the
+   * AI plans. Headless rounds (tests, the server before startCountdown) start at 0.
+   */
+  countdown = 0
   /** Performance overlay: when true, step() adds the AIs' time to aiMs (the caller resets it). */
   timeAi = false
   aiMs = 0
@@ -248,6 +256,7 @@ export class BattleSim {
       autoOn: { ...this.autoOn },
       shotSeq: this.shotSeq,
       paused: false,
+      countdown: this.countdown,
       queuedAims: new Map(),
       queuedBy: new Map(),
       queuedKinds: new Map(),
@@ -272,9 +281,18 @@ export class BattleSim {
     return this.level.aims === undefined ? Infinity : Math.max(0, this.level.aims - this.aimsUsed - this.queuedAims.size)
   }
 
-  /** Pause the round (no-op once it has ended). */
+  /** Start (or restart) the pre-round countdown. Call before the first step. */
+  startCountdown(ms: number): void {
+    this.countdown = Math.max(0, ms)
+  }
+
+  /**
+   * Pause the round (no-op once it has ended). In player vs player there is
+   * no pausing during the countdown: orders already work then, and a pause
+   * would only hold up the other player (and spend one of three).
+   */
   pause(): boolean {
-    if (this.ended) return false
+    if (this.ended || (this.pvp && this.countdown > 0)) return false
     this.paused = true
     return true
   }
@@ -364,7 +382,8 @@ export class BattleSim {
   /** Advance the round by `dt` ms. */
   step(dt: number): void {
     if (this.ended || this.paused) return
-    this.clock += dt
+    const counting = this.countdown > 0
+    if (!counting) this.clock += dt
     if (!this.isPuzzle && !this.aiOff) {
       if (this.timeAi) {
         const t0 = performance.now()
@@ -372,8 +391,24 @@ export class BattleSim {
         this.aiMs += performance.now() - t0
       } else for (const ai of this.ais) ai.update(dt, this.cannons)
     }
-    this.stepShots(dt)
+    this.stepShots(dt, counting)
+    if (counting) {
+      this.countdown -= dt
+      if (this.countdown <= 1e-6) this.go()
+    }
     this.checkOutcome()
+  }
+
+  /**
+   * The countdown is over: every fire timer starts fresh. Each side's cannons
+   * fire at the same offsets (0, 90, 180 ms by their order on that side), so
+   * no side fires first and a volley isn't one frame.
+   */
+  private go(): void {
+    this.countdown = 0
+    const rank: Record<Side, number> = { player: 0, enemy: 0, neutral: 0 }
+    for (const c of this.cannons) c.armAtGo((rank[c.side]++ % 3) * TUNING.fireStaggerMs)
+    this.events.go?.()
   }
 
   /**
@@ -448,12 +483,12 @@ export class BattleSim {
     return true
   }
 
-  private stepShots(dt: number): void {
+  private stepShots(dt: number, frozen = false): void {
     // Every side fires at the same rate: difficulty is intelligence only.
     const shields = this.upShields
     shields.length = 0
     for (const cannon of this.cannons) {
-      const spawned = cannon.update(dt, false, TUNING.fireIntervalMs)
+      const spawned = cannon.update(dt, frozen, TUNING.fireIntervalMs)
       if (spawned) {
         const shot = new Shot(spawned, cannon.side, cannon.damage, cannon.kind)
         shot.id = ++this.shotSeq
