@@ -4,6 +4,7 @@
     {
       "date": "2026-10-08",
       "entries": [
+        { "kind": "change", "title": "Version 0.2.3: tidier Settings", "text": "Every setting now sits on one compact row. The longer explanations moved behind a small ? next to each name: hover it, focus it, or tap it on a phone. The in-battle Settings panel is now readable on phones too." },
         { "kind": "fix", "title": "Version 0.2.2: smoother online play", "text": "Online over long distances feels much smoother: your aims, tower swaps and auto toggles show the moment you click, and the board no longer freezes and jumps when the connection hiccups. Your ping now shows in the top bar." },
         { "kind": "new", "title": "Pick where an online room runs", "text": "When you create a room you can choose the server region, so a friend far away doesn’t carry all the delay. The lobby shows where the room landed and your ping." },
         { "kind": "fix", "title": "Version 0.2.1: switching away is safe", "text": "Coming back to the tab no longer sets off a burst of sounds, and the You win / You lose panel always shows, even if the round ended while you were away." },

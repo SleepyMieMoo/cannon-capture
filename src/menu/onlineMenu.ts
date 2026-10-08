@@ -10,6 +10,7 @@ import type { OnlineRoom } from '../net/onlineClient'
 import { h } from '../ui/overlay'
 import { serverLine } from '../net/onlineView'
 import { ICONS } from './art'
+import { groupHead, settingRow } from '../ui/settingRow'
 
 /** What the online screens ask the game for (the menu itself never opens sockets). */
 export interface OnlineMenu {
@@ -59,8 +60,9 @@ const COUNTDOWN_LABEL: Record<number, string> = { 0: 'Chaotic rush', 3: 'Standar
  */
 function settingsBlock(room: OnlineRoom, r: RoomInfo): HTMLElement[] {
   const s = r.settings
+  const rules = 'Fair maps only: both sides start the same. ' + rulesLine(s)
   // An older server has no settings: say what it plays.
-  if (!s) return [h('div.mm-h', {}, 'Match settings'), h('div.mm-note', {}, 'This room’s server plays a 3-second countdown, 3 pauses each, host on the left.')]
+  if (!s) return [groupHead('Match settings', rules), h('div.mm-note', {}, 'This room’s server plays a 3-second countdown, 3 pauses each, host on the left.')]
   const edit = r.you.host && r.phase !== 'playing'
   const segs = COUNTDOWN_CHOICES.map((c) => {
     const b = h('button.mm-seg', { type: 'button', dataset: { id: 'countdown-' + c }, 'aria-pressed': String(c === s.countdown), disabled: !edit },
@@ -76,21 +78,43 @@ function settingsBlock(room: OnlineRoom, r: RoomInfo): HTMLElement[] {
     const tags = [seat === r.you.seat ? 'you' : '', seat === r.host ? 'host' : ''].filter(Boolean).join(', ')
     return tags ? `${name} (${tags})` : name
   }
-  const swap = h('button.mm-btn', { type: 'button', dataset: { id: 'swap' }, disabled: !edit }, 'Swap sides')
+  const swap = h('button.mm-btn.small', { type: 'button', dataset: { id: 'swap' }, disabled: !edit }, 'Swap sides')
   swap.addEventListener('click', () => room.send({ t: 'swap' }))
   const afterMatch = r.match > 0 ? ' Rematches swap sides from here.' : ' Each rematch then swaps.'
+  const pauses = `${PVP_RULES.pausesPerPlayer} pauses each, up to ${PVP_RULES.pauseMaxMs / 1000} s`
   return [
-    h('div.mm-h', { style: 'margin-top:14px' }, edit ? 'Match settings' : 'Match settings (the host sets these)'),
-    h('div.mm-sub', {}, 'Countdown'),
-    h('div.mm-segs.mm-segs3', {}, ...segs),
-    h('div.mm-row', {}, sw, h('label', { htmlFor: 'mm-nopause' }, 'Disable pauses')),
-    h('div.mm-note', {}, s.pauses ? `Pauses on: ${PVP_RULES.pausesPerPlayer} each, up to ${PVP_RULES.pauseMaxMs / 1000} s.` : 'Pauses off: no Pause button, and Space does nothing.'),
-    h('div.mm-sub', {}, 'Sides'),
-    h('div.mm-sides', { dataset: { id: 'sides' } },
-      h('div', {}, h('small', {}, 'Left'), h('b', {}, who(left))),
-      h('div', {}, h('small', {}, 'Right'), h('b', {}, who(left === 0 ? 1 : 0))),
-    ),
-    h('div.mm-row', {}, edit ? swap : null, h('span.mm-note', {}, (r.match > 0 ? 'Next match.' : 'First match.') + afterMatch)),
+    groupHead(edit ? 'Match settings' : 'Match settings (the host sets these)', rules),
+    settingRow({
+      id: 'countdown',
+      label: 'Countdown',
+      help: 'Time to aim and pick tower types before firing starts. 0 s: chaotic rush, 3 s: standard, 5 s: relaxed.',
+      layout: 'wide',
+      control: [h('div.mm-segs.mm-segs3', {}, ...segs)],
+    }),
+    settingRow({
+      id: 'nopause',
+      label: 'Disable pauses',
+      for: 'mm-nopause',
+      sub: s.pauses ? `Pauses on: ${pauses}.` : 'Pauses off.',
+      help: `With pauses on, each player has ${pauses}. Off: no Pause button, and Space does nothing.`,
+      control: [sw],
+    }),
+    settingRow({
+      id: 'sides',
+      label: 'Sides',
+      sub: (r.match > 0 ? 'Next match.' : 'First match.') + afterMatch,
+      help: 'Who starts on the left and who on the right. The host can swap them before a match; each rematch swaps them anyway.',
+      layout: 'block',
+      control: [
+        h('div.mm-sides-row', {},
+          h('div.mm-sides', { dataset: { id: 'sides' } },
+            h('div', {}, h('small', {}, 'Left'), h('b', {}, who(left))),
+            h('div', {}, h('small', {}, 'Right'), h('b', {}, who(left === 0 ? 1 : 0))),
+          ),
+          edit ? swap : null,
+        ),
+      ],
+    }),
   ]
 }
 
@@ -147,9 +171,14 @@ export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
         h('div.mm-h', {}, 'New room'),
         create,
         h('div.mm-note', {}, 'You get a 4-letter code and a link to send to a friend.'),
-        h('label.mm-h', { htmlFor: 'mm-region', style: 'margin-top:12px' }, 'Server'),
-        region,
-        h('div.mm-note', {}, 'A room runs near whoever creates it. Playing someone far away? Pick a region in between if there is one, or take turns hosting near each of you. The lobby shows where it landed.'),
+        settingRow({
+          id: 'region',
+          label: 'Server',
+          for: 'mm-region',
+          help: 'A room runs near whoever creates it. Playing someone far away? Pick a region in between if there is one, or take turns hosting near each of you. The lobby shows where it landed.',
+          layout: 'wide',
+          control: [region],
+        }),
         h('div.mm-note', { dataset: { id: 'skin-note' } }, `Your cannons wear ${SKIN_LABEL[loadSkin()]} in ${TEAM_COLOUR[loadColour()].label} (change them in Settings before you join).`),
       ),
       h('div.mm-side', {},
@@ -240,7 +269,6 @@ export function lobbyScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
         h('div.mm-h', {}, host && !playing ? 'Pick the map' : 'Map'),
         h('div.mm-cards', {}, ...cards),
         ...settingsBlock(room, r),
-        h('div.mm-note.mm-rules', {}, 'Fair maps only: both sides start the same. ' + rulesLine(r.settings)),
       ),
       h('div.mm-side', {},
         h('div.mm-h', {}, 'Invite code'),

@@ -3,6 +3,7 @@ import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import { ICONS } from '../menu/art'
 import { injectMenuStyles } from '../menu/menuStyles'
 import { Overlay, h } from './overlay'
+import { closeHelpTips } from './helpTip'
 
 export interface BattleMenuItem {
   id: string
@@ -88,6 +89,7 @@ export class BattleMenu {
   }
 
   private closePanel(): void {
+    closeHelpTips()
     this.panelOff?.()
     this.panelOff = null
   }

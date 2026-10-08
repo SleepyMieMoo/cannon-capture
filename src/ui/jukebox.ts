@@ -3,6 +3,7 @@ import { TRACKS } from '../audio/musicTracks'
 import { ICONS } from '../menu/art'
 import { injectMenuStyles } from '../menu/menuStyles'
 import { h } from './dom'
+import { groupHead, settingRow } from './settingRow'
 
 const icon = (svg: string): HTMLSpanElement => h('span.ic', { innerHTML: svg })
 
@@ -73,10 +74,9 @@ export function jukeboxPanel(player: MusicPlayer, opts: { compact?: boolean } = 
     ),
     h('div.jb-ctrl', {}, prev, playBtn, next),
     status,
-    h('div.mm-h', {}, 'Songs'),
+    groupHead('Songs', 'Click a song to play it now. The star picks the song the game starts with.'),
     h('div.jb-list', {}, ...rows.map((r) => r.row)),
-    h('div.mm-row.jb-vol', {}, h('label', { htmlFor: 'jb-volume' }, 'Music volume'), range, val),
-    h('div.mm-note', {}, opts.compact ? 'The star picks the song the game starts with.' : 'The star picks the song the game starts with. Music has its own volume; sound effects keep theirs (Settings, or N in a battle).'),
+    settingRow({ id: 'jb-volume', label: 'Music volume', for: 'jb-volume', help: 'Music has its own volume; sound effects keep theirs (Settings, or N in a battle).', control: [range, val] }),
   )
 
   let lastVol = -1

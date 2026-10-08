@@ -25,6 +25,8 @@ import type { MusicPlayer } from '../audio/music'
 import { MUSIC_ARTIST, TRACKS } from '../audio/musicTracks'
 import { jukeboxPanel } from '../ui/jukebox'
 import { loadTabPrefs, saveTabPrefs } from './tabPrefs'
+import { settingRow } from '../ui/settingRow'
+import { closeHelpTips, setHelpText } from '../ui/helpTip'
 
 /** What the menu asks the game to do. */
 export interface MenuActions {
@@ -154,6 +156,7 @@ export class MainMenu {
   }
 
   private runTeardown(): void {
+    closeHelpTips()
     for (const fn of this.teardown.splice(0)) fn()
     this.thumbs = []
   }
@@ -487,30 +490,31 @@ export class MainMenu {
       h('div.mm-set', {},
         h('div', {},
           h('div.mm-h', {}, 'Sound'),
-          h('div.mm-row', {}, sw, h('label', { htmlFor: 'mm-sound' }, 'Sound effects')),
-          h('div.mm-row', {}, h('label', { htmlFor: 'mm-volume' }, 'Volume'), range, val),
-          h('div.mm-note', {}, 'Shots pop; captures and broken barriers pop deeper. N mutes or unmutes them during a battle.'),
+          settingRow({ id: 'sound', label: 'Sound effects', for: 'mm-sound', help: 'Shots pop; captures and broken barriers pop deeper. N mutes or unmutes them during a battle.', control: [sw] }),
+          settingRow({ id: 'volume', label: 'Volume', for: 'mm-volume', control: [range, val] }),
           ...this.musicSettings(),
-          h('div.mm-h', { style: 'margin-top:16px' }, 'In battle'),
-          h('div.mm-note', {}, 'Auto-target (your guns re-aim by themselves when a target is captured) is switched in the battle’s own Settings, or per cannon with M. It starts on at the start of every game.'),
+          h('div.mm-h', {}, 'In battle'),
+          settingRow({
+            id: 'auto',
+            label: 'Auto-target',
+            help: 'Your guns re-aim by themselves when their target is captured. Switch it in the battle’s own Settings, or per cannon with M. It’s on at the start of every game.',
+            control: [h('span.mm-srow-x', {}, 'In the battle’s Settings')],
+          }),
           ...(perfSw
             ? [
-                h('div.mm-h', { style: 'margin-top:16px' }, 'Performance'),
-                h('div.mm-row', {}, perfSw, h('label', { htmlFor: 'mm-perf' }, 'Show performance')),
-                h('div.mm-note', {}, 'A small corner panel with FPS and timings, with a Copy button for bug reports. Also F3 or ` (backtick), or add ?perf to the address.'),
+                h('div.mm-h', {}, 'Performance'),
+                settingRow({ id: 'perf', label: 'Show performance', for: 'mm-perf', help: 'A small corner panel with FPS and timings, with a Copy button for bug reports. Also F3 or ` (backtick), or add ?perf to the address.', control: [perfSw] }),
               ]
             : []),
         ),
         h('div', {},
           ...this.tabbedSettings(),
-          h('div.mm-h', { style: 'margin-top:16px' }, 'Your looks and name'),
-          h('div.mm-note', {}, 'Cannon skin, team colour, online name and the Play vs AI difficulty are in Profile.'),
-          h('div.mm-row', {}, this.button('to-profile', 'Open Profile', () => this.open('profile', 'to-profile'), { icon: ICONS.profile, cls: 'small' })),
-          h('div.mm-h', { style: 'margin-top:16px' }, 'Bug reports'),
-          h('div.mm-note', {}, 'Copies the game version, browser, screen size, renderer and these settings, nothing personal, to paste into a bug report.'),
-          h('div.mm-row', {}, this.copyDebugButton('debug-settings')),
-          h('div.mm-h', { style: 'margin-top:16px' }, 'About'),
-          h('div.mm-row', {}, this.button('to-credits', 'Credits', () => this.open('credits', 'to-credits'), { icon: ICONS.credits, cls: 'small' }), this.versionButton()),
+          h('div.mm-h', {}, 'Your looks and name'),
+          settingRow({ id: 'profile', label: 'Profile', help: 'Cannon skin, team colour, online name and the Play vs AI difficulty are in Profile.', control: [this.button('to-profile', 'Open Profile', () => this.open('profile', 'to-profile'), { icon: ICONS.profile, cls: 'small' })] }),
+          h('div.mm-h', {}, 'Bug reports'),
+          settingRow({ id: 'debug', label: 'Debug info', help: 'Copies the game version, browser, screen size, renderer and these settings, nothing personal, to paste into a bug report.', control: [this.copyDebugButton('debug-settings')] }),
+          h('div.mm-h', {}, 'About'),
+          settingRow({ id: 'about', label: 'Version', sub: this.versionButton(), control: [this.button('to-credits', 'Credits', () => this.open('credits', 'to-credits'), { icon: ICONS.credits, cls: 'small' })] }),
         ),
       ),
     ])
@@ -523,24 +527,18 @@ export class MainMenu {
     if (!music) musicSw.disabled = true
     musicSw.addEventListener('change', () => music?.setKeepHidden(musicSw.checked))
     const pauseSw = h('input.mm-switch', { type: 'checkbox', role: 'switch', id: 'mm-tab-pause', dataset: { id: 'tab-pause' }, checked: loadTabPrefs().pauseVsAi }) as HTMLInputElement
-    const pauseNote = h('div.mm-note')
-    const note = (): void => {
-      pauseNote.textContent = pauseSw.checked
-        ? 'Against the AI (and in puzzles and levels) the round pauses when you switch away, with Resume when you’re back. Online matches always keep going.'
-        : 'The round keeps going while you’re away (up to a minute is played back when you return, silently). Online matches always keep going.'
-    }
-    note()
-    pauseSw.addEventListener('change', () => {
-      saveTabPrefs({ pauseVsAi: pauseSw.checked })
-      note()
-    })
+    pauseSw.addEventListener('change', () => saveTabPrefs({ pauseVsAi: pauseSw.checked }))
     if (music) this.teardown.push(music.onChange(() => (musicSw.checked = music.settings.keepHidden)))
     return [
       h('div.mm-h', {}, 'When tabbed out'),
-      h('div.mm-row', {}, musicSw, h('label', { htmlFor: 'mm-tab-music' }, 'Keep music playing when tabbed out')),
-      h('div.mm-row', {}, pauseSw, h('label', { htmlFor: 'mm-tab-pause' }, 'Pause vs AI when tabbed out')),
-      pauseNote,
-      h('div.mm-note', {}, 'Sound effects are always silent while the game is in the background.'),
+      settingRow({ id: 'tab-music', label: 'Keep music playing', for: 'mm-tab-music', help: 'Music carries on while the game is in another tab or window. Sound effects are always silent while the game is in the background.', control: [musicSw] }),
+      settingRow({
+        id: 'tab-pause',
+        label: 'Pause vs AI',
+        for: 'mm-tab-pause',
+        help: 'On: against the AI (and in puzzles and levels) the round pauses when you switch away, with Resume when you’re back. Off: it keeps going, and up to a minute is played back silently when you return. Online matches always keep going.',
+        control: [pauseSw],
+      }),
     ]
   }
 
@@ -551,25 +549,30 @@ export class MainMenu {
     const sw = h('input.mm-switch', { type: 'checkbox', role: 'switch', id: 'mm-music', dataset: { id: 'music' } }) as HTMLInputElement
     const val = h('span.mm-val')
     const range = h('input.mm-range', { type: 'range', min: '0', max: '100', step: '5', id: 'mm-music-volume', dataset: { id: 'music-volume' }, 'aria-label': 'Music volume' }) as HTMLInputElement
-    const song = h('div.mm-note')
+    const song = h('span', { dataset: { id: 'now-playing' } })
     sw.addEventListener('change', () => (sw.checked ? music.play() : music.pause()))
     range.addEventListener('input', () => music.setVolume(Number(range.value) / 100))
+    const helpText = (): string => {
+      const def = TRACKS.find((t) => t.id === music.settings.track)
+      return `Pick a song, and star the one the game starts with (now: ${def?.short ?? music.track.short}). Music has its own volume, apart from sound effects.`
+    }
+    const jukebox = settingRow({ id: 'jukebox', label: 'Jukebox', sub: song, help: helpText(), control: [this.button('to-jukebox', 'Open jukebox', () => this.open('jukebox', 'to-jukebox'), { icon: ICONS.music, cls: 'small' })] })
     const update = (): void => {
       sw.checked = music.playing
       const v = Math.round(music.settings.volume * 100)
       if (document.activeElement !== range) range.value = String(v)
       val.textContent = `${v}%`
-      const def = TRACKS.find((t) => t.id === music.settings.track)
-      song.textContent = `Now: ${music.track.title}. Starts with: ${def?.short ?? music.track.short}.`
+      song.textContent = `Now: ${music.track.title}`
+      song.title = `Now: ${music.track.title}`
+      if (jukebox.help) setHelpText(jukebox.help, helpText())
     }
     update()
     this.teardown.push(music.onChange(update))
     return [
-      h('div.mm-h', { style: 'margin-top:16px' }, 'Music'),
-      h('div.mm-row', {}, sw, h('label', { htmlFor: 'mm-music' }, 'Music')),
-      h('div.mm-row', {}, h('label', { htmlFor: 'mm-music-volume' }, 'Volume'), range, val),
-      song,
-      h('div.mm-row', {}, this.button('to-jukebox', 'Open jukebox', () => this.open('jukebox', 'to-jukebox'), { icon: ICONS.music, cls: 'small' })),
+      h('div.mm-h', {}, 'Music'),
+      settingRow({ id: 'music', label: 'Music', for: 'mm-music', control: [sw] }),
+      settingRow({ id: 'music-volume', label: 'Volume', for: 'mm-music-volume', control: [range, val] }),
+      jukebox,
     ]
   }
 
@@ -629,21 +632,30 @@ export class MainMenu {
     })
     if (!name) nameIn.disabled = true
     // Difficulty: the one Play vs AI starts on (it remembers your last pick there too).
-    const blurb = h('div.mm-note', {}, DIFFICULTY[this.prefs.difficulty].blurb)
+    const diffHelp = (d: AiLevel): string => `${DIFFICULTY[d].label}: ${DIFFICULTY[d].blurb} Every level fires and turns like you do: difficulty is only how well the AI thinks.`
     const segs = AI_LEVELS.map((d) => {
       const b = h('button.mm-seg', { type: 'button', dataset: { id: 'pdiff-' + d }, 'aria-pressed': String(d === this.prefs.difficulty), title: DIFFICULTY[d].blurb }, DIFFICULTY[d].label)
       b.addEventListener('click', () => {
         this.prefs = { ...this.prefs, difficulty: d }
         saveMenuPrefs(this.prefs)
         for (const x of segs) x.setAttribute('aria-pressed', String(x === b))
-        blurb.textContent = DIFFICULTY[d].blurb
+        if (diffRow.help) setHelpText(diffRow.help, diffHelp(d))
       })
       return b
     })
+    const diffRow = settingRow({ id: 'difficulty', label: 'Difficulty', help: diffHelp(this.prefs.difficulty), layout: 'wide', control: [h('div.mm-segs', { role: 'group', 'aria-label': 'Play vs AI difficulty' }, ...segs)] })
     // Reset, with a confirm step in place (no browser dialog: Discord's frame blocks those).
     const resetArea = h('div.mm-reset')
+    const resetRow = settingRow({
+      id: 'reset',
+      label: 'All preferences',
+      help: `Reset puts back the defaults: ${PREF_KEYS.map((k) => k.what).join(', ')}. Kept: ${KEPT_KEYS.map((k) => k.what).join(', ')}. You confirm first.`,
+      control: [resetArea],
+    })
     const showAsk = (): void => {
-      resetArea.replaceChildren(this.button('reset', 'Reset all preferences', showConfirm, { icon: ICONS.reset, cls: 'small' }))
+      resetRow.classList.remove('block')
+      resetArea.replaceChildren(this.button('reset', 'Reset…', showConfirm, { icon: ICONS.reset, cls: 'small' }))
+      resetArea.querySelector('button')!.setAttribute('aria-label', 'Reset all preferences')
     }
     const showConfirm = (): void => {
       const yes = this.button('reset-yes', 'Reset', () => {
@@ -657,6 +669,7 @@ export class MainMenu {
         showAsk()
         resetArea.querySelector<HTMLElement>('[data-id="reset"]')?.focus()
       }, { cls: 'small' })
+      resetRow.classList.add('block')
       resetArea.replaceChildren(
         h('div.mm-confirm', { role: 'alertdialog', 'aria-label': 'Reset all preferences?' },
           h('b', {}, 'Reset all preferences?'),
@@ -676,22 +689,22 @@ export class MainMenu {
             h('span.vs', {}, 'vs'),
             h('div', {}, h('span.pv.ai', { innerHTML: mePreview(true, loadSkin()), dataset: { pvMe: 'ai' } }), h('small', {}, 'The AI')),
           ),
-          h('label.mm-h', { htmlFor: 'mm-pname' }, 'Online name'),
-          h('div.mm-row', {}, nameIn, saved),
-          h('div.mm-note', {}, this.actions.online ? 'Shown to the other player and spectators in Play with friends. The room screen uses the same name.' : 'Used in Play with friends (in a browser; online play isn’t available here yet).'),
-          h('div.mm-h', { style: 'margin-top:16px' }, 'Play vs AI difficulty'),
-          h('div.mm-segs', {}, ...segs),
-          blurb,
-          h('div.mm-h', { style: 'margin-top:16px' }, 'Reset'),
-          resetArea,
+          h('div.mm-h', {}, 'You'),
+          settingRow({
+            id: 'pname',
+            label: 'Online name',
+            for: 'mm-pname',
+            help: this.actions.online ? 'Shown to the other player and spectators in Play with friends. The room screen uses the same name.' : 'Used in Play with friends (in a browser; online play isn’t available here yet).',
+            layout: 'wide',
+            control: [nameIn, saved],
+          }),
+          diffRow,
+          resetRow,
         ),
         h('div', {},
-          h('div.mm-h', {}, 'Cannon skin'),
-          this.skinPicker(false),
-          h('div.mm-note', {}, 'Only the body’s shape: the barrel still shows the type, the ring still shows the owner. A captured cannon takes its new owner’s skin. Online, each player always wears their own.'),
-          h('div.mm-h', { style: 'margin-top:16px' }, 'Team colour'),
-          this.colourPicker(false),
-          h('div.mm-note', {}, 'Your cannons, shots and capture colour. The rings don’t change: light is always yours, red always the enemy’s. Online, each player always wears their own; if your looks are too alike, small name tags appear on the cannons.'),
+          h('div.mm-h', {}, 'Your looks'),
+          settingRow({ id: 'skin', label: 'Cannon skin', layout: 'block', help: 'Only the body’s shape: the barrel still shows the type, the ring still shows the owner. A captured cannon takes its new owner’s skin. Online, each player always wears their own.', control: [this.skinPicker(false)] }),
+          settingRow({ id: 'colour', label: 'Team colour', layout: 'block', help: 'Your cannons, shots and capture colour. The rings don’t change: light is always yours, red always the enemy’s. Online, each player always wears their own; if your looks are too alike, small name tags appear on the cannons.', control: [this.colourPicker(false)] }),
         ),
       ),
       this.versionFoot(),

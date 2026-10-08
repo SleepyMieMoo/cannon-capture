@@ -1,13 +1,13 @@
 import Phaser from 'phaser'
-import { theme } from '../config/theme'
+import { cssHex, theme } from '../config/theme'
+import { GAME_WIDTH } from '../config/layout'
+import { injectMenuStyles } from '../menu/menuStyles'
+import { h } from './dom'
+import { closeHelpTips, setHelpText } from './helpTip'
+import { settingRow } from './settingRow'
 
-const W = 340
-const PAD = 14
-const SWITCH_W = 44
-const SWITCH_H = 22
-
-/** What a press on the panel hit. */
-export type SettingsHit = 'auto' | 'mute' | 'volume' | 'perf' | 'close' | 'panel'
+/** What a press on the panel hit (the board only needs to know it was the panel). */
+export type SettingsHit = 'panel'
 
 /** What the panel shows: the global auto-target toggle, and whether it can be changed here. */
 export interface SettingsState {
@@ -23,205 +23,202 @@ export interface SettingsState {
   perf: boolean
 }
 
+/** What the panel's controls do (the scene owns the round, the sound and the overlay). */
+export interface SettingsActions {
+  auto(): void
+  mute(): void
+  volume(v: number): void
+  perf(): void
+}
+
+/** The auto-target explanation for the state it is in. */
+export function autoHelp(s: Pick<SettingsState, 'autoTarget' | 'puzzle'>): string {
+  return s.puzzle
+    ? 'Puzzles never auto-target: every aim there is yours to spend.'
+    : s.autoTarget
+      ? 'Your cannons pick a new target by themselves when theirs is captured, and cannons you capture aim at the nearest foe. To keep one cannon on manual, use the Auto pill in its hover menu (long-press on touch) or press M over it. Starts on every game.'
+      : "Off for all your cannons: they keep the aim you gave them and never pick a target themselves (one whose target is captured holds its fire until you aim it). Each cannon's own toggle is kept for when this is back on. Starts on every game."
+}
+
+const rgba = (c: number, a: number): string => `rgba(${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255}, ${a})`
+
 /**
- * The in-game Settings panel (top right, under the HUD). Drawn on the fixed
- * UI camera and hit-tested by hand in layout units, like the swap menu, so it
- * never fights the board's click-to-aim input. Settings: the global
- * auto-target toggle for your cannons, and sound (on/off and volume).
+ * The in-game Settings panel (top right, under the battle's top bar): the
+ * global auto-target toggle, sound effects (on/off and volume) and the
+ * performance overlay, one compact row each with the explanations behind "?".
+ * HTML on the page at its real size (readable on phones), so presses on it
+ * never reach the board.
  */
 export class SettingsPanel {
   open = false
-  private box = { x: 0, y: 0, w: W, h: 0 }
-  private sw = { x: 0, y: 0, w: SWITCH_W + 160, h: SWITCH_H + 8 }
-  private muteRow = { x: 0, y: 0, w: 0, h: 0 }
-  private slider = { x: 0, y: 0, w: 0, h: 0 }
-  private perfRow = { x: 0, y: 0, w: 0, h: 0 }
-  private closeAt = { x: 0, y: 0 }
-  private hot: SettingsHit | null = null
-  private readonly g: Phaser.GameObjects.Graphics
-  private readonly title: Phaser.GameObjects.Text
-  private readonly label: Phaser.GameObjects.Text
-  private readonly value: Phaser.GameObjects.Text
-  private readonly note: Phaser.GameObjects.Text
-  private readonly close: Phaser.GameObjects.Text
-  private readonly soundLabel: Phaser.GameObjects.Text
-  private readonly soundValue: Phaser.GameObjects.Text
-  private readonly soundNote: Phaser.GameObjects.Text
-  private readonly perfLabel: Phaser.GameObjects.Text
-  private readonly perfValue: Phaser.GameObjects.Text
+  private readonly el: HTMLDivElement
+  private readonly autoSw: HTMLInputElement
+  private readonly soundSw: HTMLInputElement
+  private readonly perfSw: HTMLInputElement
+  private readonly range: HTMLInputElement
+  private readonly val: HTMLSpanElement
+  private readonly autoSub: HTMLSpanElement
+  private readonly autoRow: HTMLDivElement & { help?: HTMLSpanElement }
+  private readonly soundRow: HTMLDivElement & { help?: HTMLSpanElement }
+  private last = ''
+  /** The last press on a control was a mouse or finger (then give focus back to the board). */
+  private byPointer = false
+  private readonly onResize = (): void => this.place()
 
   constructor(
-    scene: Phaser.Scene,
-    ui: <T extends Phaser.GameObjects.GameObject>(obj: T) => T,
-    private readonly right: number,
-    private readonly top: number,
+    private readonly scene: Phaser.Scene,
+    private readonly actions: SettingsActions,
+    /** Where the panel's top-right corner goes, in page pixels (under the top bar). */
+    private readonly anchor: () => { top: number; right: number },
+    private readonly onClose: () => void,
   ) {
-    const text = (size: number, color: string, bold = false) =>
-      ui(
-        scene.add
-          .text(0, 0, '', { fontFamily: theme.font, fontSize: `${size}px`, fontStyle: bold ? 'bold' : 'normal', color })
-          .setDepth(51)
-          .setVisible(false),
-      )
-    this.g = ui(scene.add.graphics().setDepth(50))
-    this.title = text(15, theme.text, true).setText('Settings')
-    this.label = text(14, theme.text, true).setText('Auto-target').setOrigin(0, 0.5)
-    this.value = text(13, theme.textMuted, true).setOrigin(1, 0.5)
-    this.note = text(12, theme.textMuted).setWordWrapWidth(W - PAD * 2).setLineSpacing(3)
-    this.close = text(18, theme.textMuted, true).setText('×').setOrigin(0.5)
-    this.soundLabel = text(14, theme.text, true).setText('Sound').setOrigin(0, 0.5)
-    this.soundValue = text(13, theme.textMuted, true).setOrigin(1, 0.5)
-    this.soundNote = text(12, theme.textMuted).setWordWrapWidth(W - PAD * 2).setLineSpacing(3)
-    this.perfLabel = text(14, theme.text, true).setText('Performance').setOrigin(0, 0.5)
-    this.perfValue = text(13, theme.textMuted, true).setOrigin(1, 0.5)
+    injectMenuStyles()
+    injectPanelStyles()
+    const sw = (id: string, label: string): HTMLInputElement => h('input.mm-switch', { type: 'checkbox', role: 'switch', id, 'aria-label': label, dataset: { id } }) as HTMLInputElement
+    this.autoSw = sw('bs-auto', 'Auto-target')
+    this.soundSw = sw('bs-sound', 'Sound effects')
+    this.perfSw = sw('bs-perf', 'Performance')
+    this.range = h('input.mm-range', { type: 'range', min: '0', max: '100', step: '5', id: 'bs-volume', dataset: { id: 'bs-volume' }, 'aria-label': 'Volume' }) as HTMLInputElement
+    this.val = h('span.mm-val')
+    this.autoSub = h('span')
+    this.autoSw.addEventListener('change', () => this.act(() => this.actions.auto()))
+    this.soundSw.addEventListener('change', () => this.act(() => this.actions.mute()))
+    this.perfSw.addEventListener('change', () => this.act(() => this.actions.perf()))
+    this.range.addEventListener('input', () => this.actions.volume(Number(this.range.value) / 100))
+    this.range.addEventListener('change', () => this.act(() => {}))
+    this.autoRow = settingRow({ id: 'bs-auto', label: 'Auto-target', for: 'bs-auto', sub: this.autoSub, help: autoHelp({ autoTarget: true, puzzle: false }), control: [this.autoSw] })
+    this.soundRow = settingRow({ id: 'bs-sound', label: 'Sound effects', for: 'bs-sound', help: 'Saved on this device. N mutes or unmutes them. Music: Menu → Music.', control: [this.soundSw] })
+    const close = h('button.bs-x', { type: 'button', 'aria-label': 'Close Settings', title: 'Close (Esc)', dataset: { id: 'bs-close' } }, '×')
+    close.addEventListener('click', () => this.onClose())
+    this.el = h('div.bs', { role: 'dialog', 'aria-label': 'Settings' },
+      h('div.bs-head', {}, h('b', {}, 'Settings'), close),
+      this.autoRow,
+      this.soundRow,
+      settingRow({ id: 'bs-volume', label: 'Volume', for: 'bs-volume', control: [this.range, this.val] }),
+      settingRow({ id: 'bs-perf', label: 'Performance', for: 'bs-perf', sub: 'Also F3', help: 'FPS and timings in a small corner panel, with a Copy button for bug reports. Also F3 or ` (backtick).', control: [this.perfSw] }),
+    )
+    this.el.style.display = 'none'
+    // Keys typed on the panel are the panel's (Space on a switch is not Pause); Esc still closes it.
+    this.el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') e.stopPropagation()
+    })
+    this.el.addEventListener('pointerdown', () => (this.byPointer = true))
+    document.body.append(this.el)
+    window.addEventListener('resize', this.onResize)
+    scene.scale.on(Phaser.Scale.Events.RESIZE, this.onResize)
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy())
+  }
+
+  /** Run a control's action; after a mouse or finger press, hand the keys back to the board. */
+  private act(run: () => void): void {
+    run()
+    if (this.byPointer) (document.activeElement as HTMLElement | null)?.blur?.()
+    this.byPointer = false
   }
 
   toggle(): void {
-    this.open = !this.open
+    if (this.open) this.hide()
+    else this.show()
+  }
+
+  show(): void {
+    if (this.open) return
+    this.open = true
+    this.last = ''
+    this.el.style.display = ''
+    this.place()
   }
 
   hide(): void {
+    if (!this.open) return
     this.open = false
+    this.el.style.display = 'none'
+    closeHelpTips()
+    if (this.el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur()
+  }
+
+  private place(): void {
+    if (!this.open) return
+    const a = this.anchor()
+    const vw = window.innerWidth
+    const w = Math.min(330, vw - 16)
+    this.el.style.width = `${w}px`
+    this.el.style.left = `${Math.max(8, Math.min(a.right, vw - 8) - w)}px`
+    this.el.style.top = `${Math.max(8, a.top)}px`
+    this.el.style.maxHeight = `${Math.max(120, window.innerHeight - a.top - 8)}px`
+  }
+
+  /** The panel's box in layout units (the board's coordinates). */
+  private layoutBox(): { x: number; y: number; w: number; h: number } | null {
+    if (!this.open) return null
+    const c = this.scene.game.canvas.getBoundingClientRect()
+    const r = this.el.getBoundingClientRect()
+    const k = c.width / GAME_WIDTH
+    if (!k) return null
+    return { x: (r.left - c.left) / k, y: (r.top - c.top) / k, w: r.width / k, h: r.height / k }
   }
 
   contains(lx: number, ly: number): boolean {
-    if (!this.open) return false
-    const b = this.box
-    return lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h
+    const b = this.layoutBox()
+    return !!b && lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h
   }
 
-  /** What is under a layout point (null when it is off the panel). */
+  /** 'panel' when a layout point is on the panel (its controls handle themselves). */
   hitAt(lx: number, ly: number): SettingsHit | null {
-    if (!this.contains(lx, ly)) return null
-    if (Math.hypot(lx - this.closeAt.x, ly - this.closeAt.y) <= 14) return 'close'
-    const inside = (r: { x: number; y: number; w: number; h: number }) => lx >= r.x && lx <= r.x + r.w && ly >= r.y && ly <= r.y + r.h
-    if (inside(this.sw)) return 'auto'
-    if (inside(this.muteRow)) return 'mute'
-    if (inside(this.perfRow)) return 'perf'
-    if (inside({ x: this.slider.x - 8, y: this.slider.y - 12, w: this.slider.w + 16, h: this.slider.h + 24 })) return 'volume'
-    return 'panel'
+    return this.contains(lx, ly) ? 'panel' : null
   }
 
-  /** Volume (0..1) for a layout x on the slider. */
-  volumeAt(lx: number): number {
-    const s = this.slider
-    return s.w > 0 ? Math.max(0, Math.min(1, (lx - s.x) / s.w)) : 0
-  }
-
-  setHot(hit: SettingsHit | null): void {
-    this.hot = hit
-  }
-
+  /** Bring the controls in step with the round (cheap when nothing changed). */
   draw(state: SettingsState): void {
-    this.g.clear()
-    const parts = [this.title, this.label, this.value, this.note, this.close, this.soundLabel, this.soundValue, this.soundNote, this.perfLabel, this.perfValue]
-    if (!this.open) {
-      for (const p of parts) p.setVisible(false)
-      return
-    }
-    const x = this.right - W
-    const y = this.top
-    this.note.setText(
-      state.puzzle
-        ? 'Puzzles never auto-target: every aim there is yours to spend.'
-        : state.autoTarget
-          ? 'Your cannons pick a new target by themselves when theirs is captured, and cannons you capture aim at the nearest foe. To keep one cannon on manual, use the Auto pill in its hover menu (long-press on touch) or press M over it. Starts on every game.'
-          : "Off for all your cannons: they keep the aim you gave them and never pick a target themselves (one whose target is captured holds its fire until you aim it). Each cannon's own toggle is kept for when this is back on. Starts on every game.",
-    )
-    const rowY = y + 52
-    const noteY = rowY + 24
-    // Sound: below the auto-target note.
-    const lineY = noteY + this.note.height + 14
-    const soundY = lineY + 24
-    const sliderY = soundY + 30
-    const soundNoteY = sliderY + 18
-    this.soundNote.setText(
-      state.audio
-        ? 'Sound effects, saved on this device. N mutes or unmutes them. Music: Menu → Music.'
-        : 'No sound in this browser.',
-    )
-    // Performance overlay switch: below the sound note.
-    const perfLineY = soundNoteY + this.soundNote.height + 12
-    const perfY = perfLineY + 24
-    const h = perfY - y + SWITCH_H / 2 + PAD
-    this.box = { x, y, w: W, h }
-    this.g.fillStyle(theme.hud, 0.97)
-    this.g.fillRoundedRect(x, y, W, h, 12)
-    this.g.lineStyle(1.5, theme.boardEdge, 1)
-    this.g.strokeRoundedRect(x, y, W, h, 12)
-    this.title.setPosition(x + PAD, y + 12).setVisible(true)
-    this.closeAt = { x: x + W - 20, y: y + 21 }
-    this.close.setPosition(this.closeAt.x, this.closeAt.y).setColor(this.hot === 'close' ? theme.text : theme.textMuted).setVisible(true)
-
-    // The switch row (the whole row is clickable).
-    this.sw = { x: x + PAD - 4, y: rowY - SWITCH_H / 2 - 4, w: W - PAD * 2 + 8, h: SWITCH_H + 8 }
-    if (this.hot === 'auto' && !state.puzzle) {
-      this.g.fillStyle(theme.board, 1)
-      this.g.fillRoundedRect(this.sw.x, this.sw.y, this.sw.w, this.sw.h, 8)
-    }
+    if (!this.open) return
+    const key = JSON.stringify(state)
+    if (key === this.last) return
+    this.last = key
     const on = state.autoTarget && !state.puzzle
-    const sx = x + PAD
-    this.g.fillStyle(on ? theme.player : theme.grid, state.puzzle ? 0.45 : 1)
-    this.g.fillRoundedRect(sx, rowY - SWITCH_H / 2, SWITCH_W, SWITCH_H, SWITCH_H / 2)
-    this.g.fillStyle(on ? theme.hud : theme.neutral, state.puzzle ? 0.6 : 1)
-    this.g.fillCircle(on ? sx + SWITCH_W - SWITCH_H / 2 : sx + SWITCH_H / 2, rowY, SWITCH_H / 2 - 3)
-    this.label.setPosition(sx + SWITCH_W + 12, rowY).setColor(state.puzzle ? theme.textMuted : theme.text).setVisible(true)
-    this.value
-      .setText(state.puzzle ? 'Off in puzzles' : state.autoTarget ? 'On for your cannons' : 'Off for all')
-      .setPosition(x + W - PAD, rowY)
-      .setColor(on ? theme.text : theme.textMuted)
-      .setVisible(true)
-    this.note.setPosition(x + PAD, noteY).setVisible(true)
-
-    this.g.lineStyle(1, theme.boardEdge, 1)
-    this.g.lineBetween(x + PAD, lineY, x + W - PAD, lineY)
+    this.autoSw.checked = on
+    this.autoSw.disabled = state.puzzle
+    this.autoSub.textContent = state.puzzle ? 'Off in puzzles' : state.autoTarget ? 'On for your cannons' : 'Off for all'
+    if (this.autoRow.help) setHelpText(this.autoRow.help, autoHelp(state))
     const soundOn = state.audio && !state.muted && state.volume > 0
-    this.muteRow = { x: x + PAD - 4, y: soundY - SWITCH_H / 2 - 4, w: W - PAD * 2 + 8, h: SWITCH_H + 8 }
-    if (this.hot === 'mute' && state.audio) {
-      this.g.fillStyle(theme.board, 1)
-      this.g.fillRoundedRect(this.muteRow.x, this.muteRow.y, this.muteRow.w, this.muteRow.h, 8)
-    }
-    const dim = state.audio ? 1 : 0.45
-    this.g.fillStyle(soundOn ? theme.player : theme.grid, dim)
-    this.g.fillRoundedRect(sx, soundY - SWITCH_H / 2, SWITCH_W, SWITCH_H, SWITCH_H / 2)
-    this.g.fillStyle(soundOn ? theme.hud : theme.neutral, state.audio ? 1 : 0.6)
-    this.g.fillCircle(soundOn ? sx + SWITCH_W - SWITCH_H / 2 : sx + SWITCH_H / 2, soundY, SWITCH_H / 2 - 3)
-    this.soundLabel.setPosition(sx + SWITCH_W + 12, soundY).setColor(state.audio ? theme.text : theme.textMuted).setVisible(true)
-    this.soundValue
-      .setText(!state.audio ? 'Unavailable' : state.muted ? 'Muted' : `Volume ${Math.round(state.volume * 100)}%`)
-      .setPosition(x + W - PAD, soundY)
-      .setColor(soundOn ? theme.text : theme.textMuted)
-      .setVisible(true)
-    // The volume slider (drag or click anywhere on it).
-    this.slider = { x: x + PAD + 8, y: sliderY - 3, w: W - PAD * 2 - 16, h: 6 }
-    const sl = this.slider
-    const k = sl.x + sl.w * state.volume
-    this.g.fillStyle(theme.grid, dim)
-    this.g.fillRoundedRect(sl.x, sl.y, sl.w, sl.h, 3)
-    this.g.fillStyle(soundOn ? theme.player : theme.neutral, dim)
-    if (k > sl.x + 1) this.g.fillRoundedRect(sl.x, sl.y, k - sl.x, sl.h, 3)
-    this.g.fillStyle(this.hot === 'volume' && state.audio ? theme.select : soundOn ? theme.player : theme.neutral, dim)
-    this.g.fillCircle(k, sliderY, this.hot === 'volume' ? 9 : 8)
-    this.g.lineStyle(2, theme.hud, dim)
-    this.g.strokeCircle(k, sliderY, this.hot === 'volume' ? 9 : 8)
-    this.soundNote.setPosition(x + PAD, soundNoteY).setVisible(true)
-
-    this.g.lineStyle(1, theme.boardEdge, 1)
-    this.g.lineBetween(x + PAD, perfLineY, x + W - PAD, perfLineY)
-    this.perfRow = { x: x + PAD - 4, y: perfY - SWITCH_H / 2 - 4, w: W - PAD * 2 + 8, h: SWITCH_H + 8 }
-    if (this.hot === 'perf') {
-      this.g.fillStyle(theme.board, 1)
-      this.g.fillRoundedRect(this.perfRow.x, this.perfRow.y, this.perfRow.w, this.perfRow.h, 8)
-    }
-    this.g.fillStyle(state.perf ? theme.player : theme.grid, 1)
-    this.g.fillRoundedRect(sx, perfY - SWITCH_H / 2, SWITCH_W, SWITCH_H, SWITCH_H / 2)
-    this.g.fillStyle(state.perf ? theme.hud : theme.neutral, 1)
-    this.g.fillCircle(state.perf ? sx + SWITCH_W - SWITCH_H / 2 : sx + SWITCH_H / 2, perfY, SWITCH_H / 2 - 3)
-    this.perfLabel.setPosition(sx + SWITCH_W + 12, perfY).setVisible(true)
-    this.perfValue
-      .setText(state.perf ? 'Shown (F3)' : 'Hidden (F3)')
-      .setPosition(x + W - PAD, perfY)
-      .setColor(state.perf ? theme.text : theme.textMuted)
-      .setVisible(true)
+    this.soundSw.checked = soundOn
+    this.soundSw.disabled = !state.audio
+    this.range.disabled = !state.audio
+    const v = Math.round(state.volume * 100)
+    if (document.activeElement !== this.range) this.range.value = String(v)
+    this.val.textContent = !state.audio ? '–' : state.muted ? 'Muted' : `${v}%`
+    if (this.soundRow.help) setHelpText(this.soundRow.help, state.audio ? 'Saved on this device. N mutes or unmutes them. Music: Menu → Music.' : 'No sound in this browser.')
+    this.perfSw.checked = state.perf
   }
+
+  destroy(): void {
+    this.hide()
+    window.removeEventListener('resize', this.onResize)
+    this.scene.scale.off(Phaser.Scale.Events.RESIZE, this.onResize)
+    this.el.remove()
+  }
+}
+
+let styled = false
+
+function injectPanelStyles(): void {
+  if (styled) return
+  styled = true
+  const css = `
+.bs {
+  position: fixed; z-index: 6; box-sizing: border-box; overflow: auto; overscroll-behavior: contain;
+  font-family: ${theme.font}; font-size: 14px; color: ${theme.text};
+  background: ${rgba(theme.hud, 0.97)}; border: 1.5px solid ${cssHex(theme.boardEdge)}; border-radius: 12px;
+  padding: 6px 12px 4px; box-shadow: 0 10px 28px ${rgba(0, 0.45)}; -webkit-tap-highlight-color: transparent; user-select: none;
+}
+.bs * { box-sizing: border-box; }
+.bs-head { display: flex; align-items: center; justify-content: space-between; min-height: 34px; font-size: 15px; border-bottom: 1px solid ${rgba(theme.boardEdge, 0.7)}; }
+.bs-x { font: bold 20px/1 ${theme.font}; color: ${theme.textMuted}; background: transparent; border: 0; border-radius: 8px; width: 34px; height: 34px; cursor: pointer; margin-right: -6px; }
+.bs-x:hover { color: ${theme.text}; background: ${rgba(theme.grid, 0.8)}; }
+.bs-x:focus-visible { outline: 2px solid ${cssHex(theme.player)}; }
+.bs .mm-srow { min-height: 42px; }
+.bs .mm-range { width: 150px; }
+.bs .mm-val { min-width: 48px; }
+.bs .mm-switch:disabled + * { opacity: .6; }
+`
+  document.head.appendChild(Object.assign(document.createElement('style'), { id: 'cc-battle-settings', textContent: css }))
 }
