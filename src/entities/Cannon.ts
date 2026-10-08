@@ -36,6 +36,30 @@ interface SavedAim {
   aimPoint: Point | null
 }
 
+/** A cannon's drawable state, as sent to a network view (net/snapshot.ts). Cannons are named by id. */
+export interface CannonNet {
+  side: Side
+  kind: CannonKind
+  angle: number
+  target: string | null
+  aimPoint: Point | null
+  attacker: Side | null
+  progress: number
+  healing: string | null
+  autoTarget: boolean
+  hitFlash: number
+  healFlash: number
+  swapTotal: number
+  swapLeft: number
+  muzzle: number
+  shotsFired: number
+  pop: number
+  shieldHp: number
+  shieldDown: number
+  shieldFlash: number
+  shieldBreakFx: number
+}
+
 export class Cannon {
   readonly id: string
   readonly name: string
@@ -145,6 +169,56 @@ export class Cannon {
     c.shieldCalm = this.shieldCalm
     c.autoTarget = this.autoTarget
     return c
+  }
+
+  /** Everything a network view needs to draw this cannon as it is now (see net/snapshot.ts). */
+  netState(): CannonNet {
+    return {
+      side: this.side,
+      kind: this.kind,
+      angle: this.angle,
+      target: this.target?.id ?? null,
+      aimPoint: this.aimPoint ? { x: this.aimPoint.x, y: this.aimPoint.y } : null,
+      attacker: this.captureAttacker,
+      progress: this.captureProgress,
+      healing: this.healing?.id ?? null,
+      autoTarget: this.autoTarget,
+      hitFlash: this.hitFlash,
+      healFlash: this.healFlash,
+      swapTotal: this.swapTotal,
+      swapLeft: this.swapLeft,
+      muzzle: this.muzzle,
+      shotsFired: this.shotsFired,
+      pop: this.pop,
+      shieldHp: this.shieldHp,
+      shieldDown: this.shieldDown,
+      shieldFlash: this.shieldFlash,
+      shieldBreakFx: this.shieldBreakFx,
+    }
+  }
+
+  /** Show a state received from the authoritative round (network views only; never stepped). */
+  applyNet(s: CannonNet, byId: (id: string) => Cannon | undefined): void {
+    this.side = s.side
+    this.kind = s.kind
+    this.angle = s.angle
+    this.target = s.target ? (byId(s.target) ?? null) : null
+    this.aimPoint = s.aimPoint
+    this.captureAttacker = s.attacker
+    this.captureProgress = s.progress
+    this.healing = s.healing ? (byId(s.healing) ?? null) : null
+    this.autoTarget = s.autoTarget
+    this.hitFlash = s.hitFlash
+    this.healFlash = s.healFlash
+    this.swapTotal = s.swapTotal
+    this.swapLeft = s.swapLeft
+    this.muzzle = s.muzzle
+    this.shotsFired = s.shotsFired
+    this.pop = s.pop
+    this.shieldHp = s.shieldHp
+    this.shieldDown = s.shieldDown
+    this.shieldFlash = s.shieldFlash
+    this.shieldBreakFx = s.shieldBreakFx
   }
 
   /** Point a copy's cannon references (target, heal, saved aim) at the other copies. */

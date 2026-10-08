@@ -9,20 +9,26 @@ import type { Shot } from '../entities/Shot'
  * so the store art is drawn exactly like the game.
  */
 
-/** Shots in flight. `trail` (px) adds a longer fading tail to normal shots, for stills. */
-export function drawShots(g: Phaser.GameObjects.Graphics, shots: readonly Shot[], trail = 0): void {
+/**
+ * Shots in flight. `trail` (px) adds a longer fading tail to normal shots, for
+ * stills; `alpha` draws them that share of the way through the current step.
+ */
+export function drawShots(g: Phaser.GameObjects.Graphics, shots: readonly Shot[], trail = 0, alpha = 1): void {
   for (const shot of shots) {
+    // Drawn `alpha` of the way from where it was a step ago to where it is now (smooth between fixed steps).
+    const x = alpha >= 1 ? shot.ball.x : shot.prevX + (shot.ball.x - shot.prevX) * alpha
+    const y = alpha >= 1 ? shot.ball.y : shot.prevY + (shot.ball.y - shot.prevY) * alpha
     const color = sideColor(shot.side)
     if (shot.kind === 'machinegun') {
       // Machine gun round: a small, short tracer (cheap to draw, there are lots).
       const { vx, vy } = shot.ball
       const v = Math.hypot(vx, vy) || 1
-      const tx = shot.ball.x - (vx / v) * 11
-      const ty = shot.ball.y - (vy / v) * 11
+      const tx = x - (vx / v) * 11
+      const ty = y - (vy / v) * 11
       g.lineStyle(5, color, 0.95)
-      g.lineBetween(tx, ty, shot.ball.x, shot.ball.y)
+      g.lineBetween(tx, ty, x, y)
       g.lineStyle(2, 0xffffff, 0.8)
-      g.lineBetween(tx + (vx / v) * 5, ty + (vy / v) * 5, shot.ball.x, shot.ball.y)
+      g.lineBetween(tx + (vx / v) * 5, ty + (vy / v) * 5, x, y)
       continue
     }
     if (shot.kind === 'sniper') {
@@ -32,18 +38,18 @@ export function drawShots(g: Phaser.GameObjects.Graphics, shots: readonly Shot[]
       const len = 46
       g.lineStyle(TUNING.shotRadius * 0.9, color, 0.32)
       g.beginPath()
-      g.moveTo(shot.ball.x - (vx / v) * len, shot.ball.y - (vy / v) * len)
-      g.lineTo(shot.ball.x, shot.ball.y)
+      g.moveTo(x - (vx / v) * len, y - (vy / v) * len)
+      g.lineTo(x, y)
       g.strokePath()
       g.lineStyle(2, 0xffffff, 0.5)
       g.beginPath()
-      g.moveTo(shot.ball.x - (vx / v) * len * 0.5, shot.ball.y - (vy / v) * len * 0.5)
-      g.lineTo(shot.ball.x, shot.ball.y)
+      g.moveTo(x - (vx / v) * len * 0.5, y - (vy / v) * len * 0.5)
+      g.lineTo(x, y)
       g.strokePath()
       g.fillStyle(color, 1)
-      g.fillCircle(shot.ball.x, shot.ball.y, TUNING.shotRadius * 0.8)
+      g.fillCircle(x, y, TUNING.shotRadius * 0.8)
       g.fillStyle(0xffffff, 0.95)
-      g.fillCircle(shot.ball.x, shot.ball.y, 2.2)
+      g.fillCircle(x, y, 2.2)
       continue
     }
     if (trail > 0) {
@@ -52,18 +58,18 @@ export function drawShots(g: Phaser.GameObjects.Graphics, shots: readonly Shot[]
       const v = Math.hypot(vx, vy) || 1
       for (let i = 3; i >= 1; i--) {
         g.lineStyle(TUNING.shotRadius * (1.9 - i * 0.3), color, 0.34 - i * 0.08)
-        g.lineBetween(shot.ball.x - (vx / v) * trail * (i / 3), shot.ball.y - (vy / v) * trail * (i / 3), shot.ball.x, shot.ball.y)
+        g.lineBetween(x - (vx / v) * trail * (i / 3), y - (vy / v) * trail * (i / 3), x, y)
       }
     }
     g.lineStyle(TUNING.shotRadius * 1.6, color, 0.28)
     g.beginPath()
     g.moveTo(shot.prevX, shot.prevY)
-    g.lineTo(shot.ball.x, shot.ball.y)
+    g.lineTo(x, y)
     g.strokePath()
     g.fillStyle(color, 1)
-    g.fillCircle(shot.ball.x, shot.ball.y, TUNING.shotRadius)
+    g.fillCircle(x, y, TUNING.shotRadius)
     g.fillStyle(0xffffff, 0.85)
-    g.fillCircle(shot.ball.x, shot.ball.y, 2.4)
+    g.fillCircle(x, y, 2.4)
   }
 }
 

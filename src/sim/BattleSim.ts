@@ -69,13 +69,23 @@ export class BattleSim {
   private readonly bodies: Body[]
   private readonly near: Broadphase
   /**
-   * Global auto-target for your cannons (the Settings toggle). On: your
+   * Sides played by people (orders come in through playerAim / playerSwap /
+   * the auto-target toggles, or applyOrder in sim/orders.ts). Gold only,
+   * unless makePvp() hands pink to a second player too.
+   */
+  private humans: ReadonlySet<Side> = new Set<Side>(['player'])
+  /** Player vs player: no AI, and a side wins once the other holds no cannons. */
+  pvp = false
+  /**
+   * Global auto-target per human side (the Settings toggle). On: that side's
    * cannons whose own toggle (Cannon.autoTarget) is on pick a new target by
    * themselves when theirs is captured, and newly captured cannons aim at the
-   * nearest foe. Off: none of yours ever does (their own toggles are kept for
+   * nearest foe. Off: none of them ever does (their own toggles are kept for
    * when it comes back on). Every round starts with it on. AI sides ignore it.
    */
-  autoTarget = true
+  private autoOn: Record<Side, boolean> = { player: true, enemy: true, neutral: true }
+  /** Shots fired so far (each shot gets the next id, so a network view can follow it). */
+  shotSeq = 0
   /**
    * Tactical pause: while true, step() does nothing (shots, turning, reloads,
    * barriers, meters, AI and timers all hold), and your aim and type orders
@@ -86,6 +96,8 @@ export class BattleSim {
   timeAi = false
   aiMs = 0
   private queuedAims = new Map<Cannon, Cannon | Point>()
+  /** Which side gave each queued order (both players may queue during a PvP pause). */
+  private queuedBy = new Map<Cannon, Side>()
   private queuedKinds = new Map<Cannon, CannonKind>()
   /** Scratch list: shields with their barrier up this step. */
   private readonly upShields: Cannon[] = []
@@ -136,6 +148,35 @@ export class BattleSim {
   }
 
   /**
+   * Player vs player: pink is a person too. Drops pink's AI (and any other),
+   * so both sides only move on orders. Call before the first step.
+   */
+  makePvp(): void {
+    this.pvp = true
+    this.humans = new Set<Side>(['player', 'enemy'])
+    this.ais.length = 0
+  }
+
+  /** True for a side whose orders come from a person. */
+  isHuman(side: Side): boolean {
+    return this.humans.has(side)
+  }
+
+  /** Gold's global auto-target setting (the Settings toggle in single-player). */
+  get autoTarget(): boolean {
+    return this.autoOn.player
+  }
+
+  set autoTarget(on: boolean) {
+    this.autoOn.player = on
+  }
+
+  /** A side's global auto-target setting. */
+  autoTargetOf(side: Side): boolean {
+    return this.autoOn[side]
+  }
+
+  /**
    * A headless copy of the round as it stands (cannons, meters, aims, reloads,
    * shots in flight) that shares the level, lanes and collision grid. No AI
    * runs in it and it reports no events: Impossible's look-ahead plays its
@@ -159,9 +200,13 @@ export class BattleSim {
       aiOff: true,
       clock: this.clock,
       aimsUsed: this.aimsUsed,
-      autoTarget: this.autoTarget,
+      humans: this.humans,
+      pvp: this.pvp,
+      autoOn: { ...this.autoOn },
+      shotSeq: this.shotSeq,
       paused: false,
       queuedAims: new Map(),
+      queuedBy: new Map(),
       queuedKinds: new Map(),
       ended: this.ended,
       endReason: '',
@@ -200,14 +245,18 @@ export class BattleSim {
   resume(): void {
     if (!this.paused) return
     this.paused = false
+    // Sides can't change while paused, so each order is still its giver's.
+    const stillTheirs = (cannon: Cannon) => this.humans.has(cannon.side) && (this.queuedBy.get(cannon) ?? 'player') === cannon.side
     for (const [cannon, kind] of this.queuedKinds) {
-      if (cannon.side === 'player' && cannon.setKind(kind)) this.events.swapped?.(cannon)
+      if (stillTheirs(cannon) && cannon.setKind(kind)) this.events.swapped?.(cannon)
     }
     const aims = [...this.queuedAims]
+    const by = new Map(this.queuedBy)
     this.queuedKinds.clear()
     this.queuedAims.clear()
+    this.queuedBy.clear()
     for (const [cannon, aim] of aims) {
-      if (cannon.side !== 'player') continue
+      if (!this.humans.has(cannon.side) || (by.get(cannon) ?? 'player') !== cannon.side) continue
       this.applyAim(cannon, aim)
       if (this.level.aims !== undefined) this.aimsUsed += 1
     }
@@ -224,16 +273,30 @@ export class BattleSim {
     return this.queuedKinds.get(cannon) ?? null
   }
 
-  /** Every queued order (for drawing them). */
-  queuedOrders(): { cannon: Cannon; aim: Cannon | Point | null; kind: CannonKind | null }[] {
+  /** Every queued order (for drawing them), or only those `side` gave (each player sees only their own). */
+  queuedOrders(side?: Side): { cannon: Cannon; aim: Cannon | Point | null; kind: CannonKind | null }[] {
     const out = new Map<Cannon, { cannon: Cannon; aim: Cannon | Point | null; kind: CannonKind | null }>()
-    for (const [cannon, aim] of this.queuedAims) out.set(cannon, { cannon, aim, kind: null })
+    const mine = (cannon: Cannon) => side === undefined || (this.queuedBy.get(cannon) ?? 'player') === side
+    for (const [cannon, aim] of this.queuedAims) if (mine(cannon)) out.set(cannon, { cannon, aim, kind: null })
     for (const [cannon, kind] of this.queuedKinds) {
+      if (!mine(cannon)) continue
       const o = out.get(cannon)
       if (o) o.kind = kind
       else out.set(cannon, { cannon, aim: null, kind })
     }
     return [...out.values()]
+  }
+
+  /** Network views: show these queued orders (the viewer's own, as the authoritative round has them). */
+  setViewQueued(orders: { cannon: Cannon; aim: Cannon | Point | null; kind: CannonKind | null }[]): void {
+    this.queuedAims.clear()
+    this.queuedKinds.clear()
+    this.queuedBy.clear()
+    for (const o of orders) {
+      if (o.aim) this.queuedAims.set(o.cannon, o.aim)
+      if (o.kind) this.queuedKinds.set(o.cannon, o.kind)
+      this.queuedBy.set(o.cannon, 'player')
+    }
   }
 
   byId(id: string): Cannon | undefined {
@@ -277,25 +340,25 @@ export class BattleSim {
    * always do; sides an AI plays are left to the AI.
    */
   autoTargets(cannon: Cannon): boolean {
-    if (cannon.side !== 'player') return !this.isPuzzle
-    return !this.isPuzzle && this.autoTarget && cannon.autoTarget
+    if (!this.humans.has(cannon.side)) return !this.isPuzzle
+    return !this.isPuzzle && this.autoOn[cannon.side] && cannon.autoTarget
   }
 
-  /** The Settings toggle: auto-target on or off for all your cannons. */
-  setAutoTarget(on: boolean): void {
-    this.autoTarget = on
+  /** The Settings toggle: auto-target on or off for all of a side's cannons (gold by default). */
+  setAutoTarget(on: boolean, side: Side = 'player'): void {
+    if (this.humans.has(side)) this.autoOn[side] = on
   }
 
   /** Flip one of your cannons' own auto-target toggle. Returns its new value (null if it isn't yours). */
-  toggleCannonAuto(cannon: Cannon): boolean | null {
-    if (cannon.side !== 'player') return null
+  toggleCannonAuto(cannon: Cannon, side: Side = 'player'): boolean | null {
+    if (cannon.side !== side || !this.humans.has(side)) return null
     cannon.autoTarget = !cannon.autoTarget
     return cannon.autoTarget
   }
 
-  /** A player aim order. Returns false when the puzzle aim budget is spent. */
-  playerAim(cannon: Cannon, aim: Cannon | Point): boolean {
-    if (this.ended || cannon.side !== 'player') return false
+  /** A player aim order (from gold, or `side` in PvP). Returns false when the puzzle aim budget is spent. */
+  playerAim(cannon: Cannon, aim: Cannon | Point, side: Side = 'player'): boolean {
+    if (this.ended || cannon.side !== side || !this.humans.has(side)) return false
     // Re-aiming a cannon that already has an order queued in this pause is free.
     if (this.aimsLeft <= 0 && !(this.paused && this.queuedAims.has(cannon))) {
       this.events.noAims?.(cannon)
@@ -303,6 +366,7 @@ export class BattleSim {
     }
     if (this.paused) {
       this.queuedAims.set(cannon, aim)
+      this.queuedBy.set(cannon, side)
       this.events.aimed?.({ x: aim.x, y: aim.y })
       return true
     }
@@ -327,12 +391,13 @@ export class BattleSim {
    * then reloads for its new type's full interval (at least
    * TUNING.swapLockMs). Free in puzzles: it does not spend an aim.
    */
-  playerSwap(cannon: Cannon, kind: CannonKind): boolean {
-    if (this.ended || cannon.side !== 'player') return false
+  playerSwap(cannon: Cannon, kind: CannonKind, side: Side = 'player'): boolean {
+    if (this.ended || cannon.side !== side || !this.humans.has(side)) return false
     if (this.paused) {
       // Queued: the swap (and its reload) happens when you resume. Picking its current type cancels it.
       if (kind === cannon.kind) return this.queuedKinds.delete(cannon)
       this.queuedKinds.set(cannon, kind)
+      this.queuedBy.set(cannon, side)
       return true
     }
     if (!cannon.setKind(kind)) return false
@@ -348,6 +413,7 @@ export class BattleSim {
       const spawned = cannon.update(dt, false, TUNING.fireIntervalMs)
       if (spawned) {
         const shot = new Shot(spawned, cannon.side, cannon.damage, cannon.kind)
+        shot.id = ++this.shotSeq
         this.shots.push(shot)
         this.events.fired?.(cannon, shot)
       }
@@ -410,7 +476,7 @@ export class BattleSim {
   private onCaptured(cannon: Cannon): void {
     this.events.captured?.(cannon)
     // A cannon that just became yours starts with its own toggle on: it follows the global setting.
-    if (cannon.side === 'player') cannon.autoTarget = true
+    if (this.humans.has(cannon.side)) cannon.autoTarget = true
     // Your cannons re-aim by themselves when their target falls (if auto-target
     // is on for them); the AI's cannons are left to the AI, which reacts after
     // its reaction time. With it off, a cannon whose target fell drops it and
@@ -443,7 +509,18 @@ export class BattleSim {
     return best
   }
 
+  /** Who won: gold for 'win', pink for 'lose', null while it is still on. */
+  get winner(): Side | null {
+    return this.ended === 'win' ? 'player' : this.ended === 'lose' ? 'enemy' : null
+  }
+
   private checkOutcome(): void {
+    if (this.pvp) {
+      // Player vs player: a side wins once the other holds no cannons (neutrals may be left).
+      if (this.count('enemy') === 0) return this.finish('win')
+      if (this.count('player') === 0) return this.finish('lose')
+      return
+    }
     const player = this.count('player')
     if (player === this.cannons.length) return this.finish('win')
     if (player === 0) return this.finish('lose', 'The enemy took every cannon you held.')
