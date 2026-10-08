@@ -313,9 +313,32 @@ export class BattleHud {
     el.classList.toggle('warn', warn)
   }
 
-  setNet(text: string): void {
+  /**
+   * The line under the clock. `rtt` (online): the round trip to the server,
+   * shown as a small coloured chip ("● 42 ms"; null while measuring).
+   */
+  setNet(text: string, rtt?: number | null): void {
     const el = this.netEl
-    if (el && el.textContent !== text) el.textContent = text
+    if (!el) return
+    if (rtt === undefined) {
+      if (el.textContent !== text) el.textContent = text
+      return
+    }
+    let note = el.querySelector<HTMLElement>('.bh-nettext')
+    let chip = el.querySelector<HTMLElement>('.bh-ping')
+    if (!note || !chip) {
+      el.textContent = ''
+      note = h('span.bh-nettext')
+      chip = h('span.bh-ping', { dataset: { id: 'ping' } })
+      el.append(note, chip)
+    }
+    const t = text ? text + '  ·  ' : ''
+    if (note.textContent !== t) note.textContent = t
+    const label = rtt === null ? '… ms' : `${Math.round(rtt)} ms`
+    if (chip.textContent !== label) chip.textContent = label
+    const level = rtt === null ? '' : rtt < 100 ? 'good' : rtt < 200 ? 'ok' : 'bad'
+    if (chip.dataset.level !== level) chip.dataset.level = level
+    chip.title = rtt === null ? 'Measuring the connection…' : `Round trip to the game server: ${Math.round(rtt)} ms`
   }
 
   get confirmOpen(): boolean {
@@ -429,6 +452,11 @@ function injectHudStyles(): void {
 .bh-clock { font-size: 17px; font-variant-numeric: tabular-nums; }
 .bh-clock.warn { color: ${cssHex(theme.enemy)}; }
 .bh-net { font-size: 12px; color: ${theme.textMuted}; white-space: nowrap; }
+.bh-ping { font-variant-numeric: tabular-nums; font-weight: bold; }
+.bh-ping::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; background: currentColor; vertical-align: 1px; }
+.bh-ping[data-level='good'] { color: ${cssHex(theme.fan)}; }
+.bh-ping[data-level='ok'] { color: ${cssHex(theme.player)}; }
+.bh-ping[data-level='bad'] { color: ${cssHex(theme.enemy)}; }
 .bh-btn {
   font: inherit; font-weight: bold; font-size: 14px; color: ${theme.text}; background: ${rgba(theme.board, 0.97)};
   border: 2px solid ${edge}; border-radius: 11px; height: var(--bh-btn, 34px); min-width: var(--bh-btn, 34px); padding: 0 12px; cursor: pointer;

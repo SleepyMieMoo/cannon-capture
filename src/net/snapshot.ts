@@ -21,7 +21,7 @@ const r3 = (v: number) => Math.round(v * 1000) / 1000
 
 /** One cannon: [side, kind, angle, target, aimX, aimY, attacker, progress, healing, auto, hitFlash, healFlash, swapTotal, swapLeft, muzzle, shotsFired, pop, shieldHp, shieldDown, shieldFlash, shieldBreakFx]. */
 export type CannonRow = number[]
-/** One shot: [id, side, kind, x, y, vx, vy]. */
+/** One shot: [id, side, kind, x, y, vx, vy, age (ms since fired; newer servers)]. */
 export type ShotRow = number[]
 /** A queued order (paused): [cannon, target (-1 none), aimX, aimY (NaN-free: -1 when none), kind (-1 none), hasAim]. */
 export type QueuedRow = number[]
@@ -136,7 +136,7 @@ export function encodeSnap(sim: BattleSim, tick: number, forSide: Side, events: 
       r3(n.shieldBreakFx),
     ]
   })
-  const s = sim.shots.map((shot): ShotRow => [shot.id, sideNo(shot.side), kindNo(shot.kind), r1(shot.ball.x), r1(shot.ball.y), r1(shot.ball.vx), r1(shot.ball.vy)])
+  const s = sim.shots.map((shot): ShotRow => [shot.id, sideNo(shot.side), kindNo(shot.kind), r1(shot.ball.x), r1(shot.ball.y), r1(shot.ball.vx), r1(shot.ball.vy), Math.round(shot.ball.age)])
   const q = sim.queuedOrders(forSide).map((o): QueuedRow => {
     const aimCannon = o.aim instanceof Cannon ? ix(o.aim.id) : -1
     const point = o.aim && !(o.aim instanceof Cannon) ? o.aim : null
@@ -205,8 +205,11 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t
  * BattleSim. Smooth values (barrels, meters, flashes, shots) are blended;
  * everything else is a's. The pause, the winner, the toggles and the queued
  * orders come from `latest`, so they show as soon as they arrive.
+ *
+ * `aheadMs`: the draw time ran this far past the newest snapshot (it is late):
+ * shots fly on by their speed and the clock moves on, the rest holds.
  */
-export function applySnap(view: BattleSim, a: Snap, b: Snap, t: number, latest: Snap, flip: boolean, stepMs: number): void {
+export function applySnap(view: BattleSim, a: Snap, b: Snap, t: number, latest: Snap, flip: boolean, stepMs: number, aheadMs = 0): void {
   const map = sideMapper(flip)
   const cannons = view.cannons
   const byId = (id: string) => view.byId(id)
@@ -230,16 +233,34 @@ export function applySnap(view: BattleSim, a: Snap, b: Snap, t: number, latest: 
     cannons[i].applyNet(s, byId)
   }
 
-  // Shots in both snapshots slide between them; new ones show from halfway; gone ones vanish.
+  // Shots in both snapshots slide between them. A new one appears when it was
+  // fired (its age says when), flying back along its path from where b has it;
+  // older servers send no age: then from halfway. Gone ones vanish.
   const before = new Map(a.s.map((row) => [row[0], row]))
   const shots: Shot[] = []
+  const drawClock = lerp(a.clock, b.clock, t)
+  const ahead = Math.max(0, aheadMs) / 1000
   for (const row of b.s) {
-    const old = before.get(row[0])
-    if (!old && t < 0.5) continue
-    const x = old ? lerp(old[3], row[3], t) : row[3]
-    const y = old ? lerp(old[4], row[4], t) : row[4]
-    const vx = old ? lerp(old[5], row[5], t) : row[5]
-    const vy = old ? lerp(old[6], row[6], t) : row[6]
+    const old = a === b ? row : before.get(row[0])
+    let x: number
+    let y: number
+    let vx = row[5]
+    let vy = row[6]
+    if (old) {
+      x = lerp(old[3], row[3], t) + row[5] * ahead
+      y = lerp(old[4], row[4], t) + row[6] * ahead
+      vx = lerp(old[5], row[5], t)
+      vy = lerp(old[6], row[6], t)
+    } else if (row.length > 7) {
+      const back = b.clock - drawClock
+      if (back > row[7]) continue
+      x = row[3] - (row[5] * back) / 1000
+      y = row[4] - (row[6] * back) / 1000
+    } else {
+      if (t < 0.5) continue
+      x = row[3]
+      y = row[4]
+    }
     const side = map(SIDES[row[1]] ?? 'neutral')
     const shot = new Shot({ x, y, vx, vy, age: 0, bounces: 0, alive: true, ownerId: '' }, side, 1, CANNON_KINDS[row[2]] ?? 'normal')
     shot.id = row[0]
@@ -249,9 +270,10 @@ export function applySnap(view: BattleSim, a: Snap, b: Snap, t: number, latest: 
   }
   view.shots = shots
 
-  view.clock = lerp(a.clock, b.clock, t)
   // The countdown runs at the view's render time (so the 3-2-1 lines up with the board it shows).
-  view.countdown = lerp(a.cd ?? 0, b.cd ?? 0, t)
+  const cd = lerp(a.cd ?? 0, b.cd ?? 0, t)
+  view.countdown = Math.max(0, cd - Math.max(0, aheadMs))
+  view.clock = drawClock + (cd > 0 ? 0 : Math.max(0, aheadMs))
   view.paused = latest.paused
   const winner = latest.winner === null ? null : map(latest.winner)
   view.ended = winner === null ? null : winner === 'player' ? 'win' : winner === 'enemy' ? 'lose' : 'draw'

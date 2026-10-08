@@ -188,10 +188,12 @@ describe('second player back from a hidden tab', () => {
     hostEnd.flush()
     clientEnd.flush()
     cancel()
-    const client = new PvpClient(clientEnd, start!, true, false)
+    const t = { now: 0 }
+    const client = new PvpClient(clientEnd, start!, true, false, () => t.now)
     const view = new BattleSim(flipLevel(start!.level), null, {}, levelLanes(flipLevel(start!.level)))
     view.makePvp()
     const step = () => {
+      t.now += SIM_STEP_MS
       sim.step(SIM_STEP_MS)
       host.stepped()
       clientEnd.flush()

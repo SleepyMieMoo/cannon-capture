@@ -39,6 +39,7 @@ import { drawStar, makeButton } from '../ui/button'
 import { SwapMenu, type AutoState } from '../ui/swapMenu'
 import { SettingsPanel } from '../ui/settingsPanel'
 import { perf } from '../perf/PerfOverlay'
+import type { PerfNet } from '../perf/perfStats'
 import { layoutScale } from '../render/resolution'
 import { KINDS, firesAs, fmtNum, kindLabel, nextKind } from '../config/kinds'
 import { FixedStep, SIM_STEP_MS } from '../sim/fixedStep'
@@ -50,7 +51,7 @@ import type { OnlineRoom, OnlineStart } from '../net/onlineClient'
 import { looksClash } from '../config/looks'
 import { NameTags } from '../render/nameTags'
 import { GLOW, SideGlow, glowColours, glowEdges } from '../render/sideGlow'
-import { cannonsFromResult, clock, endTexts, nameOnSide, outcomeFromResult, tagNames, netLine, opponentLine, pauseCheck, pauseLabel, rematchLine, sideIndex } from '../net/onlineView'
+import { cannonsFromResult, clock, endTexts, nameOnSide, outcomeFromResult, tagNames, netParts, opponentLine, pauseCheck, pauseLabel, rematchLine, sideIndex } from '../net/onlineView'
 import { CatchUp } from '../sim/catchUp'
 import { ResultGate } from './resultGate'
 import { loadTabPrefs, type TabPrefs } from '../menu/tabPrefs'
@@ -552,6 +553,7 @@ export class BattleScene extends Phaser.Scene {
       cannons: () => this.sim.cannons.length,
       shots: () => this.sim.shots.length,
       sounds: () => this.sfx.voices,
+      net: () => this.netSummary(),
     }
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (perf.battle?.level === this.level) perf.battle = null
@@ -896,10 +898,29 @@ export class BattleScene extends Phaser.Scene {
         }
       }
     }
-    // Check it against the picture first (the host checks again), and show it straight away.
+    // Check it against the picture first (the server checks again), and show it straight away:
+    // the client keeps showing it (prediction) until the server's picture has it.
     const res = this.predict(o)
-    if (res.ok) this.client.send(o)
+    if (res.ok) this.client.send(o, res.on)
     return res
+  }
+
+  /** Online numbers for the performance panel (null when not playing over a network). */
+  private netSummary(): PerfNet | null {
+    const c = this.client
+    if (!c) return null
+    const n = c.netStats
+    const room = this.online
+    const server = room?.info?.server
+    return {
+      rtt: room ? room.rttAvg : null,
+      delayMs: n.delayMs,
+      jitterMs: n.jitterMs,
+      kbps: room ? room.kbpsIn : null,
+      predicted: n.predicted,
+      refused: n.refused,
+      server: server ? `${server.colo ?? '?'} (${server.region})` : null,
+    }
   }
 
   /** Second player: would the host take this order, judging by the latest picture? Shows its effect early where that's cheap. */
@@ -919,7 +940,10 @@ export class BattleScene extends Phaser.Scene {
       }
       case 'swap': {
         const c = mine(o.cannon)
-        return { ok: !!c && (o.kind !== c.kind || sim.queuedKind(c) !== null) }
+        const ok = !!c && (o.kind !== c.kind || sim.queuedKind(c) !== null)
+        // The new type's label pops now (the server's echo of it then shows nothing).
+        if (ok && !sim.paused) this.popup(c!.x, c!.y, kindLabel(o.kind), cssHex(sideColor('player')))
+        return { ok }
       }
       case 'auto': {
         const c = mine(o.cannon)
@@ -1759,7 +1783,7 @@ export class BattleScene extends Phaser.Scene {
     }
     if (t >= this.netAt) {
       this.netAt = t + 250
-      this.hud?.setNet(netLine(x, this.me, this.online!.rttAvg, this.pausesOff))
+      this.hud?.setNet(netParts(x, this.me, this.pausesOff).join('  ·  '), this.online!.rttAvg)
       if (this.sim.paused) {
         const label = pauseLabel(x, this.me, this.online!.info)
         if (this.pausedLabel.text !== label) this.pausedLabel.setText(label)

@@ -150,6 +150,42 @@ export interface PerfSnapshot {
   counts: { cannons: number; shots: number; sounds: number } | null
   /** What is on screen, e.g. 'battle: Huge Arena (huge, impossible)'. */
   context: string
+  /** Online: the connection (left out otherwise). */
+  net?: PerfNet | null
+}
+
+/** An online battle's connection, as the performance panel shows it. */
+export interface PerfNet {
+  /** Round trip to the server (ms, average of the last few pings; null: measuring or not online). */
+  rtt: number | null
+  /** How far behind the newest server picture the board is drawn, and the jitter behind that (ms). */
+  delayMs: number
+  jitterMs: number
+  /** Data coming in (KB/s of text, before the WebSocket's compression). */
+  kbps: number | null
+  /** Own orders shown early so far, and ones the server turned down. */
+  predicted: number
+  refused: number
+  /** Where the room runs, e.g. "SIN (apac)". */
+  server: string | null
+}
+
+/** The ping's colour: like the battle bar's chip. */
+export function pingLevel(rtt: number): PerfLevel {
+  return rtt < 100 ? 'good' : rtt < 200 ? 'ok' : 'bad'
+}
+
+/** "ping 182 ms · buffer 95 ms (jitter 30) · 19.4 KB/s · server SIN (apac)". */
+export function netText(n: PerfNet): string {
+  return [
+    `ping ${n.rtt === null ? '…' : Math.round(n.rtt)} ms`,
+    `buffer ${n.delayMs} ms (jitter ${n.jitterMs})`,
+    n.kbps === null ? null : `${n.kbps.toFixed(1)} KB/s`,
+    `predicted ${n.predicted}${n.refused ? `, refused ${n.refused}` : ''}`,
+    n.server ? `server ${n.server}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 const ms = (v: number): string => (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2))
@@ -173,6 +209,7 @@ export function perfReport(s: PerfSnapshot): string {
     s.sim ? `sim ${am(s.sim)} ms (AI ${am(s.ai)}, look-ahead ${am(s.look)})` : 'sim -',
     `render ${am(s.render)} ms`,
     s.counts ? `${plural(s.counts.cannons, 'cannon')}, ${plural(s.counts.shots, 'shot')}, ${plural(s.counts.sounds, 'sound')}` : 'no battle',
+    ...(s.net ? [`net ${netText(s.net)}`] : []),
     `canvas ${s.canvas.w}x${s.canvas.h} (css ${s.canvas.cssW}x${s.canvas.cssH}, DPR ${+s.canvas.dpr.toFixed(2)})`,
     s.gpu ? `${s.renderer} (${s.gpu})` : s.renderer,
     s.platform,

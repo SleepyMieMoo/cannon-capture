@@ -4,6 +4,7 @@ import { APP_VERSION, COMMIT } from '../version'
 import { debugInfo, urlSwitches, type DebugEnv } from '../menu/debugInfo'
 import { BUILD_ID } from './PerfOverlay'
 import { browserLabel } from './perfStats'
+import { online } from '../net/onlineClient'
 
 /** The technical facts for "Copy debug info" (see menu/debugInfo.ts for what is left out). */
 export function collectDebugEnv(game: Phaser.Game, settings: Record<string, string>): DebugEnv {
@@ -37,7 +38,16 @@ export function collectDebugEnv(game: Phaser.Game, settings: Record<string, stri
     discord: discord.inDiscord,
     switches: urlSwitches(location.search),
     settings,
+    online: onlineFacts(),
   }
+}
+
+/** The room's connection, if this tab is in one (never its code). */
+function onlineFacts(): DebugEnv['online'] {
+  const room = online.room
+  if (!room || room.closed) return null
+  const s = room.info?.server
+  return { rtt: room.rttAvg, server: s ? `${s.colo ?? '?'} (${s.region})` : null }
 }
 
 export function debugReport(game: Phaser.Game, settings: Record<string, string>): string {

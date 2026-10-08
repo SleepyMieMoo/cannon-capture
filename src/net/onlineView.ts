@@ -1,6 +1,6 @@
 import { PVP_RULES } from '../config/pvpRules'
 import type { Side } from '../types'
-import type { MatchResult, RoomInfo } from './online'
+import { regionLabel, type MatchResult, type RoomInfo, type ServerRegion } from './online'
 import type { SnapExtra } from './snapshot'
 
 /**
@@ -70,12 +70,25 @@ export function pauseLabel(x: SnapExtra | undefined, me: 0 | 1 | null, info: Roo
 
 /** The HUD's small line: pauses left (or "pauses off", the host's setting) and ping. */
 export function netLine(x: SnapExtra | undefined, me: 0 | 1 | null, rtt: number | null, pausesOff = false): string {
+  const parts = netParts(x, me, pausesOff)
+  parts.push(rtt === null ? '… ms' : `${rtt} ms`)
+  return parts.join('  ·  ')
+}
+
+/** The line under the clock without the ping (the HUD shows that as a coloured chip). */
+export function netParts(x: SnapExtra | undefined, me: 0 | 1 | null, pausesOff = false): string[] {
   const parts: string[] = []
   if (pausesOff) parts.push('pauses off')
   else if (x && me !== null) parts.push(`${x.pl[me]} pause${x.pl[me] === 1 ? '' : 's'} left`)
   if (me === null) parts.push('watching')
-  parts.push(rtt === null ? '… ms' : `${rtt} ms`)
-  return parts.join('  ·  ')
+  return parts
+}
+
+export type PingLevel = 'good' | 'ok' | 'bad'
+
+/** How a round trip feels: under 100 ms good, under 200 ms fine (far away), more is slow. */
+export function pingLevel(rtt: number): PingLevel {
+  return rtt < 100 ? 'good' : rtt < 200 ? 'ok' : 'bad'
 }
 
 /** What the other player is up to, when it matters (dropped, AI). `dropAt`: when we saw them drop. */
@@ -151,4 +164,9 @@ export function rematchLine(info: RoomInfo | null): string {
   if (info.rematch[me]) return `Waiting for ${other.name} to press Rematch…`
   if (info.rematch[them]) return `${other.name} wants a rematch!`
   return 'Rematch when you both press it (you swap sides).'
+}
+
+/** "Server: Asia-Pacific (SIN) · your ping 42 ms". */
+export function serverLine(server: { region: ServerRegion; colo?: string }, rtt: number | null): string {
+  return `Server: ${regionLabel(server.region)}${server.colo ? ` (${server.colo})` : ''}${rtt !== null ? ` · your ping ${rtt} ms` : ''}`
 }

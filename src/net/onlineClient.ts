@@ -2,7 +2,7 @@ import { loadSkin } from '../menu/skinPref'
 import { loadColour } from '../menu/colourPref'
 import { PVP } from '../config/pvp'
 import { PVP_RULES } from '../config/pvpRules'
-import { cleanName, type ClientMsg, type RoomInfo, type ServerMsg } from './online'
+import { cleanName, type ClientMsg, type RoomInfo, type ServerMsg, type ServerRegion } from './online'
 import type { StartMsg } from './pvp'
 import type { Transport } from './transport'
 
@@ -70,9 +70,10 @@ export function saveName(name: string): void {
   }
 }
 
-/** Ask the server for a new room; resolves to its code. */
-export async function createRoom(): Promise<string> {
-  const res = await fetch(`${serverUrl()}/api/rooms`, { method: 'POST' })
+/** Ask the server for a new room (near you, or in `region`); resolves to its code. */
+export async function createRoom(region?: ServerRegion | null): Promise<string> {
+  const q = region ? `?region=${encodeURIComponent(region)}` : ''
+  const res = await fetch(`${serverUrl()}/api/rooms${q}`, { method: 'POST' })
   if (!res.ok) throw new Error(`The server said ${res.status}`)
   const body = (await res.json()) as { code?: string }
   if (!body.code) throw new Error('No room code came back')
@@ -107,6 +108,8 @@ export class OnlineRoom implements Transport {
   rttAvg: number | null = null
   private rtts: number[] = []
   readonly stats = { bytesIn: 0, msgsIn: 0, bytesOut: 0, msgsOut: 0, since: now() }
+  /** Bytes received so far, sampled every ping (for a recent rate). */
+  private byteSamples: { t: number; bytes: number }[] = []
   private ws: WebSocket | null = null
   private readonly handlers = new Set<(msg: unknown, from: string) => void>()
   private readonly listeners = new Set<() => void>()
@@ -124,7 +127,8 @@ export class OnlineRoom implements Transport {
     readonly token = tabToken(),
   ) {
     this.connect()
-    this.timers.push(setInterval(() => this.ping(), 2000))
+    // Pings are answered by Cloudflare itself without waking the room, so once a second costs nothing.
+    this.timers.push(setInterval(() => this.ping(), 1000))
     // A match keeps its room awake anyway; this tells it now and then that we are still here.
     this.timers.push(setInterval(() => this.info?.phase === 'playing' && this.sendNow(JSON.stringify({ t: 'hb' } satisfies ClientMsg)), 15000))
   }
@@ -159,6 +163,7 @@ export class OnlineRoom implements Transport {
       this.pingAt = []
       this.status = 'open'
       this.sendNow(JSON.stringify({ t: 'hello', token: this.token, name: this.name, skin: loadSkin(), colour: loadColour() } satisfies ClientMsg))
+      this.ping()
       this.changed()
     }
     ws.onmessage = (e) => {
@@ -212,7 +217,7 @@ export class OnlineRoom implements Transport {
       if (at !== undefined) {
         this.rtt = Math.round(now() - at)
         this.rtts.push(this.rtt)
-        if (this.rtts.length > 10) this.rtts.shift()
+        if (this.rtts.length > 5) this.rtts.shift()
         this.rttAvg = Math.round(this.rtts.reduce((a, b) => a + b, 0) / this.rtts.length)
       }
     } else if (msg.t === 'room') {
@@ -253,7 +258,18 @@ export class OnlineRoom implements Transport {
     }, false)
   }
 
+  /** Data coming in lately (KB/s of JSON text, before the WebSocket's compression), null until known. */
+  get kbpsIn(): number | null {
+    const s = this.byteSamples
+    if (s.length < 2) return null
+    const a = s[0]
+    const b = s[s.length - 1]
+    return b.t > a.t ? (b.bytes - a.bytes) / 1024 / ((b.t - a.t) / 1000) : null
+  }
+
   private ping(): void {
+    this.byteSamples.push({ t: now(), bytes: this.stats.bytesIn })
+    if (this.byteSamples.length > 10) this.byteSamples.shift()
     if (this.status !== 'open') return
     this.pingAt.push(now())
     if (this.pingAt.length > 5) this.pingAt.shift()
