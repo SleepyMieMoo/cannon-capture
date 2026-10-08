@@ -213,6 +213,10 @@ export function injectMenuStyles(): void {
 .mm-sub { font-size: .85em; font-weight: bold; color: ${theme.textMuted}; margin: 10px 0 4px; }
 .mm-switch:disabled { cursor: default; opacity: .7; }
 .mm-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mm-sides-row { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
+.mm-sides-row .mm-sides { flex: 1 1 260px; }
+.mm-sides-row .mm-btn { flex: 0 0 auto; }
+.mm-srow .mm-segs3 .mm-seg { padding: 3px 4px; }
 .mm-sides > div { background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 10px; padding: 6px 10px; min-width: 0; }
 .mm-sides small { display: block; color: ${theme.textMuted}; font-size: .78em; }
 .mm-sides b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -239,6 +243,35 @@ export function injectMenuStyles(): void {
 .mm-bar .mm-btn { flex: 0 0 auto; min-width: min(280px, 45%); }
 
 .mm-set { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(12px, 2.4vmin, 24px); }
+.mm-set { align-items: start; row-gap: 0; }
+.mm-set > div > .mm-h:not(:first-child) { margin-top: 14px; }
+.mm-set > div > .mm-h { margin-bottom: 0; }
+/* One setting per row: label and "?" on the left, the control on the right (src/ui/settingRow.ts). */
+.mm-srow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 3px 0; border-bottom: 1px solid ${rgba(theme.boardEdge, 0.45)}; }
+.mm-srow:last-child, .mm-srow:has(+ .mm-h) { border-bottom: 0; }
+.mm-srow-l { flex: 1 1 0; min-width: min-content; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.mm-srow-n { display: flex; align-items: center; gap: 7px; font-weight: bold; line-height: 1.25; }
+.mm-srow-n label { cursor: pointer; }
+.mm-srow-sub { color: ${theme.textMuted}; font-size: .85em; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; contain: inline-size; }
+.mm-srow-c { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; max-width: 100%; }
+.mm-srow.wide .mm-srow-l { flex: 0 0 auto; max-width: 100%; }
+.mm-srow.wide .mm-srow-c { flex: 1 0 auto; }
+.mm-srow.wide .mm-srow-c > * { flex: 1 1 auto; }
+.mm-srow.wide .mm-srow-c > .mm-saved { flex: 0 0 auto; }
+.mm-srow.block { padding-bottom: 6px; }
+.mm-srow.block .mm-srow-c { flex: 1 1 100%; display: block; margin-left: 0; }
+.mm-srow .mm-range { flex: none; width: clamp(110px, 17vw, 220px); min-width: 0; }
+.mm-srow .mm-val { min-width: 40px; }
+.mm-srow .mm-btn.small { min-height: 36px; padding: 3px 12px; border-radius: 10px; font-size: clamp(12px, 1.8vmin, 14px); white-space: nowrap; }
+.mm-srow .mm-segs { display: flex; gap: 6px; }
+.mm-srow .mm-seg { flex: 1 1 0; min-height: 36px; padding: 2px 10px; white-space: nowrap; }
+.mm-srow .mm-input { min-height: 38px; padding: 6px 10px; }
+.mm-srow-x { color: ${theme.textMuted}; font-size: .88em; text-align: right; }
+.mm-hh { display: flex; align-items: center; gap: 7px; }
+.mm-srow-sub .mm-ver { padding: 0; min-height: 0; font-size: 1em; text-align: left; }
+@media (max-width: 720px) { .mm-set > div + div > .mm-h:first-child { margin-top: 14px; } }
+.mm-srow .mm-skins { margin-bottom: 4px; }
+.mm-srow .mm-vs, .mm-srow .mm-note { font-size: .9em; }
 .mm-row { display: flex; align-items: center; gap: 12px; margin: 6px 0 10px; flex-wrap: wrap; }
 .mm-row label { font-weight: bold; min-width: 70px; }
 .mm-switch { appearance: none; -webkit-appearance: none; width: 46px; height: 26px; border-radius: 13px; background: ${cssHex(theme.grid)}; position: relative; cursor: pointer; margin: 0; flex: none; transition: background .12s; }
@@ -307,6 +340,8 @@ export function injectMenuStyles(): void {
   .mm-card .m { display: none; }
   .mm-card .n { font-size: 11px; }
   .mm-bar .mm-btn { min-width: 0; }
+  .mm-bar .mm-btn.big { flex: 1 1 auto; font-size: 15px; padding: 6px 10px; gap: 6px; }
+  .mm-bar .mm-pick:empty, .mm-bar .mm-pick { min-width: 0; }
 }
 @media (max-width: 720px) {
   .mm-play, .mm-set { grid-template-columns: minmax(0, 1fr); }

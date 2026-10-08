@@ -135,8 +135,6 @@ export class BattleScene extends Phaser.Scene {
   private sim!: BattleSim
   /** Sound effects (shots, captures, barrier breaks). */
   sfx!: Sfx
-  /** Dragging the Settings volume slider. */
-  private volumeDrag = false
   private bot: Bot | null = null
   private walls: Wall[] = []
   private fans: Fan[] = []
@@ -366,7 +364,6 @@ export class BattleScene extends Phaser.Scene {
     this.level.walls.forEach((rect) => this.walls.push(new Wall(this, rect)))
     this.level.fans.forEach((def) => this.fans.push(new Fan(this, def)))
 
-    this.volumeDrag = false
     this.sfx = new Sfx(this, () => ({ rect: this.wc.visibleRect(), zoom: this.wc.zoom }))
     this.host = null
     this.client = null
@@ -533,7 +530,22 @@ export class BattleScene extends Phaser.Scene {
     })
     // A DOM button focused before the round (the editor's Playtest, say) must not catch Space.
     if (typeof document !== 'undefined') (document.activeElement as HTMLElement | null)?.blur?.()
-    this.settings = new SettingsPanel(this, (obj) => this.ui(obj), GAME_WIDTH - 16, HUD_H + 8)
+    this.settings = new SettingsPanel(
+      this,
+      {
+        auto: () => this.toggleGlobalAuto(),
+        mute: () => this.sfx.toggleMute(),
+        volume: (v) => this.sfx.setVolume(v),
+        perf: () => perf.toggle(),
+      },
+      () => {
+        // Under the top bar, lined up with its right end.
+        const c = this.game.canvas.getBoundingClientRect()
+        const bar = this.hud?.el.getBoundingClientRect()
+        return bar && bar.height > 0 ? { top: bar.bottom + 8, right: bar.right - 8 } : { top: c.top + (HUD_H + 8) * (c.width / GAME_WIDTH), right: c.right - 8 }
+      },
+      () => this.settings.hide(),
+    )
     this.menuHold.release()
     // A restart from the open menu left keys off (the scene object is reused).
     if (this.input.keyboard) this.input.keyboard.enabled = true
@@ -603,8 +615,6 @@ export class BattleScene extends Phaser.Scene {
     this.drawPaused(time)
     this.updateSwapMenu(dt, time)
     if (this.ended) this.settings.hide()
-    const lp = this.pointerLayout
-    this.settings.setHot(lp ? this.settings.hitAt(lp.x, lp.y) : null)
     this.settings.draw({
       autoTarget: this.sim.autoTarget,
       puzzle: this.sim.isPuzzle,
@@ -1396,16 +1406,9 @@ export class BattleScene extends Phaser.Scene {
     this.pointerLayout = lp
     // The Settings panel, then the type menu, sit above the board: a press on them never reaches it.
     if (this.settings?.open) {
-      const hit = this.settings.hitAt(lp.x, lp.y)
-      if (hit) {
+      // The panel is HTML above the board: its own controls handle presses on it.
+      if (this.settings.hitAt(lp.x, lp.y)) {
         this.pressOnUi = true
-        if (hit === 'auto') this.toggleGlobalAuto()
-        else if (hit === 'mute') this.sfx.toggleMute()
-        else if (hit === 'perf') perf.toggle()
-        else if (hit === 'volume') {
-          this.volumeDrag = true
-          this.sfx.setVolume(this.settings.volumeAt(lp.x))
-        } else if (hit === 'close') this.settings.hide()
         return
       }
       // A press elsewhere (but not on the HUD's Settings link) closes it, and does nothing else.
@@ -1445,7 +1448,6 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onPointerUp(pointer: Phaser.Input.Pointer): void {
-    this.volumeDrag = false
     const gesture = this.wc.up(pointer)
     if (this.pressOnUi) {
       this.pressOnUi = false
@@ -1503,16 +1505,8 @@ export class BattleScene extends Phaser.Scene {
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
     this.pointerLayout = this.toLayout(pointer)
-    if (this.volumeDrag) {
-      if (pointer.isDown && this.settings.open) {
-        this.sfx.setVolume(this.settings.volumeAt(this.pointerLayout.x))
-        return
-      }
-      this.volumeDrag = false
-    }
     if (this.settings.open && this.settings.contains(this.pointerLayout.x, this.pointerLayout.y)) {
-      const hit = this.settings.hitAt(this.pointerLayout.x, this.pointerLayout.y)
-      this.input.setDefaultCursor(hit === 'auto' || hit === 'close' || hit === 'mute' || hit === 'volume' || hit === 'perf' ? 'pointer' : 'default')
+      this.input.setDefaultCursor('default')
       this.hover = null
       this.pointer = null
       return
