@@ -40,9 +40,23 @@ export const TUNING = {
   aimSlop: 14,
   /** Shots ignore the cannon that fired them for this long. */
   ownerGraceMs: 280,
-  /** Shots disappear after this many wall hits. */
-  maxBounces: 3,
+  /**
+   * Safety cap on wall bounces (a corner counts once). Range is what ends a
+   * shot; this only stops one rattling in a tight pocket from bouncing
+   * dozens of times (and keeps bank-shot plans to sane chains).
+   */
+  maxBounces: 12,
+  /**
+   * Sets the range: a shot flies shotSpeed x this much (1530 px for a normal
+   * shot), measured along its path. Bounces don't cost extra range and fans
+   * that slow a shot don't shorten it (see Ball.range).
+   */
   shotLifetimeMs: 4500,
+  /**
+   * Safety net only: a shot still in the air after this long is removed
+   * (twice a normal flight; only a shot a fan has slowed to a crawl gets near it).
+   */
+  shotMaxFlightMs: 9000,
   /** Default fan acceleration in pixels per second squared. */
   fanForce: 540,
   /** How often each AI cannon re-thinks its plan (every difficulty; staggered per cannon). */
@@ -53,8 +67,8 @@ export const TUNING = {
    */
   aiHealAtProgress: 4,
   /**
-   * Tower types, one block each. Shots fly at shotSpeed * speedMul and live
-   * shotLifetimeMs * lifetimeMul, so range = speedMul * lifetimeMul * the
+   * Tower types, one block each. Shots fly at shotSpeed * speedMul, and
+   * range (path length, bounces included) = speedMul * lifetimeMul * the
    * normal range. fireMs: ms between shots (null = fireIntervalMs). damage: capture progress per hit,
    * and how much a hit heals on a friend (fractions are fine). turnMul: barrel
    * turn speed relative to turnSpeedDeg. spreadDeg: each shot leaves the

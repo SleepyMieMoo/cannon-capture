@@ -4,6 +4,7 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "fix", "title": "Bank shots keep their range", "text": "A shot now flies a set distance, measured along its path, so banking off walls no longer cuts it short (it used to vanish on its 4th bounce). Snipers keep twice the range, and wind that slows a shot doesn't shorten it." },
         { "kind": "new", "title": "Version 0.3.0: battles that pop", "text": "Cannons glow in their team's colour and every shot leaves a trail. Muzzle flashes, smoke and recoil when they fire, sparks where shots hit or bank, barriers that shimmer and shatter, heal sparkles, and a burst when a cannon changes hands." },
         { "kind": "new", "title": "Effects quality setting", "text": "Settings → Display → Effects quality: High, Low or Off. It starts on High, or on Low on a slower device or if battles run slowly. Reduce motion stills the shakes and moving effects but keeps the glows." },
         { "kind": "new", "title": "Version 0.2.6: pulse to the music", "text": "While music plays, a few small things keep time with it: the jukebox bars bounce on each beat, and the title, Play button and board glow swell gently on each bar. In battle, just a faint shine on the top bar. Each song's beat was measured from its audio." },

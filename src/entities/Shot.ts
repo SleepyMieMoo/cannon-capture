@@ -1,4 +1,3 @@
-import { TUNING } from '../config/tuning'
 import {
   stepBall,
   type Ball,
@@ -38,7 +37,6 @@ export class Shot {
     this.prevY = this.ball.y
     const result = stepBall(this.ball, dt, walls, fans, bodies, opts, barriers)
     this.ball = result.ball
-    if (this.ball.age > (this.ball.lifeMs ?? TUNING.shotLifetimeMs)) this.ball.alive = false
     return result
   }
 }
