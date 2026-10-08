@@ -126,6 +126,9 @@ function injectStyles(): void {
 .cc-bar *, .cc-pop * { box-sizing: border-box; }
 .cc-toolbar { height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid ${cssHex(theme.boardEdge)}; }
 .cc-group { display: flex; align-items: center; gap: 3px; }
+.cc-toolbar.snug { gap: 3px; }
+.cc-toolbar.snug .cc-group { gap: 1px; }
+.cc-toolbar.snug .cc-btn.sm:not(.icon) { padding: 3px 4px; }
 .cc-toolbar.tight .cc-lbl { display: none; }
 .cc-spacer { flex: 1; min-width: 4px; }
 .cc-btn.sm { min-height: 30px; padding: 3px 6px; border-radius: 8px; font-size: 12px; gap: 4px; white-space: nowrap; }

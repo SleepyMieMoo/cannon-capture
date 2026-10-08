@@ -25,6 +25,7 @@ import {
   sanitizeLevel,
   saveDraft,
   saveMap,
+  tidyAngle,
   validateMap,
   withDifficulty,
   type Difficulty,
@@ -35,7 +36,10 @@ import { Fan } from '../entities/Fan'
 import { Glass } from '../entities/Glass'
 import { Pillar } from '../entities/Pillar'
 import { Wall } from '../entities/Wall'
-import { BRICK, GLASS, PILLAR_OVALS, PILLAR_SIZES, ROCK, VOID_COLOURS } from '../config/obstacles'
+import { BRICK, GLASS, PILLAR_OVALS, PILLAR_SIZES, PORTAL, ROCK, VOID_COLOURS, portalColour } from '../config/obstacles'
+import { Portal } from '../entities/Portal'
+/** How far apart a new portal pair's mouths are placed (px). */
+const PORTAL_PAIR_GAP = 220
 import { pillarReach } from '../sim/geometry'
 import { MAP_SIZES, MAP_SIZE_IDS, boardFor, insideBoard } from '../levels/board'
 import { EXAMPLE_MAPS } from '../levels/examples'
@@ -43,7 +47,7 @@ import { drawBoardSurface } from '../render/boardSurface'
 import { bindSceneResolution } from '../render/resolution'
 import { WorldCamera } from '../render/WorldCamera'
 import { Overlay, h } from '../ui/overlay'
-import type { CannonDef, CannonKind, GlassDef, LevelDef, MapSize, PillarDef, Point, Rect, Side, WallDef } from '../types'
+import type { CannonDef, CannonKind, GlassDef, LevelDef, MapSize, PillarDef, Point, PortalEnd, Rect, Side, WallDef } from '../types'
 
 export interface EditorData {
   /** Open a saved map from My maps. */
@@ -56,9 +60,9 @@ export interface EditorData {
   resume?: boolean
 }
 
-type Tool = 'select' | 'player' | 'enemy' | 'neutral' | 'wall' | 'void' | 'pillar' | 'glass' | 'fan' | 'delete'
+type Tool = 'select' | 'player' | 'enemy' | 'neutral' | 'wall' | 'void' | 'pillar' | 'glass' | 'portal' | 'fan' | 'delete'
 type Popover = 'map' | 'share' | 'help'
-type ItemKind = 'cannon' | 'wall' | 'pillar' | 'glass' | 'fan'
+type ItemKind = 'cannon' | 'wall' | 'pillar' | 'glass' | 'portal' | 'fan'
 interface ItemRef {
   kind: ItemKind
   index: number
@@ -84,6 +88,7 @@ const TOOL_TIPS: Record<Tool, string> = {
   void: 'Place a void wall (absorbs shots)',
   pillar: 'Place a pillar (a rock: round or oval)',
   glass: 'Place one-way glass',
+  portal: 'Place a linked pair of portals',
   fan: 'Place a fan',
   delete: 'Delete tool',
 }
@@ -99,6 +104,7 @@ const TOOLS: { id: Tool; label: string; key: string; color?: number; side?: Side
   { id: 'void', label: 'Void', key: '6', color: VOID_COLOURS.rim },
   { id: 'pillar', label: 'Pillar', key: '7', color: ROCK.light },
   { id: 'glass', label: 'Glass', key: '8', color: GLASS },
+  { id: 'portal', label: 'Portal', key: '9', color: PORTAL.colours[0] },
 ]
 
 export class EditorScene extends Phaser.Scene {
@@ -125,6 +131,7 @@ export class EditorScene extends Phaser.Scene {
   private wallViews: Wall[] = []
   private pillarViews: Pillar[] = []
   private glassViews: Glass[] = []
+  private portalViews: Portal[] = []
   private fanViews: Fan[] = []
   private fx!: Phaser.GameObjects.Graphics
 
@@ -253,6 +260,7 @@ export class EditorScene extends Phaser.Scene {
     }
     for (const wall of this.wallViews) wall.tick(time, true)
     for (const pane of this.glassViews) pane.draw(time, true)
+    for (const portal of this.portalViews) portal.tick(time, true)
     for (const fan of this.fanViews) fan.draw(time)
     setRingScale(this.wc.cssPerWorld())
     this.cannonViews.forEach((c, i) => {
@@ -283,6 +291,7 @@ export class EditorScene extends Phaser.Scene {
     this.wallViews.forEach((w) => w.destroy())
     this.pillarViews.forEach((p) => p.destroy())
     this.glassViews.forEach((g) => g.destroy())
+    this.portalViews.forEach((p) => p.destroy())
     this.fanViews.forEach((f) => f.destroy())
     this.wallViews = this.level.walls.map((w) => {
       const view = new Wall(this, w)
@@ -299,6 +308,13 @@ export class EditorScene extends Phaser.Scene {
       this.world(view.gfx)
       return view
     })
+    this.portalViews = (this.level.portals ?? []).flatMap((pair, i) =>
+      [pair.a, pair.b].map((end) => {
+        const view = new Portal(this, end, i)
+        view.parts.forEach((o) => this.world(o))
+        return view
+      }),
+    )
     this.fanViews = this.level.fans.map((f) => {
       const view = new Fan(this, f)
       this.world(view.gfx)
@@ -345,6 +361,8 @@ export class EditorScene extends Phaser.Scene {
       this.pillarViews[ref.index]?.set(this.level.pillars![ref.index])
     } else if (ref.kind === 'glass') {
       this.glassViews[ref.index]?.set(this.level.glass![ref.index])
+    } else if (ref.kind === 'portal') {
+      this.portalViews[ref.index]?.set(this.portalEnd(ref.index))
     } else {
       const f = this.level.fans[ref.index]
       const field = this.fanViews[ref.index]?.field
@@ -375,6 +393,14 @@ export class EditorScene extends Phaser.Scene {
         strokeOval(g, this.level.pillars![ref.index], 6)
       } else if (ref.kind === 'glass') {
         strokeRotated(g, glassBox(this.level.glass![ref.index]), 6)
+      } else if (ref.kind === 'portal') {
+        // The selected mouth, and a faint line to its twin.
+        const e = this.portalEnd(ref.index)
+        const twin = this.portalEnd(ref.index ^ 1)
+        g.strokeCircle(e.x, e.y, PORTAL.radius + 8)
+        g.lineStyle(1.5, portalColour(ref.index >> 1), alpha * 0.5)
+        g.strokeCircle(twin.x, twin.y, PORTAL.radius + 8)
+        dashed(g, e.x, e.y, twin.x, twin.y, portalColour(ref.index >> 1), alpha * 0.45, PORTAL.radius + 10, PORTAL.radius + 10)
       } else if (ref.kind === 'fan') {
         const f = this.level.fans[ref.index]
         g.strokeCircle(f.x, f.y, 30)
@@ -405,6 +431,12 @@ export class EditorScene extends Phaser.Scene {
       } else if (this.tool === 'glass') {
         g.lineStyle(6, GLASS, 0.45)
         g.lineBetween(p.x - 100, p.y, p.x + 100, p.y)
+      } else if (this.tool === 'portal') {
+        const col = portalColour((this.level.portals ?? []).length)
+        g.lineStyle(3, col, 0.5)
+        g.strokeCircle(p.x, p.y, PORTAL.radius)
+        g.strokeCircle(p.x + PORTAL_PAIR_GAP, p.y, PORTAL.radius)
+        dashed(g, p.x, p.y, p.x + PORTAL_PAIR_GAP, p.y, col, 0.35, PORTAL.radius + 4, PORTAL.radius + 4)
       } else if (this.tool === 'fan') {
         g.lineStyle(2, theme.fan, 0.45)
         g.strokeCircle(p.x, p.y, 140)
@@ -431,6 +463,11 @@ export class EditorScene extends Phaser.Scene {
     for (let i = this.level.fans.length - 1; i >= 0; i--) {
       const f = this.level.fans[i]
       if (Math.hypot(f.x - x, f.y - y) <= 28) return { kind: 'fan', index: i }
+    }
+    const portals = this.level.portals ?? []
+    for (let i = portals.length * 2 - 1; i >= 0; i--) {
+      const e = this.portalEnd(i)
+      if (Math.hypot(e.x - x, e.y - y) <= PORTAL.radius + 4) return { kind: 'portal', index: i }
     }
     const glass = this.level.glass ?? []
     for (let i = glass.length - 1; i >= 0; i--) {
@@ -473,6 +510,10 @@ export class EditorScene extends Phaser.Scene {
       const g = this.level.glass![ref.index]
       return { x: (g.x + g.x2) / 2, y: (g.y + g.y2) / 2 }
     }
+    if (ref.kind === 'portal') {
+      const e = this.portalEnd(ref.index)
+      return { x: e.x, y: e.y }
+    }
     const item = ref.kind === 'cannon' ? this.level.cannons[ref.index] : this.level.fans[ref.index]
     return { x: item.x, y: item.y }
   }
@@ -488,6 +529,11 @@ export class EditorScene extends Phaser.Scene {
       const c = this.clampCenter(to, pillarReach(p))
       p.x = Math.round(c.x)
       p.y = Math.round(c.y)
+    } else if (ref.kind === 'portal') {
+      const e = this.portalEnd(ref.index)
+      const c = this.clampCenter(to, PORTAL.radius)
+      e.x = Math.round(c.x)
+      e.y = Math.round(c.y)
     } else if (ref.kind === 'glass') {
       const g = this.level.glass![ref.index]
       const c = this.clampCenter(to, 0)
@@ -712,6 +758,16 @@ export class EditorScene extends Phaser.Scene {
       const c = this.clampCenter(p, 0)
       this.edit(() => (L.glass ??= []).push({ x: Math.round(c.x - 100), y: Math.round(c.y), x2: Math.round(c.x + 100), y2: Math.round(c.y) }))
       this.select({ kind: 'glass', index: L.glass!.length - 1 })
+    } else if (tool === 'portal') {
+      const list = L.portals ?? []
+      if (list.length >= PORTAL.maxPairs) return this.status(`Maps can have up to ${PORTAL.maxPairs} portal pairs.`, true)
+      // The pair side by side (the second to the left if there is no room on the right).
+      const a = this.clampCenter(p, PORTAL.radius)
+      const room = a.x + PORTAL_PAIR_GAP <= this.board.x + this.board.w - PORTAL.radius
+      const b = this.clampCenter({ x: a.x + (room ? PORTAL_PAIR_GAP : -PORTAL_PAIR_GAP), y: a.y }, PORTAL.radius)
+      this.edit(() => (L.portals ??= []).push({ a: { x: Math.round(a.x), y: Math.round(a.y), angle: 0 }, b: { x: Math.round(b.x), y: Math.round(b.y), angle: 0 } }))
+      this.select({ kind: 'portal', index: (L.portals!.length - 1) * 2 + 1 })
+      this.status('Portal pair placed: drag either mouth; Q/E turns the selected one.', false, true)
     } else if (tool === 'fan') {
       if (L.fans.length >= LIMITS.fans) return this.status(`Maps can have up to ${LIMITS.fans} fans.`, true)
       const c = this.clampCenter(p, TUNING.cannonRadius + 4)
@@ -728,7 +784,11 @@ export class EditorScene extends Phaser.Scene {
       } else if (ref.kind === 'wall') this.level.walls.splice(ref.index, 1)
       else if (ref.kind === 'pillar') this.level.pillars?.splice(ref.index, 1)
       else if (ref.kind === 'glass') this.level.glass?.splice(ref.index, 1)
-      else this.level.fans.splice(ref.index, 1)
+      else if (ref.kind === 'portal') {
+        // A mouth never stands alone: the pair goes together.
+        this.level.portals?.splice(ref.index >> 1, 1)
+        if (!this.level.portals?.length) delete this.level.portals
+      } else this.level.fans.splice(ref.index, 1)
     })
     this.sel = null
     this.hover = null
@@ -791,6 +851,9 @@ export class EditorScene extends Phaser.Scene {
           const c = this.clampCenter(p, pillarReach(p))
           p.x = Math.round(c.x)
           p.y = Math.round(c.y)
+        } else if (ref.kind === 'portal') {
+          const e = this.portalEnd(ref.index)
+          e.angle = tidyAngle(Math.round((e.angle + dir * ROTATE_STEP) / ROTATE_STEP) * ROTATE_STEP)
         } else if (ref.kind === 'glass') {
           const g = this.level.glass![ref.index]
           setGlassAngle(g, Math.round((glassAngle(g) + dir * ROTATE_STEP) / ROTATE_STEP) * ROTATE_STEP)
@@ -825,6 +888,7 @@ export class EditorScene extends Phaser.Scene {
       this.level.walls.forEach((_, i) => this.moveItem({ kind: 'wall', index: i }, this.centerOf({ kind: 'wall', index: i })))
       this.level.pillars?.forEach((_, i) => this.moveItem({ kind: 'pillar', index: i }, this.centerOf({ kind: 'pillar', index: i })))
       this.level.glass?.forEach((_, i) => this.moveItem({ kind: 'glass', index: i }, this.centerOf({ kind: 'glass', index: i })))
+      for (let i = 0; i < (this.level.portals?.length ?? 0) * 2; i++) this.moveItem({ kind: 'portal', index: i }, this.centerOf({ kind: 'portal', index: i }))
       for (const c of this.level.cannons) {
         if (c.aimPoint) c.aimPoint = this.clampCenter(c.aimPoint, 0)
       }
@@ -1164,10 +1228,10 @@ export class EditorScene extends Phaser.Scene {
       ['WASD / arrows', 'Pan'],
       ['1 2 3', 'Your / enemy / neutral cannon'],
       ['4 5', 'Wall (Type: breakable for brick) / fan'],
-      ['6 7 8', 'Void wall / round pillar / one-way glass'],
+      ['6 7 8 9', 'Void wall / pillar / one-way glass / portal pair'],
       ['V · X', 'Move tool · Delete tool'],
       ['Del', 'Delete the selection'],
-      ['Q / E · F', 'Rotate wall, glass, oval or fan 15° · flip glass'],
+      ['Q / E · F', 'Turn wall, glass, oval, portal or fan 15° · flip glass'],
       ['[ ] · { }', 'Pillar width · height'],
       ['T', 'Next type for the selected cannon'],
       ['G · P', 'Snap · Playtest'],
@@ -1179,9 +1243,11 @@ export class EditorScene extends Phaser.Scene {
       h('div.cc-keys', {}, ...keys.flatMap(([k, v]) => [h('b', {}, k), h('span', {}, v)])),
     )
 
-    // If the bar overflows anyway (a wider fallback font), dotted tools show just their dot (the tooltip names them).
+    // If the bar overflows, first close up the gaps; if it still does (a wider fallback font),
+    // dotted tools show just their dot (the tooltip names them).
     const fitToolbar = (): void => {
-      toolbar.classList.remove('tight')
+      toolbar.classList.remove('snug', 'tight')
+      if (toolbar.scrollWidth > toolbar.clientWidth + 1) toolbar.classList.add('snug')
       if (toolbar.scrollWidth > toolbar.clientWidth + 1) toolbar.classList.add('tight')
     }
     requestAnimationFrame(fitToolbar)
@@ -1463,6 +1529,23 @@ export class EditorScene extends Phaser.Scene {
       ]
     }
 
+    if (ref.kind === 'portal') {
+      const pair = ref.index >> 1
+      const e = this.portalEnd(ref.index)
+      return [
+        h('span.cc-field', {}, dot(portalColour(pair)), h('b', { title: 'A shot that falls into one mouth comes out of the other at the same speed, turned by the difference between the two facings (the notch on the rim). Its range carries over.' }, `Portal ${pair + 1} · ${ref.index & 1 ? 'B' : 'A'}`)),
+        h('span.cc-field', {},
+          h('label', {}, 'Faces'),
+          h('button.cc-btn.xs', { title: 'Q', onclick: () => this.rotateSelected(-1) }, '⟲'),
+          h('span.cc-val', { style: 'min-width:34px;text-align:center' }, `${deg(normAngle(e.angle, Math.PI * 2))}°`),
+          h('button.cc-btn.xs', { title: 'E', onclick: () => this.rotateSelected(1) }, '⟳'),
+        ),
+        h('button.cc-btn.xs', { title: 'Select the linked mouth', onclick: () => this.select({ kind: 'portal', index: ref.index ^ 1 }) }, ref.index & 1 ? 'Other: A' : 'Other: B'),
+        h('span.cc-note', {}, 'Same facing: shots fly on the same way.'),
+        h('button.cc-btn.xs.danger', { title: 'Delete this pair (Del)', onclick: () => this.deleteItem(ref) }, 'Delete pair'),
+      ]
+    }
+
     const f = L.fans[ref.index]
     const dirs: [string, number][] = [['→', 0], ['↓', 90], ['←', 180], ['↑', 270]]
     return [
@@ -1482,6 +1565,12 @@ export class EditorScene extends Phaser.Scene {
       slider('Radius', f.radius, 60, 360, 10, (v) => (f.radius = v), `fr-${ref.index}`),
       remove,
     ]
+  }
+
+  /** Portal mouth `index` (pair * 2, plus 1 for the second mouth). */
+  private portalEnd(index: number): PortalEnd {
+    const pair = this.level.portals![index >> 1]
+    return index & 1 ? pair.b : pair.a
   }
 
   /** Grow or shrink a pillar's width / height (keys [ ] and { }). Equal sides make it round again. */

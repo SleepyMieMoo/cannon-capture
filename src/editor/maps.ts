@@ -2,7 +2,8 @@ import { isKind } from '../config/kinds'
 import { TUNING } from '../config/tuning'
 import { MAP_SIZE_IDS, boardFor } from '../levels/board'
 import { inferDifficulty, isAiLevel, levelDifficulty } from '../ai/difficulty'
-import type { AiLevel, CannonDef, FanDef, GlassDef, LevelDef, MapSize, PillarDef, Side, WallDef } from '../types'
+import type { AiLevel, CannonDef, FanDef, GlassDef, LevelDef, MapSize, PillarDef, PortalDef, PortalEnd, Side, WallDef } from '../types'
+import { PORTAL } from '../config/obstacles'
 
 /**
  * Custom maps: validation, share codes and localStorage. A custom map is a
@@ -156,6 +157,24 @@ export function sanitizeLevel(raw: unknown): LevelDef {
     glass.push(pane)
   }
 
+  // Portal pairs (added later): both mouths on the board, a little apart; at most PORTAL.maxPairs.
+  const portals: PortalDef[] = []
+  for (const p of Array.isArray(r.portals) ? r.portals.slice(0, 12) : []) {
+    if (portals.length >= PORTAL.maxPairs) break
+    if (!p || typeof p !== 'object') continue
+    const o = p as Record<string, unknown>
+    const end = (v: unknown): PortalEnd | null => {
+      if (!v || typeof v !== 'object') return null
+      const e = v as Record<string, unknown>
+      const r0 = PORTAL.radius
+      return { x: Math.round(num(e.x, b.x + b.w / 2, b.x + r0, b.x + b.w - r0)), y: Math.round(num(e.y, b.y + b.h / 2, b.y + r0, b.y + b.h - r0)), angle: tidyAngle(num(e.angle, 0, -Math.PI * 4, Math.PI * 4)) }
+    }
+    const a = end(o.a)
+    const z = end(o.b)
+    if (!a || !z || Math.hypot(a.x - z.x, a.y - z.y) < PORTAL.radius * 2) continue
+    portals.push({ a, b: z })
+  }
+
   const fans: FanDef[] = []
   for (const f of Array.isArray(r.fans) ? r.fans.slice(0, LIMITS.fans) : []) {
     if (!f || typeof f !== 'object') continue
@@ -180,6 +199,7 @@ export function sanitizeLevel(raw: unknown): LevelDef {
   }
   if (pillars.length) level.pillars = pillars
   if (glass.length) level.glass = glass
+  if (portals.length) level.portals = portals
   if (typeof r.hint === 'string' && r.hint.trim()) level.hint = r.hint.trim().slice(0, 160)
   if (level.kind === 'puzzle' && r.aims !== undefined && r.aims !== null) level.aims = Math.round(num(r.aims, 3, 1, 99))
   if (typeof r.par === 'number') level.par = Math.round(num(r.par, 0, 1, 999))
@@ -190,6 +210,13 @@ export function sanitizeLevel(raw: unknown): LevelDef {
     level.ai = { difficulty: isAiLevel(ai.difficulty) ? ai.difficulty : inferDifficulty(fireMs) }
   }
   return level
+}
+
+/** An angle in (-pi, pi], rounded (portal mouths: a full turn matters, unlike a wall's). */
+export function tidyAngle(angle: number): number {
+  let a = Math.atan2(Math.sin(angle), Math.cos(angle))
+  if (a <= -Math.PI + 1e-6) a = Math.PI
+  return Math.round(a * 1e4) / 1e4
 }
 
 /**

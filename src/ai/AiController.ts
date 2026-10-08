@@ -411,7 +411,8 @@ export class AiController {
   private refreshView(cannons: Cannon[]): void {
     const max = this.skill.maxTricks
     const chance = this.skill.trickChance
-    if (max >= 99 && chance >= 1) {
+    const portals = this.skill.portalChance ?? 1
+    if (max >= 99 && chance >= 1 && portals >= 1) {
       this.view = this.lanes
       return
     }
@@ -425,6 +426,8 @@ export class AiController {
       const kept = new Map<string, Lane>()
       // A trick lane this level can use, if it ever spots it (fixed per cannon, target and lane).
       const spots = (l: Lane, n: number): boolean => {
+        // Portal lanes: Easy never, Normal now and then (fixed per cannon, target and lane).
+        if (l.portals && !(portals >= 1 || hash01(`${this.seed}:portal:${key}>${id}:${n}`) < portals)) return false
         const tricks = laneTricks(l)
         return tricks === 0 || (tricks <= max && (chance >= 1 || hash01(`${this.seed}:trick:${key}>${id}:${n}`) < chance))
       }
@@ -434,7 +437,7 @@ export class AiController {
         const to = pos.get(id)
         const alts = lane.alts?.filter((a, i) => spots(a, i + 1))
         const extra = alts?.length ? { alts } : {}
-        if (lane.direct && from && to) {
+        if (lane.direct && from && to && (!lane.portals || spots(lane, 0))) {
           const angle = Math.atan2(to.y - from.y, to.x - from.x)
           const width = Math.min(lane.widthDeg, directWidthDeg(Math.hypot(to.x - from.x, to.y - from.y)))
           kept.set(id, { targetId: id, angle, widthDeg: Math.max(width, MIN_LANE_DEG), direct: true, tricks: 0, ...extra })

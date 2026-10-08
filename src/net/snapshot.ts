@@ -70,7 +70,7 @@ export interface SnapExtra {
   why?: 'wipe' | 'time' | 'empty' | 'surrender'
 }
 
-const EV = { fired: 1, bounce: 2, hit: 3, blocked: 4, shieldBroken: 5, shieldBack: 6, captured: 7, healed: 8, swapped: 9, absorbed: 10, wallHit: 11, wallBroken: 12 } as const
+const EV = { fired: 1, bounce: 2, hit: 3, blocked: 4, shieldBroken: 5, shieldBack: 6, captured: 7, healed: 8, swapped: 9, absorbed: 10, wallHit: 11, wallBroken: 12, portal: 13 } as const
 /** Bounce rows carry what was hit as a 5th field (older builds leave it out: a wall). */
 const SURFACES: readonly Surface[] = ['wall', 'pillar', 'glass']
 
@@ -104,6 +104,7 @@ export class EventLog {
       swapped: (c) => (push([t(), EV.swapped, i(c), kindNo(c.kind)]), events.swapped?.(c)),
       wallHit: (index, x, y) => (push([t(), EV.wallHit, index, r1(x), r1(y)]), events.wallHit?.(index, x, y)),
       wallBroken: (index) => (push([t(), EV.wallBroken, index]), events.wallBroken?.(index)),
+      portal: (x1, y1, x2, y2, pair) => (push([t(), EV.portal, r1(x1), r1(y1), r1(x2), r1(y2), pair]), events.portal?.(x1, y1, x2, y2, pair)),
     }
   }
 
@@ -257,7 +258,19 @@ export function applySnap(view: BattleSim, a: Snap, b: Snap, t: number, latest: 
     let y: number
     let vx = row[5]
     let vy = row[6]
-    if (old) {
+    // Further apart than it could fly: it went through a portal. No sliding across the board:
+    // it follows its old path until halfway, then its new one.
+    const gap = old ? b.clock - a.clock : 0
+    const jumped = old ? Math.hypot(row[3] - old[3], row[4] - old[4]) > (Math.hypot(old[5], old[6]) * gap) / 1000 + 30 : false
+    if (old && jumped) {
+      const early = t < 0.5
+      const at = early ? old : row
+      const dt = ((early ? t : t - 1) * gap) / 1000 + ahead
+      x = at[3] + at[5] * dt
+      y = at[4] + at[6] * dt
+      vx = at[5]
+      vy = at[6]
+    } else if (old) {
       x = lerp(old[3], row[3], t) + row[5] * ahead
       y = lerp(old[4], row[4], t) + row[6] * ahead
       vx = lerp(old[5], row[5], t)
@@ -365,6 +378,9 @@ export function replayEvent(row: EventRow, view: BattleSim, events: SimEvents, f
       break
     case EV.wallBroken:
       events.wallBroken?.(n(2))
+      break
+    case EV.portal:
+      events.portal?.(n(2), n(3), n(4), n(5), n(6))
       break
   }
 }

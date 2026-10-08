@@ -46,6 +46,12 @@ export class Shot {
     this.prevY = this.ball.y
     const result = stepBall(this.ball, dt, walls, fans, bodies, opts, barriers, pillars, glass)
     this.ball = result.ball
+    if (result.ported) {
+      // Through a portal: no streak across the board, and the trail starts again at the exit.
+      this.prevX = this.ball.x
+      this.prevY = this.ball.y
+      this.fxSince = this.ball.age
+    }
     return result
   }
 }

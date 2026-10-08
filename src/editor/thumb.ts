@@ -2,7 +2,7 @@ import { TUNING } from '../config/tuning'
 import { cssHex, sideColor, theme } from '../config/theme'
 import { boardFor } from '../levels/board'
 import type { LevelDef } from '../types'
-import { GLASS, ROCK, VOID_COLOURS, BRICK } from '../config/obstacles'
+import { GLASS, ROCK, VOID_COLOURS, BRICK, PORTAL, portalColour } from '../config/obstacles'
 
 /** Draws a small preview of a map onto a 2D canvas (My maps list). */
 export function drawThumb(canvas: HTMLCanvasElement, level: LevelDef, width = 150): void {
@@ -54,6 +54,15 @@ export function drawThumb(canvas: HTMLCanvasElement, level: LevelDef, width = 15
     ctx.lineTo(g.x2, g.y2)
     ctx.stroke()
   }
+  ctx.lineWidth = Math.max(5, 1.6 * px)
+  ;(level.portals ?? []).forEach((p, i) => {
+    ctx.strokeStyle = cssHex(portalColour(i))
+    for (const e of [p.a, p.b]) {
+      ctx.beginPath()
+      ctx.arc(e.x, e.y, Math.max(PORTAL.radius, 2.6 * px), 0, Math.PI * 2)
+      ctx.stroke()
+    }
+  })
   const r = Math.max(TUNING.cannonRadius, 3.2 * px)
   for (const c of level.cannons) {
     ctx.fillStyle = cssHex(sideColor(c.side))

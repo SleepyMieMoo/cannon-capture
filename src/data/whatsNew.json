@@ -4,6 +4,9 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.5.0: bricks, portals and oval rocks", "text": "Three more ways to play the angles: oval rock pillars, brick walls you can shoot down, and portals that send shots across the board. The AI knows them all. Try them on the new Warp Works map, or build your own in the editor." },
+        { "kind": "new", "title": "Portals", "text": "A shot that falls into a portal comes out of its twin (same colour and mark) at the same speed, turned by the difference in their facings. No free range: the distance carries on. Aim lines show the way out. Editor: key 9 places a pair, Q/E turns a mouth." },
+        { "kind": "new", "title": "New map: Warp Works", "text": "A fair, mirrored map with brick walls guarding the middle and two portal pairs that jump shots from low on your side to high on theirs. Play it vs AI or online, or open it in the editor from Map → Examples." },
         { "kind": "new", "title": "Breakable walls", "text": "Brick walls that bounce shots but wear down with every hit, from either side. They crack, then crumble for good, opening a new lane; the AI shoots them down when they hide its targets. In the editor, set a wall's Type to Breakable and pick its HP." },
         { "kind": "new", "title": "Oval rock pillars", "text": "Pillars are now drawn as rocks, so they never look like a cannon, and they can be ovals. In the editor, pick a preset (Small, Medium, Large, Oval, Long), set the width and height, and turn ovals with Q/E. Shots bounce off the true curve." },
         { "kind": "new", "title": "Version 0.4.0: new obstacles", "text": "Three new things to aim around: void walls that swallow shots, round pillars that bounce them off their curve, and one-way glass. The AI knows them too: it banks off pillars and glass and never wastes shots into the void." },

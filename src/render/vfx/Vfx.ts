@@ -298,6 +298,25 @@ export class Vfx {
     this.shake(0.0014, 100)
   }
 
+  /** A shot went through a portal: a swirl of sparks sucked into the entry and a burst out of the exit. */
+  portal(x1: number, y1: number, x2: number, y2: number, colour: number): void {
+    if (!this.cfg.particles) return
+    if (this.onScreen(x1, y1, 40)) {
+      this.glow(x1, y1, 26, 8, 0.7, colour, 180)
+      const n = this.count(3)
+      for (let i = 0; i < n; i++) {
+        const a = this.rand() * 6.28
+        this.add(this.glows, { x: x1 + Math.cos(a) * 20, y: y1 + Math.sin(a) * 20, vx: -Math.cos(a + 0.6) * 90, vy: -Math.sin(a + 0.6) * 90, lifeMs: 220, size0: 10, size1: 3, alpha: 0.9, tint: colour, tex: TEX.spark, stretch: 1.4 })
+      }
+    }
+    if (this.onScreen(x2, y2, 40)) {
+      this.glow(x2, y2, 10, 30, 0.75, colour, 200)
+      this.glow(x2, y2, 6, 12, 0.8, 0xffffff, 100)
+      if (this.cfg.rings) this.ring(x2, y2, 10, 34, 0.5, colour, 260)
+      this.sparks(x2, y2, this.count(3), colour, 90, 160, 12)
+    }
+  }
+
   /** A shot struck a cannon. */
   hit(x: number, y: number, side: Side, kind: CannonKind): void {
     if (!this.cfg.particles || !this.onScreen(x, y, 40)) return

@@ -381,7 +381,7 @@ describe('example maps', () => {
       const mirrorX = (x: number) => 1200 - x
       const mirrorTurn = (a = 0) => (a === 0 ? 0 : Math.PI - a)
       for (const p of map.pillars ?? []) expect((map.pillars ?? []).some((q) => q.x === mirrorX(p.x) && q.y === p.y && q.r === p.r && q.ry === p.ry && Math.abs((q.angle ?? 0) - mirrorTurn(p.angle)) < 1e-9)).toBe(true)
-      for (const w of map.walls) expect(map.walls.some((v) => v.x === mirrorX(w.x + w.w) && v.y === w.y && v.kind === w.kind)).toBe(true)
+      for (const w of map.walls) expect(map.walls.some((v) => v.x === mirrorX(w.x + w.w) && v.y === w.y && v.kind === w.kind && v.hp === w.hp)).toBe(true)
       expect(vsAiMaps([]).some((c) => c.id === map.id)).toBe(true)
       expect(PVP_MAPS.some((m) => m.id === map.id)).toBe(true)
     }

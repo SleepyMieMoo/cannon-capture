@@ -1,3 +1,6 @@
+import { Portal } from '../entities/Portal'
+import { portalMouths } from '../sim/portals'
+import { portalColour } from '../config/obstacles'
 import { vsAiSkins } from '../config/skins'
 import { loadSkin, onSkinChange } from '../menu/skinPref'
 import { loadColour, onColourChange } from '../menu/colourPref'
@@ -37,6 +40,7 @@ export class TitleBgScene extends Phaser.Scene {
   private sim!: BattleSim
   private fans: Fan[] = []
   private walls: Wall[] = []
+  private portals: Portal[] = []
   private glass: Glass[] = []
   private fx!: Phaser.GameObjects.Graphics
   private index = 0
@@ -58,6 +62,7 @@ export class TitleBgScene extends Phaser.Scene {
     this.walls = level.walls.map((rect) => new Wall(this, rect))
     for (const p of level.pillars ?? []) new Pillar(this, p)
     this.glass = (level.glass ?? []).map((g) => new Glass(this, g))
+    this.portals = portalMouths(level.portals).map((m) => new Portal(this, m, m.pair))
     this.fans = level.fans.map((def) => new Fan(this, def))
     this.fx = this.add.graphics().setDepth(3)
     this.vfx = null
@@ -69,6 +74,7 @@ export class TitleBgScene extends Phaser.Scene {
       blocked: (x, y, shield, _side, kind) => this.vfx?.blocked(x, y, shield, kind),
       shieldBroken: (c) => this.vfx?.shieldBroken(c),
       wallHit: (_i, x, y) => this.vfx?.wallHit(x, y),
+      portal: (x1, y1, x2, y2, pair) => this.vfx?.portal(x1, y1, x2, y2, portalColour(pair)),
       wallBroken: (i) => level.walls[i] && this.vfx?.wallBroken(level.walls[i]),
       captured: (c) => this.vfx?.captured(c),
       healed: (c) => this.vfx?.healed(c),
@@ -111,6 +117,7 @@ export class TitleBgScene extends Phaser.Scene {
     if (!this.sim.ended) this.sim.step(dt)
     for (const fan of this.fans) fan.draw(time)
     const moving = this.vfx?.cfg.rings ?? false
+    for (const portal of this.portals) portal.tick(time, moving)
     this.walls.forEach((wall, i) => {
       wall.tick(time, moving)
       if (wall.isBreakable) wall.setHealth(this.sim.wallHealth(i))

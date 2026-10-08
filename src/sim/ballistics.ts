@@ -1,6 +1,8 @@
 import { TUNING } from '../config/tuning'
 import type { GlassDef, PillarDef, Rect, WallDef } from '../types'
 import { circleGlass, circlePillar, circleWall, pillarReach, reflect } from './geometry'
+import { PORTAL } from '../config/obstacles'
+import { mouthAt, portalExit, type PortalMouth } from './portals'
 
 /** What a shot can bounce off (or be swallowed by). */
 export type Surface = 'wall' | 'pillar' | 'glass'
@@ -27,6 +29,10 @@ export interface Ball {
   range?: number
   /** Path length flown so far (px). */
   travelled?: number
+  /** Portals: ms left before it can use one again. */
+  portalCd?: number
+  /** Portals: the mouth it came out of, until it has left it (index into opts.portals). */
+  portalOut?: number
 }
 
 export interface FanField {
@@ -111,6 +117,8 @@ export interface BallisticsOpts {
   range?: number
   bounds: Rect
   ownerGraceMs: number
+  /** Portal mouths on the board (see portalMouths); none when left out. */
+  portals?: readonly PortalMouth[]
 }
 
 export interface StepResult {
@@ -126,6 +134,8 @@ export interface StepResult {
   surface?: Surface
   /** A breakable wall it banked off this step (it takes the shot's damage). */
   wall?: WallDef
+  /** It went through a portal this step: where it fell in and came out, and which pair. */
+  ported?: { x1: number; y1: number; x2: number; y2: number; pair: number }
 }
 
 export function aimShot(
@@ -193,6 +203,8 @@ export function stepBall(
   let hitWall: WallDef | undefined
   const range = next.range ?? opts.range ?? DEFAULT_RANGE
   let travelled = next.travelled ?? 0
+  const portals = opts.portals && opts.portals.length ? opts.portals : null
+  let ported: StepResult['ported']
 
   for (let i = 0; i < steps; i++) {
     for (const fan of fans) {
@@ -221,7 +233,7 @@ export function stepBall(
       if (wall.kind === 'void') {
         // A void wall swallows the shot where it touches.
         next.alive = false
-        return { ball: next, hitId: null, bounced, pushed, absorbed: true }
+        return { ball: next, hitId: null, bounced, pushed, absorbed: true, ported }
       }
       bank(next, hit.nx, hit.ny, hit.pen)
       banked = true
@@ -253,7 +265,33 @@ export function stepBall(
       bounced = true
       if (next.bounces > opts.maxBounces) {
         next.alive = false
-        return { ball: next, hitId: null, bounced, pushed, surface, wall: hitWall }
+        return { ball: next, hitId: null, bounced, pushed, surface, wall: hitWall, ported }
+      }
+    }
+
+    if (portals) {
+      // Leaving the exit mouth frees it; the cooldown runs down.
+      if (next.portalCd) next.portalCd = Math.max(0, next.portalCd - h * 1000)
+      const out = next.portalOut
+      if (out !== undefined && out >= 0) {
+        const m = portals[out]
+        const clear = PORTAL.radius + opts.radius
+        if (!m || (next.x - m.x) ** 2 + (next.y - m.y) ** 2 > clear * clear) next.portalOut = -1
+      }
+      if (!next.portalCd) {
+        const k = mouthAt(portals, next.x, next.y, next.portalOut ?? -1)
+        if (k >= 0) {
+          const from = portals[k]
+          const to = portals[from.to]
+          const exit = portalExit(from, to, next.x, next.y, next.vx, next.vy)
+          ported = { x1: next.x, y1: next.y, x2: exit.x, y2: exit.y, pair: from.pair }
+          next.x = exit.x
+          next.y = exit.y
+          next.vx = exit.vx
+          next.vy = exit.vy
+          next.portalCd = PORTAL.cooldownMs
+          next.portalOut = from.to
+        }
       }
     }
 
@@ -261,7 +299,7 @@ export function stepBall(
       for (const b of barriers) {
         if (!touchesBarrier(next.x, next.y, b)) continue
         next.alive = false
-        return { ball: next, hitId: null, bounced, pushed, blockedBy: b.id, surface, wall: hitWall }
+        return { ball: next, hitId: null, bounced, pushed, blockedBy: b.id, surface, wall: hitWall, ported }
       }
     }
 
@@ -273,7 +311,7 @@ export function stepBall(
       if (dx * dx + dy * dy <= reach * reach) {
         next.alive = false
         hitId = body.id
-        return { ball: next, hitId, bounced, pushed, surface, wall: hitWall }
+        return { ball: next, hitId, bounced, pushed, surface, wall: hitWall, ported }
       }
     }
 
@@ -285,17 +323,17 @@ export function stepBall(
       next.y > bounds.y + bounds.h
     ) {
       next.alive = false
-      return { ball: next, hitId: null, bounced, pushed, surface, wall: hitWall }
+      return { ball: next, hitId: null, bounced, pushed, surface, wall: hitWall, ported }
     }
 
     // Out of range (or, as a safety net, flying absurdly long, e.g. held up by fans).
     if (travelled >= range - 1e-6 || next.age > TUNING.shotMaxFlightMs) {
       next.alive = false
-      return { ball: next, hitId: null, bounced, pushed, surface, wall: hitWall }
+      return { ball: next, hitId: null, bounced, pushed, surface, wall: hitWall, ported }
     }
   }
 
-  return { ball: next, hitId, bounced, pushed, surface, wall: hitWall }
+  return { ball: next, hitId, bounced, pushed, surface, wall: hitWall, ported }
 }
 
 /** Push the ball out along the normal and reflect it. */

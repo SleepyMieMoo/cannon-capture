@@ -1,7 +1,7 @@
 import type { CannonDef, LevelDef } from '../types'
 
 /**
- * Example battle boards for the newer obstacles (not campaign levels). Both
+ * Example battle boards for the newer obstacles (not campaign levels). All
  * are Small and mirrored left/right, so either side is fair: Play vs AI and
  * online list them, the title demo cycles them, and the editor opens them
  * (Map → Open example).
@@ -114,4 +114,48 @@ export const VOID_GATE: LevelDef = {
   ],
 }
 
-export const EXAMPLE_MAPS: LevelDef[] = [GLASS_GARDEN, VOID_GATE]
+/**
+ * Warp Works: brick walls and two portal pairs. A breakable column splits
+ * the middle, and each side's near neutral hides behind a weaker brick wall
+ * of its own. Two portal pairs (teal for gold, lime its mirror for pink)
+ * jump a shot from low on your side to high on the other, past the bricks.
+ */
+export const WARP_WORKS: LevelDef = {
+  id: 'ex-warp-works',
+  name: 'Warp Works',
+  kind: 'battle',
+  size: 'small',
+  cannons: mirrorCannons(
+    [
+      { id: 'p1', name: 'P1', x: 140, y: 180, side: 'player', aimAt: 'n3' },
+      { id: 'p2', name: 'P2', x: 120, y: 392, side: 'player', aimAt: 'n1' },
+      { id: 'p3', name: 'P3', x: 140, y: 604, side: 'player', aimAt: 'n4' },
+    ],
+    [
+      { id: 'n1', name: 'N1', x: 480, y: 392, side: 'neutral' },
+      { id: 'n2', name: 'N2', x: 720, y: 392, side: 'neutral' },
+      { id: 'n3', name: 'N3', x: 600, y: 150, side: 'neutral' },
+      { id: 'n4', name: 'N4', x: 600, y: 634, side: 'neutral' },
+    ],
+  ),
+  walls: [
+    // The middle column (mirrors onto itself) and each side's own brick wall.
+    { x: 588, y: 296, w: 24, h: 192, kind: 'breakable', hp: 24 },
+    { x: 380, y: 322, w: 22, h: 140, kind: 'breakable', hp: 8 },
+    { x: 798, y: 322, w: 22, h: 140, kind: 'breakable', hp: 8 },
+    // Plain walls above and below the middle neutrals' row, to bank off.
+    { x: 440, y: 250, w: 120, h: 22 },
+    { x: 640, y: 250, w: 120, h: 22 },
+    { x: 440, y: 512, w: 120, h: 22 },
+    { x: 640, y: 512, w: 120, h: 22 },
+  ],
+  fans: [],
+  portals: [
+    // Teal: low on gold's side to high on pink's (turned 15° so it lines up on pink's back row).
+    // Lime is its mirror image, for pink. Shots keep their heading, turned by the difference.
+    { a: { x: 300, y: 560, angle: 0 }, b: { x: 760, y: 200, angle: Math.PI / 12 } },
+    { a: { x: 900, y: 560, angle: Math.PI }, b: { x: 440, y: 200, angle: Math.PI - Math.PI / 12 } },
+  ],
+}
+
+export const EXAMPLE_MAPS: LevelDef[] = [GLASS_GARDEN, VOID_GATE, WARP_WORKS]

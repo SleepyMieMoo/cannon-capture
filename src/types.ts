@@ -23,6 +23,24 @@ export interface WallDef extends Rect {
   hp?: number
 }
 
+/** One mouth of a portal: its centre and the way it faces (radians). */
+export interface PortalEnd {
+  x: number
+  y: number
+  angle: number
+}
+
+/**
+ * A linked pair of portals. A shot that falls into one mouth comes out of
+ * the other at the same speed, its heading turned by the difference of the
+ * two mouths' angles (same angles: it flies on the same way). Its range
+ * carries over (the jump itself is free, but no range is gained).
+ */
+export interface PortalDef {
+  a: PortalEnd
+  b: PortalEnd
+}
+
 /**
  * A pillar (a rock): a circle of radius `r`, or an oval when `ry` is set:
  * `r` is then its half-width and `ry` its half-height before turning by
@@ -128,5 +146,7 @@ export interface LevelDef {
   pillars?: PillarDef[]
   /** One-way glass segments (added later: older maps leave them out). */
   glass?: GlassDef[]
+  /** Linked portal pairs (added later: older maps leave them out). At most PORTAL.maxPairs. */
+  portals?: PortalDef[]
   fans: FanDef[]
 }
