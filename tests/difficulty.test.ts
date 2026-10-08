@@ -310,9 +310,14 @@ describe('Impossible', () => {
     const perThink = imp.la.thinks ? imp.la.totalMs / imp.la.thinks : 0
     console.log('frame ms', JSON.stringify({ hard: { avg: hard.avg, worst: hard.worst }, impossible: { avg: imp.avg, worst: imp.worst, msPerThink: perThink, ...imp.la } }))
     expect(imp.la.thinks).toBeGreaterThan(5)
-    // The look-ahead never takes much more than its budget in one frame (one sim step may overrun it a little).
-    expect(imp.la.maxFrameMs).toBeLessThan(TUNING.aiLookahead.frameBudgetMs + 6)
-    expect(imp.la.maxFrameSteps).toBeLessThanOrEqual(TUNING.aiLookahead.frameSteps)
-    expect(imp.avg - hard.avg).toBeLessThan(TUNING.aiLookahead.frameBudgetMs)
+    const { frameBudgetMs, frameSteps } = TUNING.aiLookahead
+    // The step cap is the hard, machine-independent limit on look-ahead work per frame.
+    expect(imp.la.maxFrameSteps).toBeLessThanOrEqual(frameSteps)
+    // Wall-clock checks are noisy on shared CI runners (GC pauses, a preempted VM), so they
+    // use an average, and the single worst frame only has to catch a real stall: a whole
+    // look-ahead in one frame takes 25-60 ms here, against a 3 ms budget.
+    expect(imp.la.pumpMs / imp.la.frames).toBeLessThan(frameBudgetMs + 1.5)
+    expect(imp.la.maxFrameMs).toBeLessThan(frameBudgetMs + 20)
+    expect(imp.avg - hard.avg).toBeLessThan(frameBudgetMs)
   }, 120_000)
 })
