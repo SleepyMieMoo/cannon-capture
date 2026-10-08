@@ -5,6 +5,7 @@ import { BattleScene } from './scenes/BattleScene'
 import { EditorScene } from './scenes/EditorScene'
 import { MapsScene } from './scenes/MapsScene'
 import { MapScene } from './scenes/MapScene'
+import { TitleBgScene } from './scenes/TitleBgScene'
 import { TitleScene } from './scenes/TitleScene'
 
 const parent = document.getElementById('app')
@@ -37,7 +38,7 @@ const game = new Phaser.Game({
     width,
     height,
   },
-  scene: [TitleScene, MapScene, BattleScene, EditorScene, MapsScene],
+  scene: [TitleScene, TitleBgScene, MapScene, BattleScene, EditorScene, MapsScene],
 })
 
 watchRenderScale(game, parent)

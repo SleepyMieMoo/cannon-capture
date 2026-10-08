@@ -4,7 +4,23 @@ A small battle prototype by **SleepyMie**. Cannons sit on a board and fire on th
 
 The look uses the colour themes from ChocoNeko, SleepyMie's studio ([`css/themes.css`](https://github.com/SleepyMieMoo/choconeko-site/blob/main/css/themes.css)). Only the colours are shared, with no ChocoNeko characters or story.
 
-It's a standalone browser game with a campaign of ten levels (battles against an AI and aim-budget puzzles), a quick skirmish, and a map editor for making and sharing your own boards. A Discord Activity build comes later.
+It's a standalone browser game with Play vs AI (pick a map and a difficulty), puzzles, the original ten levels, and a map editor for making and sharing your own boards. A Discord Activity build comes later.
+
+## Main menu
+
+The title screen shows a live AI-vs-AI battle, dimmed and silent, behind the menu. It cycles through Skirmish and the campaign's battle boards. It sleeps while the tab is hidden.
+
+- **Play vs AI** opens a picker. Choose a map (Skirmish, the campaign's five battle boards, or your own battle maps from My maps) and a difficulty (Easy, Normal, Hard or Impossible, each with a one-line description), then **Start battle**. The last map and difficulty are remembered on this device (`cannon-capture:menu:v1`). The campaign levels themselves don't change: here they're plain battles at your difficulty, without the campaign hint, par or stars.
+- **Puzzles** lists the campaign's five puzzles, all open here, with their stars. Wins count toward the campaign. Your own puzzle maps are listed below them. After a win, **Next puzzle** goes to the next one.
+- **Levels** is the original ten-level campaign map (unlocks and stars as before). The label lives in `src/config/brand.ts`, so it can become "Bonus" with a one-line change.
+- **Map editor** and **My maps** (play, edit, rename, share, `.json`, import a share code or file) are unchanged.
+- **Settings** has sound on/off, volume (saved on this device) and credits, including the Pixabay credit. Auto-target is explained there but stays an in-battle setting.
+- **How to play** has illustrated tips (aim, capture, swap type, auto-target, pause, camera) and the keys.
+- **Play with friends** shows as "Coming soon". It's the spot for multiplayer and the Discord Activity later.
+- **Back** (top left of every screen) or **Esc** goes up one screen. Arrow keys and Tab move between buttons, Enter picks, and everything works by touch. Phone and embedded-frame sizes fit without the page scrolling; long lists scroll inside their panel.
+- The game's name ("Cannon Capture", a working name), the "by SleepyMie" line and the Levels label all live in `src/config/brand.ts`. `index.html` has the page title for before the code loads.
+
+**In battle**, the top bar has **Menu** (or press **Esc** when nothing is selected). It pauses the round while open and has Resume, Restart, Back to where you came from, and Main menu. Inside it, Esc resumes and R restarts. A tactical pause you started yourself stays on after the menu closes.
 
 ## How to play
 
@@ -43,7 +59,7 @@ Nothing else is automatic. Free aim points are never changed, cannons you haven'
 
 **Sound.** Every shot makes a short cartoon pop. The tower type changes how it sounds. Normal is the baseline pop, Sniper is a bit louder and deeper, and Machine gun is a soft, higher patter with a random pitch on each shot. Shields don't shoot, so they make no sound. A capture plays a bigger, deeper pop, and a breaking barrier the lowest one.
 
-- **Settings** has a **Sound** switch and a volume slider (default 70%). Both are saved on this device, unlike auto-target. **N** mutes or unmutes.
+- **Settings** has a **Sound** switch and a volume slider (default 70%). Both are saved on this device, unlike auto-target, and are on the main menu's Settings too. **N** mutes or unmutes (after a win, N is "next level" instead).
 - Browsers keep sound locked until your first click, tap or key press. Pops before that are skipped, not saved up.
 - To keep big maps from becoming a wall of noise:
   - at most 6 pops play at once, and a new pop replaces the quietest one only if it is clearly louder;
@@ -110,7 +126,7 @@ The enemy obeys the same turn speed. Your aim shows as a gold dashed line with a
 
 ## Campaign
 
-Start from the title screen. **Campaign** opens a map where levels unlock in order. Beat a level to open the next one. Progress (best stars per level) is saved in this browser's `localStorage` under `cannon-capture:progress:v1`. **Quick skirmish** jumps straight into the original battle board.
+Start from the main menu. **Levels** opens a map where levels unlock in order. Beat a level to open the next one. Progress (best stars per level) is saved in this browser's `localStorage` under `cannon-capture:progress:v1`. Skirmish, the original battle board, is in **Play vs AI**.
 
 There are two kinds of level:
 
@@ -153,7 +169,7 @@ The win checks for Crossfire, Last Stand and Sniper Duel are skipped for now (th
 
 ## Map editor and My maps
 
-The title screen has **Map editor** and **My maps**.
+The main menu has **Map editor** and **My maps**.
 
 The editor builds a normal `LevelDef` (the same format as the campaign), so anything you make can be played, shared, or dropped into the campaign.
 
@@ -312,7 +328,7 @@ In the repo settings, set **Pages → Build and deployment → Source** to **Git
 
 ## Layout
 
-- `src/scenes` — Phaser scenes: `TitleScene`, `MapScene` (campaign map), `BattleScene` (draws a round and handles clicks), `EditorScene` (map editor) and `MapsScene` (My maps).
+- `src/scenes` — Phaser scenes: `TitleScene` (main menu, see `src/menu`), `TitleBgScene` (the title's background battle), `MapScene` (campaign map), `BattleScene` (draws a round and handles clicks), `EditorScene` (map editor) and `MapsScene` (My maps).
 - `src/editor` — custom maps: validation, share codes, `localStorage` storage, and list thumbnails.
 - `src/sim` — the rules without any rendering: `BattleSim` (one round), capture, aiming, shot physics, the lane `solver` (which angles hit which cannon), `stars`, and the test `bots`. All covered by `npm test`.
 - `src/entities` — `Cannon`, `Shot`, `Wall`, and `Fan`.

@@ -57,7 +57,7 @@ export class MapsScene extends Phaser.Scene {
         h('div.cc-row', { style: 'margin:0' },
           h('button.cc-btn.primary', { onclick: () => this.scene.start('editor', { fresh: true }) }, '+ New map'),
           h('button.cc-btn', { onclick: () => this.scene.start('editor', { resume: true }) }, 'Open editor'),
-          h('button.cc-btn', { onclick: () => this.scene.start('title') }, 'Menu'),
+          h('button.cc-btn', { onclick: () => this.scene.start('title'), title: 'Back to the main menu (Esc)' }, '‹ Back'),
         ),
       ),
       h('div.cc-row', {},

@@ -4,6 +4,12 @@ import type { MapView } from '../editor/maps'
 import { cssHex, sideColor, theme } from '../config/theme'
 import { TUNING } from '../config/tuning'
 import { DEBUG } from '../debug'
+import { BRAND } from '../config/brand'
+import { BattleMenu } from '../ui/battleMenu'
+import { ICONS } from '../menu/art'
+import { nextPuzzle } from '../menu/menuModel'
+import { PauseHold } from '../menu/pauseHold'
+import { MAIN_MENU, backLabel as routeBackLabel, backRoute, type BattleCtx, type BattleFrom, type Route } from '../menu/routes'
 import { Sfx, preloadSfx } from '../audio/Sfx'
 import { Cannon } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
@@ -56,8 +62,8 @@ export interface BattleData {
   levelId?: string
   /** A custom map (from the editor or My maps) instead of a built-in level. */
   custom?: LevelDef
-  /** Where Back/Menu returns to for custom maps. */
-  from?: 'editor' | 'maps'
+  /** Where it was started from (decides Back and Next). */
+  from?: BattleFrom
   /** Start the camera here (the editor's view when playtesting). */
   view?: MapView
 }
@@ -99,6 +105,9 @@ export class BattleScene extends Phaser.Scene {
   private hover: Cannon | null = null
   private shownEnd = false
   private restarting = false
+  /** The in-battle menu (HUD "Menu" or Esc); the round is paused while it is open. */
+  private battleMenu!: BattleMenu
+  private readonly menuHold = new PauseHold(() => this.sim)
   private hint!: Phaser.GameObjects.Text
   private pauseLink!: Phaser.GameObjects.Text
   /** Paused: a frame round the board and a label at its top (UI camera; never blocks the board). */
@@ -290,6 +299,13 @@ export class BattleScene extends Phaser.Scene {
     // A DOM button focused before the round (the editor's Playtest, say) must not catch Space.
     if (typeof document !== 'undefined') (document.activeElement as HTMLElement | null)?.blur?.()
     this.settings = new SettingsPanel(this, (obj) => this.ui(obj), GAME_WIDTH - 16, HUD_H + 8)
+    this.menuHold.release()
+    // A restart from the open menu left keys off (the scene object is reused).
+    if (this.input.keyboard) this.input.keyboard.enabled = true
+    this.battleMenu = new BattleMenu(this, () => this.closeMenu(), () => {
+      this.closeMenu()
+      this.restart()
+    })
     if (this.wc.canZoomOut) this.createZoomUi()
     if (this.level.hint) this.showBanner(this.level.hint)
     else if (this.wc.canZoomOut) this.showBanner('Big map: scroll or pinch to zoom out, drag empty space or use WASD to pan.')
@@ -386,6 +402,8 @@ export class BattleScene extends Phaser.Scene {
 
   /** M: flip auto-target for the cannon under the pointer (or the selected one). */
   private onMuteKey(): void {
+    // After a win, N is "next level" instead.
+    if (this.ended === 'win' && this.nextLevel()) return
     this.sfx.toggleMute()
   }
 
@@ -414,10 +432,12 @@ export class BattleScene extends Phaser.Scene {
     this.sim.setAutoTarget(!this.sim.autoTarget)
   }
 
+  /** Esc: close what is open (Settings, the type menu, a selection), else open the menu. */
   private onCancelKey(): void {
     if (this.settings.open) this.settings.hide()
     else if (this.swapMenu.open) this.swapMenu.hide()
-    else this.selected = null
+    else if (this.selected) this.selected = null
+    else this.openMenu()
   }
 
   /** T: swap the selected cannon to the next tower type. */
@@ -427,7 +447,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Tactical pause on/off (Space, or the HUD's Pause / Resume). */
   togglePause(): void {
-    if (this.ended || this.restarting) return
+    if (this.ended || this.restarting || this.battleMenu?.open) return
     if (this.sim.paused) this.sim.resume()
     else this.sim.pause()
     this.pauseLink?.setText(this.sim.paused ? 'Resume' : 'Pause').setFontStyle(this.sim.paused ? 'bold' : 'normal')
@@ -649,6 +669,7 @@ export class BattleScene extends Phaser.Scene {
 
   private nextLevel(): LevelDef | null {
     if (this.levelIndex < 0) return null
+    if (this.from === 'puzzles') return nextPuzzle(this.level.id)
     return CAMPAIGN[this.levelIndex + 1] ?? null
   }
 
@@ -658,31 +679,66 @@ export class BattleScene extends Phaser.Scene {
     this.input.setDefaultCursor('default')
     // Restarting keeps the camera where you left it.
     const view = { zoom: this.wc.zoom, x: this.wc.center.x, y: this.wc.center.y }
-    this.scene.restart(this.custom ? { custom: this.custom, from: this.from, view } : { levelId: this.level.id, view })
+    this.scene.restart(this.custom ? { custom: this.custom, from: this.from, view } : { levelId: this.level.id, from: this.from, view })
   }
 
   private goNext(): void {
     const next = this.nextLevel()
     if (!next || this.restarting) return
     this.restarting = true
-    this.scene.start('battle', { levelId: next.id })
+    this.scene.start('battle', { levelId: next.id, from: this.from })
+  }
+
+  private get ctx(): BattleCtx {
+    return { levelId: this.level.id, levelIndex: this.levelIndex, custom: !!this.custom, from: this.from }
   }
 
   private backLabel(short: boolean): string {
-    if (this.custom) return this.from === 'editor' ? (short ? 'Editor' : 'Back to editor') : 'My maps'
-    return this.levelIndex >= 0 ? 'Map' : 'Menu'
+    return routeBackLabel(this.ctx, short)
   }
 
   private goBack(): void {
+    this.go(backRoute(this.ctx))
+  }
+
+  private go(route: Route): void {
     if (this.restarting) return
     this.restarting = true
+    this.closeMenu()
     this.input.setDefaultCursor('default')
-    if (this.custom) {
-      if (this.from === 'editor') this.scene.start('editor', { resume: true })
-      else this.scene.start('maps')
-      return
-    }
-    this.scene.start(this.levelIndex >= 0 ? 'map' : 'title', { focus: this.level.id })
+    this.scene.start(route.scene, route.data)
+  }
+
+  /** Open the in-battle menu, pausing the round while it is open. */
+  openMenu(): void {
+    if (this.restarting || this.battleMenu.open) return
+    this.settings.hide()
+    this.swapMenu.hide()
+    this.selected = null
+    this.menuHold.hold()
+    // Keys go to the menu while it is open (Esc, R, arrows).
+    if (this.input.keyboard) this.input.keyboard.enabled = false
+    const route = backRoute(this.ctx)
+    const items = [
+      { id: 'resume', label: this.ended ? 'Back to the board' : 'Resume', run: () => this.closeMenu(), primary: true, icon: ICONS.play },
+      { id: 'restart', label: 'Restart', run: () => (this.closeMenu(), this.restart()) },
+    ]
+    if (route.scene !== 'title' || route.data?.screen) items.push({ id: 'back', label: this.backLabel(false), run: () => this.go(route) })
+    items.push({ id: 'main', label: 'Main menu', run: () => this.go(MAIN_MENU) })
+    const where = this.levelIndex >= 0 ? `${this.levelIndex + 1}. ${this.level.name}` : this.level.name
+    const paused = this.sim.paused
+    this.battleMenu.show(paused ? 'Paused' : 'Menu', paused ? `${where}  ·  paused while this menu is open` : where, items)
+  }
+
+  closeMenu(): void {
+    if (!this.battleMenu?.open) return
+    this.battleMenu.hide()
+    this.menuHold.release()
+    this.pauseLink?.setText(this.sim.paused ? 'Resume' : 'Pause').setFontStyle(this.sim.paused ? 'bold' : 'normal')
+    // Turn keys back on after this frame, so the Esc that closed the menu doesn't reopen it.
+    this.events.once(Phaser.Scenes.Events.POST_UPDATE, () => {
+      if (this.input.keyboard) this.input.keyboard.enabled = true
+    })
   }
 
   // ---------------------------------------------------------------- HUD and screens
@@ -703,7 +759,7 @@ export class BattleScene extends Phaser.Scene {
         ? `${this.levelIndex + 1}. ${this.level.name}${this.isPuzzle ? '  ·  Puzzle' : ''}`
         : this.custom
           ? `${this.level.name}  ·  ${this.isPuzzle ? 'Puzzle' : 'Battle'}${this.from === 'editor' ? '  ·  Playtest' : ''}`
-          : `Cannon Capture  ·  ${this.level.name}`
+          : `${BRAND.title}  ·  ${this.level.name}`
     this.add
       .text(24, 8, title, {
         fontFamily: theme.font,
@@ -761,7 +817,7 @@ export class BattleScene extends Phaser.Scene {
       return text
     }
     link(GAME_WIDTH - 28, 'Restart', () => this.restart())
-    link(GAME_WIDTH - 112, this.backLabel(true), () => this.goBack())
+    link(GAME_WIDTH - 112, 'Menu', () => this.openMenu())
     link(GAME_WIDTH - 196, 'Settings', () => this.settings.toggle())
     this.pauseLink = link(GAME_WIDTH - 276, 'Pause', () => this.togglePause())
   }
@@ -930,12 +986,12 @@ export class BattleScene extends Phaser.Scene {
     const by = top + ph - 62
     const buttons: Phaser.GameObjects.Container[] = []
     if (result === 'win' && next) {
-      buttons.push(makeButton(this, cx - 112, by, 'Next level', () => this.goNext(), { width: 200 }))
-      buttons.push(makeButton(this, cx + 112, by, 'Back to map', () => this.goBack(), { width: 200, primary: false }))
+      buttons.push(makeButton(this, cx - 112, by, this.from === 'puzzles' ? 'Next puzzle' : 'Next level', () => this.goNext(), { width: 200 }))
+      buttons.push(makeButton(this, cx + 112, by, this.backLabel(false), () => this.goBack(), { width: 200, primary: false }))
     } else if (campaign) {
-      const primaryLabel = result === 'win' ? 'Back to map' : 'Try again'
+      const primaryLabel = result === 'win' ? this.backLabel(false) : 'Try again'
       const primary = result === 'win' ? () => this.goBack() : () => this.restart()
-      const secondaryLabel = result === 'win' ? 'Play again' : 'Back to map'
+      const secondaryLabel = result === 'win' ? 'Play again' : this.backLabel(false)
       const secondary = result === 'win' ? () => this.restart() : () => this.goBack()
       buttons.push(makeButton(this, cx - 112, by, primaryLabel, primary, { width: 200 }))
       buttons.push(makeButton(this, cx + 112, by, secondaryLabel, secondary, { width: 200, primary: false }))
@@ -1059,7 +1115,7 @@ export class BattleScene extends Phaser.Scene {
   private drawPaused(time: number): void {
     const g = this.pausedFx
     g.clear()
-    const on = this.sim.paused && !this.ended
+    const on = this.sim.paused && !this.ended && !this.battleMenu?.open
     this.pausedLabel.setVisible(on)
     if (!on) return
     const v = WORLD_VIEW
