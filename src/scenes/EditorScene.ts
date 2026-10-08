@@ -1243,9 +1243,11 @@ export class EditorScene extends Phaser.Scene {
       h('div.cc-keys', {}, ...keys.flatMap(([k, v]) => [h('b', {}, k), h('span', {}, v)])),
     )
 
-    // If the bar overflows anyway (a wider fallback font), dotted tools show just their dot (the tooltip names them).
+    // If the bar overflows, first close up the gaps; if it still does (a wider fallback font),
+    // dotted tools show just their dot (the tooltip names them).
     const fitToolbar = (): void => {
-      toolbar.classList.remove('tight')
+      toolbar.classList.remove('snug', 'tight')
+      if (toolbar.scrollWidth > toolbar.clientWidth + 1) toolbar.classList.add('snug')
       if (toolbar.scrollWidth > toolbar.clientWidth + 1) toolbar.classList.add('tight')
     }
     requestAnimationFrame(fitToolbar)

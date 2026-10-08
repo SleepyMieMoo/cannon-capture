@@ -140,9 +140,9 @@ export const WARP_WORKS: LevelDef = {
   ),
   walls: [
     // The middle column (mirrors onto itself) and each side's own brick wall.
-    { x: 588, y: 296, w: 24, h: 192, kind: 'breakable', hp: 8 },
-    { x: 380, y: 322, w: 22, h: 140, kind: 'breakable', hp: 4 },
-    { x: 798, y: 322, w: 22, h: 140, kind: 'breakable', hp: 4 },
+    { x: 588, y: 296, w: 24, h: 192, kind: 'breakable', hp: 24 },
+    { x: 380, y: 322, w: 22, h: 140, kind: 'breakable', hp: 8 },
+    { x: 798, y: 322, w: 22, h: 140, kind: 'breakable', hp: 8 },
     // Plain walls above and below the middle neutrals' row, to bank off.
     { x: 440, y: 250, w: 120, h: 22 },
     { x: 640, y: 250, w: 120, h: 22 },
