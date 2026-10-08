@@ -35,6 +35,11 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # Public Discord Application ID for the Discord Activity build (repo Settings >
+          # Secrets and variables > Actions > Variables > DISCORD_CLIENT_ID). Empty is fine:
+          # the game builds and runs the same, it just skips the Discord SDK.
+          VITE_DISCORD_CLIENT_ID: ${{ vars.DISCORD_CLIENT_ID }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

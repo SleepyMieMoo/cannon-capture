@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@discord/embedded-app-sdk": "^2.5.0",
     "phaser": "^3.88.2"
   },
   "devDependencies": {

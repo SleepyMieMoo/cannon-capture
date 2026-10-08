@@ -18,7 +18,7 @@ export function injectMenuStyles(): void {
 .mm {
   position: fixed; inset: 0; z-index: 5; box-sizing: border-box; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
-  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  padding: max(10px, var(--discord-safe-area-inset-top, env(safe-area-inset-top))) max(10px, var(--discord-safe-area-inset-right, env(safe-area-inset-right))) max(10px, var(--discord-safe-area-inset-bottom, env(safe-area-inset-bottom))) max(10px, var(--discord-safe-area-inset-left, env(safe-area-inset-left)));
   font-family: ${theme.font}; color: ${theme.text}; font-size: clamp(12px, 1.9vmin, 15px);
   background: radial-gradient(ellipse at center, ${rgba(theme.bg, 0.74)} 0%, ${rgba(theme.bg, 0.42)} 55%, ${rgba(theme.bg, 0.18)} 100%);
   -webkit-tap-highlight-color: transparent; user-select: none;
