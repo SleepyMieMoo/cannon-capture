@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import type { MapView } from '../editor/maps'
-import { cssHex, sideColor, swapSideColours, theme } from '../config/theme'
+import { cssHex, ownerRing, sideColor, swapSideColours, theme } from '../config/theme'
 import { TUNING } from '../config/tuning'
 import { DEBUG } from '../debug'
 import { BRAND } from '../config/brand'
@@ -12,7 +12,7 @@ import { PauseHold } from '../menu/pauseHold'
 import { EDITOR_KEY, MAIN_MENU, backLabel as routeBackLabel, backRoute, editorReturn, type BattleCtx, type BattleFrom, type Route } from '../menu/routes'
 import { isTypingTarget } from '../ui/typing'
 import { Sfx, preloadSfx } from '../audio/Sfx'
-import { Cannon } from '../entities/Cannon'
+import { Cannon, haloR, setRingScale } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
 import { Wall } from '../entities/Wall'
 import { CAMPAIGN, SKIRMISH, campaignIndex, findLevel } from '../levels'
@@ -452,6 +452,7 @@ export class BattleScene extends Phaser.Scene {
       audio: this.sfx.available,
       perf: perf.shown,
     })
+    setRingScale(this.wc.cssPerWorld())
     for (const cannon of this.cannons) {
       cannon.hovered = cannon === this.hover
       cannon.selected = cannon === this.selected
@@ -1143,6 +1144,14 @@ export class BattleScene extends Phaser.Scene {
     for (const group of groups) {
       legend.fillStyle(sideColor(group.side), 1)
       legend.fillCircle(group.x, HUD_ROW, 6)
+      const ring = ownerRing(group.side)
+      if (ring !== null) {
+        // The same ownership ring the cannons wear.
+        legend.lineStyle(4.5, theme.ringEdge, 0.85)
+        legend.strokeCircle(group.x, HUD_ROW, 8)
+        legend.lineStyle(2.5, ring, 1)
+        legend.strokeCircle(group.x, HUD_ROW, 8)
+      }
       counts[group.side] = this.add
         .text(group.x + 14, HUD_ROW, '0', {
           fontFamily: theme.font,
@@ -1541,10 +1550,10 @@ export class BattleScene extends Phaser.Scene {
           const end = clipToWalls(c.x, c.y, aim.x, aim.y, walls)
           const onCannon = aim instanceof Cannon
           const blocked = end.x !== aim.x || end.y !== aim.y
-          dash(g, c.x, c.y, end.x, end.y, TUNING.cannonRadius + 14, onCannon && !blocked ? TUNING.cannonRadius + 12 : 4, theme.select, pulse)
+          dash(g, c.x, c.y, end.x, end.y, haloR() + 2, onCannon && !blocked ? haloR() : 4, theme.select, pulse)
           if (onCannon) {
             g.lineStyle(2.5, theme.select, pulse)
-            g.strokeCircle(aim.x, aim.y, TUNING.cannonRadius + 9)
+            g.strokeCircle(aim.x, aim.y, haloR())
           } else crosshair(g, aim.x, aim.y, 11, theme.select, pulse)
         } else {
           const s = TUNING.shield
@@ -1636,12 +1645,12 @@ export class BattleScene extends Phaser.Scene {
       if (hover && (hover.side !== 'player' || hover.damaged)) {
         const end = clipToWalls(sel.x, sel.y, hover.x, hover.y, walls)
         const blocked = end.x !== hover.x || end.y !== hover.y
-        dash(g, sel.x, sel.y, end.x, end.y, TUNING.cannonRadius + 14, blocked ? 4 : TUNING.cannonRadius + 14, theme.select, 0.9)
+        dash(g, sel.x, sel.y, end.x, end.y, haloR() + 2, blocked ? 4 : haloR() + 2, theme.select, 0.9)
         g.lineStyle(2, theme.select, 0.6 + 0.3 * Math.sin(time / 120))
-        g.strokeCircle(hover.x, hover.y, TUNING.cannonRadius + 9)
+        g.strokeCircle(hover.x, hover.y, haloR())
       } else if (!this.hover && this.pointer) {
         const end = clipToWalls(sel.x, sel.y, this.pointer.x, this.pointer.y, walls)
-        dash(g, sel.x, sel.y, end.x, end.y, TUNING.cannonRadius + 14, 4, theme.select, 0.55)
+        dash(g, sel.x, sel.y, end.x, end.y, haloR() + 2, 4, theme.select, 0.55)
         crosshair(g, this.pointer.x, this.pointer.y, 10, theme.select, 0.75)
       }
     }

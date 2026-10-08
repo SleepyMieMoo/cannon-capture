@@ -26,7 +26,7 @@ import {
   type Difficulty,
   type MapView,
 } from '../editor/maps'
-import { Cannon } from '../entities/Cannon'
+import { Cannon, setRingScale } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
 import { Wall } from '../entities/Wall'
 import { MAP_SIZES, MAP_SIZE_IDS, boardFor, insideBoard } from '../levels/board'
@@ -230,6 +230,7 @@ export class EditorScene extends Phaser.Scene {
       this.persist()
     }
     for (const fan of this.fanViews) fan.draw(time)
+    setRingScale(this.wc.cssPerWorld())
     this.cannonViews.forEach((c, i) => {
       c.selected = this.sel?.kind === 'cannon' && this.sel.index === i
       c.hovered = !c.selected && this.hover?.kind === 'cannon' && this.hover.index === i

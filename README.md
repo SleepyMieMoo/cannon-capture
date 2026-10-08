@@ -30,12 +30,14 @@ The title screen shows a live AI-vs-AI battle, dimmed and silent, behind the men
 
 You are gold. The enemy is strawberry pink. Warm grey cannons are neutral and do not fire until someone captures them.
 
+**Ownership rings.** Every cannon you own (the ones you can steer) wears a solid light gold-white ring. Every enemy cannon wears a deep red ring, darker and more saturated than the pink so it stands out on a pink-tinted body. Neutrals have no ring. A missing ring is the clearest way to say "nobody's", and a faint one would only compete with the capture track. The ring shows the current owner only. It flips the moment a cannon is captured and ignores the capture tint, so mid-fight a cannon that has gone orange still says whose it is. Light against red also differs strongly in brightness, so it works with red-green colour blindness. On small screens and when zoomed out the ring is drawn thicker, so it stays about 2.4 px wide on screen (up to a cap). The HUD legend shows the same rings.
+
 1. Click one of your cannons to select it (it gets a pulsing ring).
 2. Click anywhere on the board to set that spot as its aim point, or click an enemy or neutral cannon to aim at it. Free aiming lets you lead shots, bank them off walls, or let a fan carry them.
 3. Cannons don't snap. The barrel turns toward its aim at a limited speed, and a cannon only fires once it has finished turning and is lined up. After that it fires about once a second. The fire timer keeps counting while the barrel turns, so a long turn doesn't add an extra wait: the cannon fires as soon as it lines up, if its timer is ready. Big swings still cost you shots, because nothing fires mid-turn.
 4. Setting an aim deselects the cannon automatically, so a stray extra click can't re-aim it. To re-aim, select it again. Before aiming, click the selected cannon again (or press **Esc**) to cancel, or click another of your cannons to switch to it.
 
-A cannon tints toward whoever is hitting it, and a ring around it fills in their colour. At eight hits it flips. Capture every cannon to win. Lose when none are yours. A newly captured cannon swings toward the nearest foe on its own (see Auto-target).
+A cannon tints toward whoever is hitting it, and a capture ring just outside its ownership ring fills in their colour. At eight hits it flips. Capture every cannon to win. Lose when none are yours. A newly captured cannon swings toward the nearest foe on its own (see Auto-target).
 
 **Auto-target.** Your cannons help themselves in two ways, and only these two:
 
@@ -457,6 +459,7 @@ This was the step before online play (above), and it still works. Two copies of 
 
 - **Split view**: [`?pvpdev=split`](https://sleepymiemoo.github.io/cannon-capture/?pvpdev=split) shows both players side by side. Left is the host, who plays gold. Right is player 2, who plays pink. Click a side to play it. This is the easiest way to try it alone.
 - **Two windows**: open [`?pvpdev`](https://sleepymiemoo.github.io/cannon-capture/?pvpdev), pick a map, then press **Host (gold)** and then **Open player 2 window**. Keep both windows in sight: a browser stops drawing a tab that is hidden behind another one, and the round only runs while the host's window is drawn. You can also join from any other window of the same browser: open `?pvpdev`, type the same room code and press **Join (pink)**.
+- Ownership rings online: each player's own cannons wear the light "yours" ring and the other player's the red one, whatever colour they are shown in (also with `&gold=0`). Spectators see the gold side with the light ring and the pink side with the red one.
 - Extra switches: `&gold=0` shows player 2 their own cannons in pink (by default each player sees themselves as gold). `&lag=150&jitter=50` fakes a slow network. `&map=crossfire` picks the host's map, and `&role=host|join&room=abcd` starts straight away.
 
 How it works:

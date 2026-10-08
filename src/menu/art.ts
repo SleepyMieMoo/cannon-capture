@@ -1,4 +1,4 @@
-import { cssHex, theme } from '../config/theme'
+import { cssHex, lerpColor, theme } from '../config/theme'
 
 /** Small inline SVGs for the menu (static strings, crisp at any DPI). */
 
@@ -25,12 +25,19 @@ const edge = cssHex(theme.boardEdge)
 const ink = theme.text
 const muted = theme.textMuted
 const sel = cssHex(theme.select)
+const ringYou = cssHex(theme.ringYou)
+const ringEnemy = cssHex(theme.ringEnemy)
+const ringEdge = cssHex(theme.ringEdge)
+const tinted = cssHex(lerpColor(theme.enemy, theme.player, 0.55))
 
 const cannon = (x: number, y: number, color: string, angle = 0, r = 15): string => {
   const bx = Math.cos(angle)
   const by = Math.sin(angle)
   return `<line x1="${x}" y1="${y}" x2="${x + bx * (r + 9)}" y2="${y + by * (r + 9)}" stroke="${color}" stroke-opacity=".7" stroke-width="7" stroke-linecap="round"/><circle cx="${x}" cy="${y}" r="${r}" fill="${color}"/><circle cx="${x - r * 0.25}" cy="${y - r * 0.28}" r="${r * 0.38}" fill="#fff" fill-opacity=".22"/>`
 }
+/** The ownership ring a cannon wears in play: light for yours, red for theirs. */
+const own = (x: number, y: number, color: string, r = 15): string =>
+  `<circle cx="${x}" cy="${y}" r="${r + 2.5}" fill="none" stroke="${ringEdge}" stroke-width="4.5"/><circle cx="${x}" cy="${y}" r="${r + 2.5}" fill="none" stroke="${color}" stroke-width="2.5"/>`
 const svg = (body: string): string =>
   `<svg viewBox="0 0 240 100" aria-hidden="true"><rect x="1" y="1" width="238" height="98" rx="10" fill="${board}" stroke="${edge}" stroke-width="1.5"/>${body}</svg>`
 const label = (x: number, y: number, t: string, color = muted, size = 11, anchor = 'middle'): string =>
@@ -46,16 +53,16 @@ const pointer = (x: number, y: number): string =>
 export const HOWTO: { title: string; text: string; art: string }[] = [
   {
     title: 'Aim',
-    text: 'Click one of your gold cannons, then click a cannon or a spot to aim at. It keeps firing there by itself.',
+    text: 'Click one of your gold cannons (the light ring means yours to steer), then click a cannon or a spot to aim at. It keeps firing there by itself.',
     art: svg(
-      `${cannon(46, 58, gold, -0.25)}<line x1="74" y1="51" x2="178" y2="34" stroke="${sel}" stroke-width="2.5" stroke-dasharray="7 6"/>${cannon(196, 32, grey, Math.PI)}<circle cx="196" cy="32" r="22" fill="none" stroke="${sel}" stroke-width="2"/>${pointer(50, 62)}${pointer(200, 36)}${label(30, 92, '1  click yours', muted, 10, 'start')}${label(212, 92, '2  click a target', muted, 10, 'end')}`,
+      `${cannon(46, 58, gold, -0.25)}${own(46, 58, ringYou)}<line x1="74" y1="51" x2="178" y2="34" stroke="${sel}" stroke-width="2.5" stroke-dasharray="7 6"/>${cannon(196, 32, grey, Math.PI)}<circle cx="196" cy="32" r="22" fill="none" stroke="${sel}" stroke-width="2"/>${pointer(50, 62)}${pointer(200, 36)}${label(30, 92, '1  click yours', muted, 10, 'start')}${label(212, 92, '2  click a target', muted, 10, 'end')}`,
     ),
   },
   {
     title: 'Capture',
-    text: 'Hits fill a cannon’s ring in your colour; eight flip it to your side. Take every cannon to win. Your shots heal your own cannons.',
+    text: 'Hits fill a cannon’s outer ring in your colour; eight flip it. The solid ring is the owner right now: light = yours, red = theirs. Take every cannon to win; your shots heal your own.',
     art: svg(
-      `${cannon(40, 50, gold)}<circle cx="96" cy="50" r="4" fill="${gold}"/><circle cx="124" cy="50" r="4" fill="${gold}"/><circle cx="152" cy="50" r="4" fill="${gold}"/>${cannon(196, 50, grey, Math.PI)}<circle cx="196" cy="50" r="22" fill="none" stroke="${edge}" stroke-width="4"/><path d="M196 28 A22 22 0 1 1 174.7 55.5" fill="none" stroke="${gold}" stroke-width="4" stroke-linecap="round"/>${label(120, 90, '8 hits flip it')}`,
+      `${cannon(40, 50, gold)}${own(40, 50, ringYou)}<circle cx="96" cy="50" r="4" fill="${gold}"/><circle cx="124" cy="50" r="4" fill="${gold}"/><circle cx="152" cy="50" r="4" fill="${gold}"/>${cannon(196, 50, tinted, Math.PI)}${own(196, 50, ringEnemy)}<circle cx="196" cy="50" r="23.5" fill="none" stroke="${edge}" stroke-width="3.5"/><path d="M196 26.5 A23.5 23.5 0 1 1 173.2 55.9" fill="none" stroke="${gold}" stroke-width="3.5" stroke-linecap="round"/>${label(120, 90, '8 hits flip it')}`,
     ),
   },
   {

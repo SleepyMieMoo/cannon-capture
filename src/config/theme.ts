@@ -59,6 +59,12 @@ function mix(a: string | number, b: string | number, t: number): number {
  *   These three are game-only additions picked to stay clearly apart from the
  *   gold (and from each other) so the capture tint stays visible.
  * - Board, walls, HUD and text come straight from the theme's surfaces.
+ * - Ownership rings (who owns a cannon right now, whatever its capture tint):
+ *   yours a light gold-white, the enemy's a deep saturated red, both on a
+ *   dark edge. The red is darker and more saturated than the pink team
+ *   colour so it reads on a pink-tinted body, and gold-white vs red differ
+ *   strongly in brightness (relative luminance about 0.78 vs 0.16), so they
+ *   stay apart without colour vision too.
  */
 function buildPalette(t: ChocoTheme) {
   const player = t.dark ? hex(t.accent) : 0xd99a00
@@ -85,6 +91,9 @@ function buildPalette(t: ChocoTheme) {
     fan,
     fanBlade: t.dark ? mix(fan, 0xffffff, 0.85) : 0xffffff,
     select: mix(player, 0xffffff, 0.75),
+    ringYou: t.dark ? mix(player, 0xffffff, 0.5) : mix(player, 0xffffff, 0.3),
+    ringEnemy: t.dark ? 0xe0142f : 0xb80f26,
+    ringEdge: t.dark ? hex(t.edge) : hex(t.text),
     panel: hex(t.deep),
     dim: hex(t.edge),
     spark: hex(t.dark ? t.text : t.muted),
@@ -97,6 +106,18 @@ export function sideColor(side: Side): number {
   if (side === 'player') return theme.player
   if (side === 'enemy') return theme.enemy
   return theme.neutral
+}
+
+/**
+ * The ownership ring for a cannon on this side, or null for neutrals (they
+ * belong to nobody, so no ring). 'player' is always the local viewer's side:
+ * online, each player's view is flipped so they are 'player'; spectators see
+ * the host's sides, so gold gets the light ring and pink the red one.
+ */
+export function ownerRing(side: Side): number | null {
+  if (side === 'player') return theme.ringYou
+  if (side === 'enemy') return theme.ringEnemy
+  return null
 }
 
 export function cssHex(color: number): string {
