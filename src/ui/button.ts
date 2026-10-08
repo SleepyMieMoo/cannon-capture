@@ -29,6 +29,9 @@ export function makeButton(
       color: primary ? theme.ink : theme.text,
     })
     .setOrigin(0.5)
+  // A label never spills past the edge: a long one is drawn smaller to fit.
+  const room = w - 20
+  if (text.width > room) text.setScale(room / text.width)
 
   const draw = (hot: boolean): void => {
     g.clear()

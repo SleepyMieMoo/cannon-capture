@@ -2,6 +2,12 @@
   "_about": "What's new: shown from the version line under the main menu (src/menu/whatsNew.ts). Newest first. Keep entries short and player-friendly.",
   "days": [
     {
+      "date": "2026-10-09",
+      "entries": [
+        { "kind": "fix", "title": "Version 0.2.4: result buttons fit", "text": "The buttons on the win, loss and surrender panel always fit their words now, sit side by side at the same size, and stack neatly on phones. On small screens the top bar tucks extra buttons into the Menu instead of cutting them off." }
+      ]
+    },
+    {
       "date": "2026-10-08",
       "entries": [
         { "kind": "change", "title": "Version 0.2.3: tidier Settings", "text": "Every setting now sits on one compact row. The longer explanations moved behind a small ? next to each name: hover it, focus it, or tap it on a phone. The in-battle Settings panel is now readable on phones too." },

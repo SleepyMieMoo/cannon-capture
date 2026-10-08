@@ -253,7 +253,7 @@ export function injectMenuStyles(): void {
 .mm-srow-n { display: flex; align-items: center; gap: 7px; font-weight: bold; line-height: 1.25; }
 .mm-srow-n label { cursor: pointer; }
 .mm-srow-sub { color: ${theme.textMuted}; font-size: .85em; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; contain: inline-size; }
-.mm-srow-c { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; max-width: 100%; }
+.mm-srow-c { flex: 0 0 auto; display: flex; align-items: center; justify-content: safe flex-end; gap: 8px; margin-left: auto; max-width: 100%; }
 .mm-srow.wide .mm-srow-l { flex: 0 0 auto; max-width: 100%; }
 .mm-srow.wide .mm-srow-c { flex: 1 0 auto; }
 .mm-srow.wide .mm-srow-c > * { flex: 1 1 auto; }
@@ -264,7 +264,7 @@ export function injectMenuStyles(): void {
 .mm-srow .mm-val { min-width: 40px; }
 .mm-srow .mm-btn.small { min-height: 36px; padding: 3px 12px; border-radius: 10px; font-size: clamp(12px, 1.8vmin, 14px); white-space: nowrap; }
 .mm-srow .mm-segs { display: flex; gap: 6px; }
-.mm-srow .mm-seg { flex: 1 1 0; min-height: 36px; padding: 2px 10px; white-space: nowrap; }
+.mm-srow .mm-seg { flex: 1 1 0; min-height: 36px; padding: 2px clamp(5px, 1.6vw, 10px); white-space: nowrap; }
 .mm-srow .mm-input { min-height: 38px; padding: 6px 10px; }
 .mm-srow-x { color: ${theme.textMuted}; font-size: .88em; text-align: right; }
 .mm-hh { display: flex; align-items: center; gap: 7px; }
