@@ -28,6 +28,14 @@
         position: absolute;
         inset: 0;
       }
+
+      /* Inside Discord's mobile app, keep the game clear of notches and system bars. */
+      html.in-discord #app {
+        top: var(--discord-safe-area-inset-top, env(safe-area-inset-top, 0px));
+        right: var(--discord-safe-area-inset-right, env(safe-area-inset-right, 0px));
+        bottom: var(--discord-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+        left: var(--discord-safe-area-inset-left, env(safe-area-inset-left, 0px));
+      }
     </style>
   </head>
   <body>

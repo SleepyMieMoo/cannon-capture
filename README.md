@@ -320,11 +320,44 @@ Colours live in [`src/config/theme.ts`](src/config/theme.ts), so the board can b
 
 Pushes to `main` run [`.github/workflows/pages.yml`](.github/workflows/pages.yml), which tests, builds, and deploys to GitHub Pages.
 
-The production base path is `/cannon-capture/`, so the prototype is meant to be played at:
+The prototype is played at:
 
 https://sleepymiemoo.github.io/cannon-capture/
 
+The build uses relative asset URLs (Vite `base: './'`), so the same files work there and inside Discord (next section).
+
 In the repo settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The workflow cannot turn that setting on by itself.
+
+## Run as a Discord Activity
+
+The same build runs as a [Discord Activity](https://docs.discord.com/developers/activities/overview), a game inside a Discord voice channel. It is single-player for now.
+
+**How it works**
+
+- Discord opens the game in an iframe on `https://<application id>.discordsays.com/`, adding `frame_id`, `instance_id` and `platform` to the URL. Its proxy fetches the files from GitHub Pages through the Root URL Mapping `/` → `sleepymiemoo.github.io/cannon-capture`. The game makes no other network requests, so no other mappings (or `patchUrlMappings`) are needed.
+- [`src/platform/discord.ts`](src/platform/discord.ts) spots those URL parameters, loads [`@discord/embedded-app-sdk`](https://github.com/discord/embedded-app-sdk) (a separate `discord-sdk-*.js` file that a normal browser tab never downloads) and calls `ready()`.
+- The game starts straight away and never waits for Discord. If the handshake doesn't finish within 8 s it carries on without it (a late handshake still counts).
+- Sign-in is skipped. `ready()`, `openExternalLink` and `setOrientationLockState` need no OAuth scope, so there is no server and no client secret.
+- Links (the credits) open through Discord's `openExternalLink`, because the sandboxed iframe can't open tabs itself.
+- On phones the game asks Discord to keep the Activity landscape (battles are 16:9; change `mobileOrientation` in [`src/config/discord.ts`](src/config/discord.ts)), and respects Discord's `--discord-safe-area-inset-*` margins.
+- Leaving or unfocusing the Activity pauses the round, as in a browser tab.
+- Saved progress, maps and settings live in that iframe's own storage, separate from the website's.
+
+**Setup**
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), create an application. Then:
+   - Under **Activities → Settings**, turn on **Enable Activities** and tick the supported platforms (Web/Desktop, iOS, Android).
+   - Under **Activities → URL Mappings**, set the Root Mapping: prefix `/`, target `sleepymiemoo.github.io/cannon-capture` (no `https://`, no trailing slash).
+2. Copy the **Application ID** (it is public). Then set it as a repository variable, not a secret: **Settings → Secrets and variables → Actions → Variables → New repository variable**, name `DISCORD_CLIENT_ID`, or run `gh variable set DISCORD_CLIENT_ID --body <id>`.
+3. Re-run the Pages workflow. The build passes the variable to the game as `VITE_DISCORD_CLIENT_ID`. Without it the game builds and plays the same everywhere; inside Discord it just skips the SDK.
+4. In Discord, turn on **Developer Mode** under **User Settings → Advanced**. Join a voice channel in a server, open the Activities (rocket) button, and pick the app. Until the app is published, only its owner and members of its developer team can launch it.
+
+Never commit or paste the **client secret**; nothing here uses it. For a local build with the ID, put `VITE_DISCORD_CLIENT_ID=<id>` in `.env.local` (git-ignored).
+
+**Not done yet:**
+
+- Rich presence (`setActivity`) needs the `rpc.activities.write` scope, so it needs OAuth: `authorize` plus `authenticate`, with the token exchanged on a server that holds the client secret.
+- Multiplayer ("Play with friends").
 
 ## Layout
 
@@ -337,6 +370,7 @@ In the repo settings, set **Pages → Build and deployment → Source** to **Git
 - `src/config` — palette, layout, tuning, and `kinds.ts` (the tower types: add a type there, give it a look in `Cannon.draw`, and the swap menu, editor, lanes and AI pick it up).
 - `src/render` — crisp high-DPI scaling, the zoom/pan `WorldCamera` shared by play and the editor, and the board surface.
 - `src/ui` — buttons, stars, the in-play tower swap menu, and the HTML panel overlay used by the editor and My maps.
+- `src/platform` — running as a Discord Activity (SDK handshake, external links, orientation).
 
 ## Credits
 
@@ -344,5 +378,5 @@ In the repo settings, set **Pages → Build and deployment → Source** to **Git
 
 ## Roadmap
 
-- **Discord Activity.** Embed the build with the Discord Embedded App SDK (auth, activity instance, iframe sizing).
+- **Discord Activity extras.** Sign-in and rich presence (needs a small token server), then multiplayer per activity instance.
 - **Multiplayer.** Share cannon ownership and shots between players, possibly with Colyseus.

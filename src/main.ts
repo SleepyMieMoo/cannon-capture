@@ -1,5 +1,7 @@
 import Phaser from 'phaser'
 import { theme } from './config/theme'
+import { DEBUG } from './debug'
+import { discord } from './platform/runtime'
 import { canvasSize, renderScale, watchRenderScale } from './render/resolution'
 import { BattleScene } from './scenes/BattleScene'
 import { EditorScene } from './scenes/EditorScene'
@@ -12,6 +14,16 @@ const parent = document.getElementById('app')
 if (!parent) throw new Error('Missing #app mount point')
 
 document.body.style.background = theme.bgCss
+
+// Discord Activity (src/platform/discord.ts): mark the page so CSS can respect Discord's
+// mobile safe areas, send external links through the Discord client, and start the SDK
+// handshake in the background. The game never waits for it; a normal tab skips all of this.
+if (discord.inDiscord) {
+  document.documentElement.classList.add('in-discord')
+  discord.interceptLinks(document)
+  void discord.start()
+}
+if (DEBUG.enabled || discord.inDiscord) (window as unknown as { __discord: typeof discord }).__discord = discord
 
 // The canvas matches the on-screen size x devicePixelRatio (see render/resolution.ts);
 // the world is still laid out at GAME_WIDTH x GAME_HEIGHT.
