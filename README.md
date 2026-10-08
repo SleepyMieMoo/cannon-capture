@@ -256,6 +256,33 @@ A share code is `CC1:` followed by the map's JSON in URL-safe base64, so it fits
    - Keep `size` if it isn't Small. Walls may carry an `angle` (radians).
 3. Add a map node for it in `NODES` in [`src/scenes/MapScene.ts`](src/scenes/MapScene.ts), then run `npm test`. The beatability checks cover it like any other level.
 
+## Performance overlay
+
+A small panel in the bottom-left corner shows how smoothly the game runs, for testing and bug reports.
+
+**Turning it on and off**
+
+- **Settings → Show performance**, on the main menu, or **Performance** in the battle's own Settings panel. This is remembered on the device, and it's the way to use inside Discord, where keys may not reach the game.
+- **F3**, or the backtick key **`**. Neither does anything while you're typing in a text field.
+- Add **`?perf`** to the address, e.g. https://sleepymiemoo.github.io/cannon-capture/?perf.
+- **×** on the panel hides it.
+
+**Buttons**
+
+- **Copy** puts a one-line report on the clipboard. Where the clipboard is blocked (some embedded frames), the report appears selected in a text box instead.
+- **More / Less** switches between all numbers and a compact view. Small screens start compact.
+
+**What it shows**
+
+- **FPS**, frames per second over the last second. Green is 55+, yellow is 30–55, red is under 30.
+- **Frame times** over the last 5 s: average, 1% low (the slowest 1% of frames) and worst. Below that, a graph of the last 4 s; the lines mark 60 and 30 FPS.
+- **sim / AI / look-ahead**: game logic per frame, as average / peak ms. The AI's share is part of sim, and Impossible's look-ahead is part of AI.
+- **update / render**: Phaser's whole update step, and its drawing step (CPU side only).
+- **Counts**: cannons, live shots and sounds playing.
+- **Setup**: canvas pixels × device pixel ratio, renderer, platform (web or Discord, desktop or touch/mobile) and build (commit and date).
+
+When hidden it costs nothing, apart from one key listener and one check per frame. When shown it reads the clock a few times a frame and redraws its text four times a second (about 0.3 ms per redraw). The code is in [`src/perf`](src/perf).
+
 ## Run locally
 
 ```bash
@@ -371,6 +398,7 @@ Never commit or paste the **client secret**; nothing here uses it. For a local b
 - `src/render` — crisp high-DPI scaling, the zoom/pan `WorldCamera` shared by play and the editor, and the board surface.
 - `src/ui` — buttons, stars, the in-play tower swap menu, and the HTML panel overlay used by the editor and My maps.
 - `src/platform` — running as a Discord Activity (SDK handshake, external links, orientation).
+- `src/perf` — the performance overlay (F3).
 
 ## Credits
 

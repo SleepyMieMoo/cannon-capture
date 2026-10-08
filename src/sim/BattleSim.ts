@@ -82,6 +82,9 @@ export class BattleSim {
    * are queued, then all applied the instant you resume (see resume()).
    */
   paused = false
+  /** Performance overlay: when true, step() adds the AIs' time to aiMs (the caller resets it). */
+  timeAi = false
+  aiMs = 0
   private queuedAims = new Map<Cannon, Cannon | Point>()
   private queuedKinds = new Map<Cannon, CannonKind>()
   /** Scratch list: shields with their barrier up this step. */
@@ -256,7 +259,13 @@ export class BattleSim {
   step(dt: number): void {
     if (this.ended || this.paused) return
     this.clock += dt
-    if (!this.isPuzzle && !this.aiOff) for (const ai of this.ais) ai.update(dt, this.cannons)
+    if (!this.isPuzzle && !this.aiOff) {
+      if (this.timeAi) {
+        const t0 = performance.now()
+        for (const ai of this.ais) ai.update(dt, this.cannons)
+        this.aiMs += performance.now() - t0
+      } else for (const ai of this.ais) ai.update(dt, this.cannons)
+    }
     this.stepShots(dt)
     this.checkOutcome()
   }

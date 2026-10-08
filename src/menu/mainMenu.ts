@@ -22,6 +22,8 @@ export interface MenuActions {
   setAudio(s: AudioSettings): void
   /** Play a sample pop at the current volume (after a change). */
   previewSound(): void
+  /** The performance overlay switch (optional so tests can leave it out). */
+  perf?: { get(): boolean; set(on: boolean): void; onChange(fn: (on: boolean) => void): () => void }
 }
 
 const icon = (svg: string): HTMLSpanElement => h('span', { innerHTML: svg, style: 'display:inline-flex' })
@@ -43,6 +45,7 @@ export class MainMenu {
   /** The button that opened each screen, focused again when you come back. */
   private readonly opener = new Map<MenuScreen, string>()
   private readonly onKey = (e: KeyboardEvent): void => this.key(e)
+  private readonly offPerf: () => void
 
   constructor(
     private readonly actions: MenuActions,
@@ -54,10 +57,17 @@ export class MainMenu {
     this.root = h('div.mm', { role: 'dialog', 'aria-label': BRAND.title })
     document.body.appendChild(this.root)
     window.addEventListener('keydown', this.onKey)
+    // F3 / backtick can flip the overlay while Settings is open: keep the switch in step.
+    this.offPerf =
+      actions.perf?.onChange((on) => {
+        const sw = this.root.querySelector<HTMLInputElement>('#mm-perf')
+        if (sw) sw.checked = on
+      }) ?? (() => {})
     this.render()
   }
 
   destroy(): void {
+    this.offPerf()
     window.removeEventListener('keydown', this.onKey)
     this.root.remove()
   }
@@ -266,6 +276,9 @@ export class MainMenu {
       sw.checked = v > 0
     })
     range.addEventListener('change', () => this.actions.previewSound())
+    const perf = this.actions.perf
+    const perfSw = perf ? h('input.mm-switch', { type: 'checkbox', role: 'switch', checked: perf.get(), id: 'mm-perf', dataset: { id: 'perf' } }) : null
+    perfSw?.addEventListener('change', () => perf?.set(perfSw.checked))
     const a = (href: string, text: string): HTMLAnchorElement => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text)
     return this.screenFrame('Settings', 'Saved on this device', [
       h('div.mm-set', {},
@@ -276,6 +289,13 @@ export class MainMenu {
           h('div.mm-note', {}, 'Shots pop; captures and broken barriers pop deeper. N mutes or unmutes during a battle. The title screen stays silent.'),
           h('div.mm-h', { style: 'margin-top:16px' }, 'In battle'),
           h('div.mm-note', {}, 'Auto-target (your guns re-aim by themselves when a target is captured) is switched in the battle’s own Settings, or per cannon with M. It starts on at the start of every game.'),
+          ...(perfSw
+            ? [
+                h('div.mm-h', { style: 'margin-top:16px' }, 'Performance'),
+                h('div.mm-row', {}, perfSw, h('label', { htmlFor: 'mm-perf' }, 'Show performance')),
+                h('div.mm-note', {}, 'A small corner panel with FPS and timings, with a Copy button for bug reports. Also F3 or ` (backtick), or add ?perf to the address.'),
+              ]
+            : []),
         ),
         h('div', {},
           h('div.mm-h', {}, 'Credits'),

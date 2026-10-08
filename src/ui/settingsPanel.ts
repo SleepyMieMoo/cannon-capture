@@ -7,7 +7,7 @@ const SWITCH_W = 44
 const SWITCH_H = 22
 
 /** What a press on the panel hit. */
-export type SettingsHit = 'auto' | 'mute' | 'volume' | 'close' | 'panel'
+export type SettingsHit = 'auto' | 'mute' | 'volume' | 'perf' | 'close' | 'panel'
 
 /** What the panel shows: the global auto-target toggle, and whether it can be changed here. */
 export interface SettingsState {
@@ -19,6 +19,8 @@ export interface SettingsState {
   muted: boolean
   /** False when the browser has no audio (the sound rows are greyed out). */
   audio: boolean
+  /** The performance overlay is shown (also F3 / backtick). */
+  perf: boolean
 }
 
 /**
@@ -33,6 +35,7 @@ export class SettingsPanel {
   private sw = { x: 0, y: 0, w: SWITCH_W + 160, h: SWITCH_H + 8 }
   private muteRow = { x: 0, y: 0, w: 0, h: 0 }
   private slider = { x: 0, y: 0, w: 0, h: 0 }
+  private perfRow = { x: 0, y: 0, w: 0, h: 0 }
   private closeAt = { x: 0, y: 0 }
   private hot: SettingsHit | null = null
   private readonly g: Phaser.GameObjects.Graphics
@@ -44,6 +47,8 @@ export class SettingsPanel {
   private readonly soundLabel: Phaser.GameObjects.Text
   private readonly soundValue: Phaser.GameObjects.Text
   private readonly soundNote: Phaser.GameObjects.Text
+  private readonly perfLabel: Phaser.GameObjects.Text
+  private readonly perfValue: Phaser.GameObjects.Text
 
   constructor(
     scene: Phaser.Scene,
@@ -67,6 +72,8 @@ export class SettingsPanel {
     this.soundLabel = text(14, theme.text, true).setText('Sound').setOrigin(0, 0.5)
     this.soundValue = text(13, theme.textMuted, true).setOrigin(1, 0.5)
     this.soundNote = text(12, theme.textMuted).setWordWrapWidth(W - PAD * 2).setLineSpacing(3)
+    this.perfLabel = text(14, theme.text, true).setText('Performance').setOrigin(0, 0.5)
+    this.perfValue = text(13, theme.textMuted, true).setOrigin(1, 0.5)
   }
 
   toggle(): void {
@@ -90,6 +97,7 @@ export class SettingsPanel {
     const inside = (r: { x: number; y: number; w: number; h: number }) => lx >= r.x && lx <= r.x + r.w && ly >= r.y && ly <= r.y + r.h
     if (inside(this.sw)) return 'auto'
     if (inside(this.muteRow)) return 'mute'
+    if (inside(this.perfRow)) return 'perf'
     if (inside({ x: this.slider.x - 8, y: this.slider.y - 12, w: this.slider.w + 16, h: this.slider.h + 24 })) return 'volume'
     return 'panel'
   }
@@ -106,7 +114,7 @@ export class SettingsPanel {
 
   draw(state: SettingsState): void {
     this.g.clear()
-    const parts = [this.title, this.label, this.value, this.note, this.close, this.soundLabel, this.soundValue, this.soundNote]
+    const parts = [this.title, this.label, this.value, this.note, this.close, this.soundLabel, this.soundValue, this.soundNote, this.perfLabel, this.perfValue]
     if (!this.open) {
       for (const p of parts) p.setVisible(false)
       return
@@ -132,7 +140,10 @@ export class SettingsPanel {
         ? 'Saved on this device. N mutes or unmutes. Pop sound: CreatorsHome (Pixabay).'
         : 'No sound in this browser. Pop sound: CreatorsHome (Pixabay).',
     )
-    const h = soundNoteY - y + this.soundNote.height + PAD
+    // Performance overlay switch: below the sound note.
+    const perfLineY = soundNoteY + this.soundNote.height + 12
+    const perfY = perfLineY + 24
+    const h = perfY - y + SWITCH_H / 2 + PAD
     this.box = { x, y, w: W, h }
     this.g.fillStyle(theme.hud, 0.97)
     this.g.fillRoundedRect(x, y, W, h, 12)
@@ -194,5 +205,23 @@ export class SettingsPanel {
     this.g.lineStyle(2, theme.hud, dim)
     this.g.strokeCircle(k, sliderY, this.hot === 'volume' ? 9 : 8)
     this.soundNote.setPosition(x + PAD, soundNoteY).setVisible(true)
+
+    this.g.lineStyle(1, theme.boardEdge, 1)
+    this.g.lineBetween(x + PAD, perfLineY, x + W - PAD, perfLineY)
+    this.perfRow = { x: x + PAD - 4, y: perfY - SWITCH_H / 2 - 4, w: W - PAD * 2 + 8, h: SWITCH_H + 8 }
+    if (this.hot === 'perf') {
+      this.g.fillStyle(theme.board, 1)
+      this.g.fillRoundedRect(this.perfRow.x, this.perfRow.y, this.perfRow.w, this.perfRow.h, 8)
+    }
+    this.g.fillStyle(state.perf ? theme.player : theme.grid, 1)
+    this.g.fillRoundedRect(sx, perfY - SWITCH_H / 2, SWITCH_W, SWITCH_H, SWITCH_H / 2)
+    this.g.fillStyle(state.perf ? theme.hud : theme.neutral, 1)
+    this.g.fillCircle(state.perf ? sx + SWITCH_W - SWITCH_H / 2 : sx + SWITCH_H / 2, perfY, SWITCH_H / 2 - 3)
+    this.perfLabel.setPosition(sx + SWITCH_W + 12, perfY).setVisible(true)
+    this.perfValue
+      .setText(state.perf ? 'Shown (F3)' : 'Hidden (F3)')
+      .setPosition(x + W - PAD, perfY)
+      .setColor(state.perf ? theme.text : theme.textMuted)
+      .setVisible(true)
   }
 }

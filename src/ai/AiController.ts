@@ -90,6 +90,8 @@ export interface LookaheadStats {
   steps: number
   frames: number
   maxFrameSteps: number
+  /** Total time spent playing look-aheads (ms), for the performance overlay. */
+  pumpMs: number
 }
 
 interface Candidate {
@@ -198,7 +200,7 @@ export class AiController {
   private guardAt = 0
   /** When Impossible last weighed a shield for each cannon. */
   private readonly guardTried = new Map<Cannon, number>()
-  readonly lookahead: LookaheadStats = { thinks: 0, sims: 0, totalMs: 0, maxThinkMs: 0, maxFrameMs: 0, steps: 0, frames: 0, maxFrameSteps: 0 }
+  readonly lookahead: LookaheadStats = { thinks: 0, sims: 0, totalMs: 0, maxThinkMs: 0, maxFrameMs: 0, steps: 0, frames: 0, maxFrameSteps: 0, pumpMs: 0 }
 
   constructor(readonly side: Side = 'enemy') {}
 
@@ -233,7 +235,7 @@ export class AiController {
     this.routes.clear()
     this.guardAt = 0
     this.guardTried.clear()
-    Object.assign(this.lookahead, { thinks: 0, sims: 0, totalMs: 0, maxThinkMs: 0, maxFrameMs: 0, steps: 0, frames: 0, maxFrameSteps: 0 })
+    Object.assign(this.lookahead, { thinks: 0, sims: 0, totalMs: 0, maxThinkMs: 0, maxFrameMs: 0, steps: 0, frames: 0, maxFrameSteps: 0, pumpMs: 0 })
     this.seed = `${world?.level.id ?? 'level'}:${this.side}:${difficulty}`
     this.rng = seededRandom(this.seed)
     this.swaps.reset(policy)
@@ -920,7 +922,9 @@ export class AiController {
     this.lookahead.steps += steps
     this.lookahead.frames += 1
     this.lookahead.maxFrameSteps = Math.max(this.lookahead.maxFrameSteps, steps)
-    this.lookahead.maxFrameMs = Math.max(this.lookahead.maxFrameMs, nowMs() - start)
+    const spentMs = nowMs() - start
+    this.lookahead.maxFrameMs = Math.max(this.lookahead.maxFrameMs, spentMs)
+    this.lookahead.pumpMs += spentMs
   }
 
   /** A copy of the round with this candidate (and the team's likely jobs) applied, ready to play forward. */

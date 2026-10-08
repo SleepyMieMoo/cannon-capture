@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { perf } from '../perf/PerfOverlay'
 import { applyAudioSettings, preloadSfx, previewPop } from '../audio/Sfx'
 import { loadAudioSettings, saveAudioSettings, type AudioSettings } from '../audio/audioSettings'
 import { BRAND } from '../config/brand'
@@ -61,6 +62,7 @@ export class TitleScene extends Phaser.Scene {
           applyAudioSettings(this.sound, s)
         },
         previewSound: () => previewPop(this),
+        perf: { get: () => perf.shown, set: (on) => perf.setShown(on), onChange: (fn) => perf.onChange(fn) },
       },
       data?.screen ?? 'home',
     )

@@ -1,4 +1,16 @@
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vitest/config'
+
+/** Build id for the performance overlay: short commit and its date (stable for the same commit). */
+function buildId(): string {
+  try {
+    const sha = (process.env.GITHUB_SHA ?? execSync('git rev-parse HEAD').toString()).trim().slice(0, 7)
+    const date = execSync(`git log -1 --format=%cs ${sha}`).toString().trim()
+    return `${sha} ${date}`
+  } catch {
+    return 'dev'
+  }
+}
 
 // Project site: https://sleepymiemoo.github.io/cannon-capture/
 // The build uses relative asset URLs (base './'), so the same files work on GitHub Pages
@@ -8,6 +20,9 @@ import { defineConfig } from 'vitest/config'
 // `npm run preview` serves the build under /cannon-capture/ so it matches the live site.
 export default defineConfig(({ command, isPreview }) => ({
   base: isPreview ? '/cannon-capture/' : command === 'build' ? './' : '/',
+  define: {
+    __BUILD_ID__: JSON.stringify(command === 'build' ? buildId() : 'dev'),
+  },
   build: {
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
