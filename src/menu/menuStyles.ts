@@ -83,6 +83,19 @@ export function injectMenuStyles(): void {
 .mm-seg { font: inherit; font-weight: bold; color: ${theme.text}; background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 10px; min-height: 40px; cursor: pointer; }
 .mm-seg:hover { border-color: ${gold}; }
 .mm-seg[aria-pressed="true"] { background: ${gold}; color: ${theme.ink}; border-color: ${gold}; }
+.mm-seg:disabled { cursor: default; }
+.mm-seg:disabled:hover { border-color: ${cssHex(theme.boardEdge)}; }
+.mm-seg:disabled[aria-pressed="true"]:hover { border-color: ${gold}; }
+.mm-seg:disabled:not([aria-pressed="true"]) { opacity: .6; }
+.mm-segs3 { grid-template-columns: repeat(3, 1fr); }
+.mm-segs3 .mm-seg { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px 2px; line-height: 1.15; }
+.mm-segs3 .mm-seg small { font-weight: normal; font-size: .78em; opacity: .85; }
+.mm-sub { font-size: .85em; font-weight: bold; color: ${theme.textMuted}; margin: 10px 0 4px; }
+.mm-switch:disabled { cursor: default; opacity: .7; }
+.mm-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mm-sides > div { background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 10px; padding: 6px 10px; min-width: 0; }
+.mm-sides small { display: block; color: ${theme.textMuted}; font-size: .78em; }
+.mm-sides b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mm-skins { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; }
 .mm-skin { font: inherit; font-weight: bold; font-size: 12px; color: ${theme.text}; background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 10px; padding: 4px 2px 5px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
 .mm-skin:hover { border-color: ${gold}; }

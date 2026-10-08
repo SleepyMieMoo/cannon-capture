@@ -12,6 +12,7 @@ import { withDifficulty } from '../editor/maps'
 import { CAMPAIGN, SKIRMISH } from '../levels'
 import { setRingScale } from '../entities/Cannon'
 import { drawBoardSurface } from '../render/boardSurface'
+import { SideGlow, glowColours, glowEdges } from '../render/sideGlow'
 import { bindSceneResolution } from '../render/resolution'
 import { BattleSim } from '../sim/BattleSim'
 import type { LevelDef } from '../types'
@@ -42,7 +43,8 @@ export class TitleBgScene extends Phaser.Scene {
     this.index = (data?.index ?? Math.floor(Math.random() * DEMO_LEVELS.length)) % DEMO_LEVELS.length
     const level = withDifficulty(DEMO_LEVELS[this.index], 'normal')
     this.add.graphics().fillStyle(theme.bg, 1).fillRect(-200, -200, GAME_WIDTH + 400, GAME_HEIGHT + 400)
-    drawBoardSurface(this, { x: 24, y: 88, w: 1152, h: 608 })
+    const board = { x: 24, y: 88, w: 1152, h: 608 }
+    drawBoardSurface(this, board)
     level.walls.forEach((rect) => new Wall(this, rect))
     this.fans = level.fans.map((def) => new Fan(this, def))
     this.fx = this.add.graphics().setDepth(3)
@@ -56,7 +58,13 @@ export class TitleBgScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, offSkin)
     // Your team colour too (and the AI's contrasting one); a new pick in Settings recolours it at once.
     applyTeamColours(vsAiColours(loadColour()))
-    const offColour = onColourChange((c) => applyTeamColours(vsAiColours(c)))
+    // Each side's half glows in its colour, like a round.
+    const glow = new SideGlow(this, board, glowEdges(this.sim.cannons, board))
+    glow.paint(glowColours(vsAiColours(loadColour())))
+    const offColour = onColourChange((c) => {
+      applyTeamColours(vsAiColours(c))
+      glow.paint(glowColours(vsAiColours(c)))
+    })
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, offColour)
     // Dimmed: the menu sits on top.
     this.add.graphics().setDepth(50).fillStyle(theme.bg, 0.2).fillRect(-200, -200, GAME_WIDTH + 400, GAME_HEIGHT + 400)

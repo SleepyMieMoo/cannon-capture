@@ -68,10 +68,11 @@ export function pauseLabel(x: SnapExtra | undefined, me: 0 | 1 | null, info: Roo
   return `${other} paused  ·  resumes in ${left} s  ·  queue orders now: ${other} won't see them until then`
 }
 
-/** The HUD's small line: pauses left and ping. */
-export function netLine(x: SnapExtra | undefined, me: 0 | 1 | null, rtt: number | null): string {
+/** The HUD's small line: pauses left (or "pauses off", the host's setting) and ping. */
+export function netLine(x: SnapExtra | undefined, me: 0 | 1 | null, rtt: number | null, pausesOff = false): string {
   const parts: string[] = []
-  if (x && me !== null) parts.push(`${x.pl[me]} pause${x.pl[me] === 1 ? '' : 's'} left`)
+  if (pausesOff) parts.push('pauses off')
+  else if (x && me !== null) parts.push(`${x.pl[me]} pause${x.pl[me] === 1 ? '' : 's'} left`)
   if (me === null) parts.push('watching')
   parts.push(rtt === null ? '… ms' : `${rtt} ms`)
   return parts.join('  ·  ')
