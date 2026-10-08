@@ -1,6 +1,6 @@
 import { cssHex, lerpColor, shade, sideColor, theme } from '../config/theme'
 import { SKIN_SHAPE, type SkinId } from '../config/skins'
-import { BRICK, GLASS, GLASS_RIM, ROCK, VOID_COLOURS } from '../config/obstacles'
+import { BRICK, GLASS, GLASS_RIM, PORTAL, ROCK, VOID_COLOURS } from '../config/obstacles'
 
 /** Small inline SVGs for the menu (static strings, crisp at any DPI). */
 
@@ -108,6 +108,10 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
   const voidEdge = cssHex(VOID_COLOURS.edge)
   const voidRim = cssHex(VOID_COLOURS.rim)
   const voidSpark = cssHex(VOID_COLOURS.spark)
+  const teal = cssHex(PORTAL.colours[0])
+  // A portal mouth: dark well, rim and swirl in the pair's colour, a ring glyph and a facing notch (pointing right).
+  const portal = (x: number, y: number, col: string): string =>
+    `<circle cx="${x}" cy="${y}" r="21" fill="${col}" fill-opacity=".14"/><circle cx="${x}" cy="${y}" r="16" fill="#07090c" stroke="${col}" stroke-width="3"/><path d="M${x - 9} ${y - 3}q6-9 13-2M${x + 9} ${y + 3}q-6 9-13 2M${x - 3} ${y + 9}q-9-6-2-13" stroke="${col}" stroke-opacity=".75" stroke-width="2" fill="none"/><circle cx="${x}" cy="${y}" r="3.5" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.5"/><path d="M${x + 17} ${y - 4}l6 4-6 4z" fill="${col}"/>`
   const brick = cssHex(BRICK.base)
   const brickDark = cssHex(BRICK.dark)
   const brickLight = cssHex(BRICK.light)
@@ -201,6 +205,13 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
     text: 'Brick walls bounce shots like any wall, but every hit wears them down, whichever side fired it. They crack, then crumble for good and never come back, opening a new lane. The AI shoots them down when they hide its targets.',
     art: svg(
       `${cannon(34, 50, gold, 0, 13)}<line x1="56" y1="50" x2="136" y2="50" stroke="${gold}" stroke-width="2.5" stroke-dasharray="6 5"/>${bricks(140, 16, 6)}<path d="M146 18l4 9-3 8 5 9-2 10M158 50l-4 8 3 9-2 9" stroke="${brickCrack}" stroke-width="1.8" fill="none"/><rect x="172" y="30" width="7" height="5" rx="1" fill="${brick}" transform="rotate(25 175 32)"/><rect x="182" y="52" width="6" height="4" rx="1" fill="${brickLight}" transform="rotate(-30 185 54)"/><rect x="176" y="68" width="5" height="4" rx="1" fill="${brickDark}" transform="rotate(40 178 70)"/>${cannon(212, 50, pink, Math.PI, 12)}${label(120, 96, 'cracks, then crumbles for good', muted, 9)}`,
+    ),
+  },
+  {
+    title: 'Portals',
+    text: 'A shot that falls into a portal comes out of its twin (same colour and mark) at the same speed. The notch on each rim shows its facing: same facing, the shot flies on the same way; otherwise it turns by the difference. No free range: the distance carries on.',
+    art: svg(
+      `${cannon(30, 62, gold, -0.12, 12)}<line x1="50" y1="60" x2="80" y2="56" stroke="${gold}" stroke-width="2.5" stroke-dasharray="6 5"/>${portal(96, 54, teal)}<rect x="128" y="14" width="12" height="74" rx="3" fill="${edge}"/>${portal(170, 26, teal)}<line x1="188" y1="24" x2="222" y2="20" stroke="${gold}" stroke-width="2.5" stroke-dasharray="6 5"/><path d="M110 70q30 14 56-30" stroke="${teal}" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="3 4" fill="none"/>${label(120, 98, 'in one, out the other', muted, 9)}`,
     ),
   },
   {
