@@ -1,5 +1,8 @@
 import { CONTRAST, SKINS, SKIN_LABEL } from '../config/skins'
 import { loadSkin, saveSkin } from './skinPref'
+import { CONTRAST_COLOUR, TEAM_COLOUR, TEAM_COLOURS, vsAiColours, type TeamColourId } from '../config/teamColours'
+import { applyTeamColours, cssHex } from '../config/theme'
+import { loadColour, saveColour } from './colourPref'
 import { BRAND } from '../config/brand'
 import { MAP_SIZES } from '../levels/board'
 import { drawThumb } from '../editor/thumb'
@@ -8,7 +11,7 @@ import { loadProgress } from '../progress'
 import { AI_LEVELS, type AiLevel, type LevelDef } from '../types'
 import type { AudioSettings } from '../audio/audioSettings'
 import { h } from '../ui/overlay'
-import { HOWTO, ICONS, KEYS, skinPreview } from './art'
+import { howtoTips, ICONS, KEYS, skinPreview } from './art'
 import { DIFFICULTY, loadMenuPrefs, pickMap, puzzleChoices, saveMenuPrefs, vsAiMaps, type MenuPrefs, type PuzzleChoice } from './menuModel'
 import { injectMenuStyles } from './menuStyles'
 import { friendsScreen, lobbyScreen, type MenuKit, type OnlineMenu } from './onlineMenu'
@@ -52,6 +55,8 @@ export class MainMenu {
   private readonly onKey = (e: KeyboardEvent): void => this.key(e)
   private readonly offPerf: () => void
   private teardown: (() => void)[] = []
+  /** Redraw this screen's map thumbnails (they show your team colours). */
+  private thumbs: (() => void)[] = []
   private readonly kit: MenuKit = {
     button: (id, label, onClick, opts) => this.button(id, label, onClick, opts),
     screenFrame: (title, sub, body, footer) => this.screenFrame(title, sub, body, footer),
@@ -65,6 +70,8 @@ export class MainMenu {
     start: MenuScreen = 'home',
   ) {
     injectMenuStyles()
+    // The menu's pictures (How to play, previews) use your colours.
+    applyTeamColours(vsAiColours(loadColour()))
     this.nav = new MenuNav(start)
     this.prefs = loadMenuPrefs()
     this.root = h('div.mm', { role: 'dialog', 'aria-label': BRAND.title })
@@ -123,6 +130,7 @@ export class MainMenu {
 
   private runTeardown(): void {
     for (const fn of this.teardown.splice(0)) fn()
+    this.thumbs = []
   }
 
   private render(focusId?: string): void {
@@ -225,6 +233,7 @@ export class MainMenu {
     const card = (c: MapChoice): HTMLButtonElement => {
       const canvas = h('canvas')
       drawThumb(canvas, c.level, 168)
+      this.thumbs.push(() => drawThumb(canvas, c.level, 168))
       const el = h('button.mm-card', { type: 'button', dataset: { id: 'map-' + c.id }, title: c.name, 'aria-pressed': String(c.id === map.id) },
         canvas,
         h('div.n', {}, c.name),
@@ -263,7 +272,7 @@ export class MainMenu {
       })
       return b
     })
-    return this.screenFrame('Play vs AI', 'Pick a map and how smart pink plays', [
+    return this.screenFrame('Play vs AI', 'Pick a map and how smart the AI plays', [
       h('div.mm-play', {},
         h('div', {},
           h('div.mm-h', {}, 'Map'),
@@ -275,9 +284,11 @@ export class MainMenu {
           h('div.mm-h', {}, 'Difficulty'),
           h('div.mm-segs', {}, ...segs),
           blurb,
-          h('div.mm-note', {}, 'Every level fires and turns like you do: difficulty is only how well pink thinks.'),
+          h('div.mm-note', {}, 'Every level fires and turns like you do: difficulty is only how well the AI thinks.'),
           h('div.mm-h', { style: 'margin-top:14px' }, 'Your skin'),
           this.skinPicker(true),
+          h('div.mm-h', { style: 'margin-top:10px' }, 'Your colour'),
+          this.colourPicker(true),
         ),
       ),
     ],
@@ -291,6 +302,7 @@ export class MainMenu {
     const card = (p: PuzzleChoice, i: number): HTMLButtonElement => {
       const canvas = h('canvas')
       drawThumb(canvas, p.level, 168)
+      this.thumbs.push(() => drawThumb(canvas, p.level, 168))
       const stars = p.custom ? '' : '★'.repeat(p.stars) + '☆'.repeat(3 - p.stars)
       const el = h('button.mm-card', { type: 'button', dataset: { id: 'puzzle-' + p.id }, title: p.name },
         canvas,
@@ -316,11 +328,11 @@ export class MainMenu {
    */
   private skinPicker(small: boolean): HTMLElement {
     let skin = loadSkin()
-    const vsText = (): string => `Pink (the AI) wears ${SKIN_LABEL[CONTRAST[skin]]}.`
+    const vsText = (): string => `The AI wears ${SKIN_LABEL[CONTRAST[skin]]}.`
     const vs = h('div.mm-note', {}, vsText())
     const btns: HTMLButtonElement[] = SKINS.map((s) => {
       const b = h(small ? 'button.mm-skin.small' : 'button.mm-skin', { type: 'button', dataset: { id: (small ? 'skin-s-' : 'skin-') + s }, 'aria-pressed': String(s === skin), title: SKIN_LABEL[s] },
-        h('span.pv', { innerHTML: skinPreview(s) }),
+        h('span.pv', { innerHTML: skinPreview(s), dataset: { pvSkin: s } }),
         h('span.n', {}, SKIN_LABEL[s]),
       )
       b.addEventListener('click', () => {
@@ -328,10 +340,52 @@ export class MainMenu {
         saveSkin(s)
         for (const x of btns) x.setAttribute('aria-pressed', String(x === b))
         vs.textContent = vsText()
+        this.refreshPreviews()
       })
       return b
     })
     return h('div', {}, h(small ? 'div.mm-skins.small' : 'div.mm-skins', { role: 'group', 'aria-label': 'Cannon skin' }, ...btns), vs)
+  }
+
+  /**
+   * The team colour picker: eight swatches, each a cannon in that colour and
+   * your skin. `small` is the compact row on Play vs AI (names on hover and
+   * in the line below). The line below says which colour the AI wears.
+   */
+  private colourPicker(small: boolean): HTMLElement {
+    let colour = loadColour()
+    const vs = h('div.mm-note.mm-vs', {})
+    const dot = (c: TeamColourId): HTMLElement => h('i', { style: `background:${cssHex(TEAM_COLOUR[c].hex)}` })
+    const vsText = (): void => {
+      const ai = CONTRAST_COLOUR[colour]
+      vs.replaceChildren(...(small ? [dot(colour), `${TEAM_COLOUR[colour].label}. `] : []), 'The AI wears ', dot(ai), `${TEAM_COLOUR[ai].label}.`)
+    }
+    vsText()
+    const btns: HTMLButtonElement[] = TEAM_COLOURS.map((c) => {
+      const b = h(small ? 'button.mm-skin.small' : 'button.mm-skin', { type: 'button', dataset: { id: (small ? 'colour-s-' : 'colour-') + c }, 'aria-pressed': String(c === colour), title: TEAM_COLOUR[c].label },
+        h('span.pv', { innerHTML: skinPreview(loadSkin(), 'player', TEAM_COLOUR[c].hex), dataset: { pvColour: c } }),
+        h('span.n', {}, TEAM_COLOUR[c].label),
+      )
+      b.addEventListener('click', () => {
+        colour = c
+        // The title's demo battle and the menu's pictures recolour at once.
+        applyTeamColours(vsAiColours(c))
+        saveColour(c)
+        for (const x of btns) x.setAttribute('aria-pressed', String(x === b))
+        vsText()
+        this.refreshPreviews()
+      })
+      return b
+    })
+    return h('div', {}, h(small ? 'div.mm-skins.colours.small' : 'div.mm-skins.colours', { role: 'group', 'aria-label': 'Team colour' }, ...btns), vs)
+  }
+
+  /** Skin previews show your colour and colour swatches your skin: redraw both after either changes. */
+  private refreshPreviews(): void {
+    const skin = loadSkin()
+    for (const el of this.root.querySelectorAll<HTMLElement>('[data-pv-skin]')) el.innerHTML = skinPreview(el.dataset.pvSkin as typeof skin)
+    for (const el of this.root.querySelectorAll<HTMLElement>('[data-pv-colour]')) el.innerHTML = skinPreview(skin, 'player', TEAM_COLOUR[el.dataset.pvColour as TeamColourId].hex)
+    for (const draw of this.thumbs) draw()
   }
 
   private settings(): HTMLElement {
@@ -376,6 +430,9 @@ export class MainMenu {
           h('div.mm-h', {}, 'Cannon skin'),
           this.skinPicker(false),
           h('div.mm-note', {}, 'Only the body’s shape: the barrel still shows the type, the ring still shows the owner. A captured cannon takes its new owner’s skin. Online, each player wears their own; if you both pick the same, the pink side wears another.'),
+          h('div.mm-h', { style: 'margin-top:16px' }, 'Team colour'),
+          this.colourPicker(false),
+          h('div.mm-note', {}, 'Your cannons, shots and capture colour. The rings don’t change: light is always yours, red always the enemy’s. Online, each player wears their own unless the two are too alike; then the pink side wears the best contrast.'),
           h('div.mm-h', { style: 'margin-top:16px' }, 'Credits'),
           h('ul.mm-credits', {},
             h('li', {}, h('b', {}, 'Game: '), 'SleepyMie'),
@@ -391,7 +448,7 @@ export class MainMenu {
   private howto(): HTMLElement {
     return this.screenFrame('How to play', 'Capture every cannon to win', [
       h('div.mm-how', {},
-        ...HOWTO.map((t, i) => {
+        ...howtoTips().map((t, i) => {
           const tip = h(t.wide ? 'div.mm-tip.wide' : 'div.mm-tip', {}, h('div', { innerHTML: t.art }), h('b', {}, t.title), h('span', {}, t.text))
           if (i === 0) tip.dataset.first = ''
           return tip

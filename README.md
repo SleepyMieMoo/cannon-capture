@@ -12,11 +12,11 @@ It's a standalone browser game with Play vs AI (pick a map and a difficulty), pu
 
 The title screen shows a live AI-vs-AI battle, dimmed and silent, behind the menu. It cycles through Skirmish and the campaign's battle boards. It sleeps while the tab is hidden.
 
-- **Play vs AI** opens a picker. Choose a map (Skirmish, the campaign's five battle boards, or your own battle maps from My maps) and a difficulty (Easy, Normal, Hard or Impossible, each with a one-line description), then **Start battle**. A compact **Your skin** row under the difficulty changes your cannon skin (the same setting as in Settings) and shows the skin pink will wear. The last map and difficulty are remembered on this device (`cannon-capture:menu:v1`). The campaign levels themselves don't change: here they're plain battles at your difficulty, without the campaign hint, par or stars.
+- **Play vs AI** opens a picker. Choose a map (Skirmish, the campaign's five battle boards, or your own battle maps from My maps) and a difficulty (Easy, Normal, Hard or Impossible, each with a one-line description), then **Start battle**. A compact **Your skin** row under the difficulty changes your cannon skin, and a **Your colour** row below it changes your team colour (the same settings as in Settings). Each shows what the AI will wear. The last map and difficulty are remembered on this device (`cannon-capture:menu:v1`). The campaign levels themselves don't change: here they're plain battles at your difficulty, without the campaign hint, par or stars.
 - **Puzzles** lists the campaign's five puzzles, all open here, with their stars. Wins count toward the campaign. Your own puzzle maps are listed below them. After a win, **Next puzzle** goes to the next one.
 - **Levels** is the original ten-level campaign map (unlocks and stars as before). The label lives in `src/config/brand.ts`, so it can become "Bonus" with a one-line change.
 - **Map editor** and **My maps** (play, edit, rename, share, `.json`, import a share code or file) are unchanged.
-- **Settings** has sound on/off, volume, your **cannon skin** (all saved on this device) and credits, including the Pixabay credit. Auto-target is explained there but stays an in-battle setting.
+- **Settings** has sound on/off, volume, your **cannon skin** and **team colour** (all saved on this device) and credits, including the Pixabay credit. Auto-target is explained there but stays an in-battle setting.
 - **How to play** has illustrated tips (aim, capture, swap type, auto-target, pause, camera) and the keys.
 - **Play with friends** plays online against a friend (see [Online player vs player](#online-player-vs-player)). Inside the Discord Activity it still shows as "Coming soon".
 - **Back** (top left of every screen) or **Esc** goes up one screen. Arrow keys and Tab move between buttons, Enter picks, and everything works by touch. Phone and embedded-frame sizes fit without the page scrolling; long lists scroll inside their panel.
@@ -28,9 +28,9 @@ The title screen shows a live AI-vs-AI battle, dimmed and silent, behind the men
 
 ## How to play
 
-You are gold. The enemy is strawberry pink. Warm grey cannons are neutral and do not fire until someone captures them.
+By default you are gold and the enemy is strawberry pink (pick another [team colour](#team-colours) in Settings). Warm grey cannons are neutral and do not fire until someone captures them. The rest of this page says gold and pink for the two default colours.
 
-**Ownership rings.** Every cannon you own (the ones you can steer) wears a solid light gold-white ring. Every enemy cannon wears a deep red ring, darker and more saturated than the pink so it stands out on a pink-tinted body. Neutrals have no ring. A missing ring is the clearest way to say "nobody's", and a faint one would only compete with the capture track. The ring shows the current owner only. It flips the moment a cannon is captured and ignores the capture tint, so mid-fight a cannon that has gone orange still says whose it is. Light against red also differs strongly in brightness, so it works with red-green colour blindness. On small screens and when zoomed out the ring is drawn thicker, so it stays about 2.4 px wide on screen (up to a cap). The HUD legend shows the same rings.
+**Ownership rings.** Every cannon you own (the ones you can steer) wears a solid light gold-white ring. Every enemy cannon wears a deep red ring, darker and more saturated than the pink so it stands out on a pink-tinted body. Rings never change with team colours: every preset was chosen so the red ring reads on it (there is no red preset). Neutrals have no ring. A missing ring is the clearest way to say "nobody's", and a faint one would only compete with the capture track. The ring shows the current owner only. It flips the moment a cannon is captured and ignores the capture tint, so mid-fight a cannon that has gone orange still says whose it is. Light against red also differs strongly in brightness, so it works with red-green colour blindness. On small screens and when zoomed out the ring is drawn thicker, so it stays about 2.4 px wide on screen (up to a cap). The HUD legend shows the same rings.
 
 **Cannon skins.** A cannon's body shape is its owner's skin: **Classic** (round), **Plated** (rounded square with rivets), **Spiked** (six-point star) or **Hex** (a hexagon with a darker frame, bold enough to tell from round on a phone). Like the ring, the skin follows the current owner, so a captured cannon changes shape along with its ring. Neutrals are always grey Classic with no ring. A skin only changes the outline. The barrel and its badge still show the type, the ring still shows the owner, and shield barriers look the same.
 
@@ -38,6 +38,27 @@ You are gold. The enemy is strawberry pink. Warm grey cannons are neutral and do
 - The default is **Plated**. Neutrals are round, so a round default would give your cannons the same outline as the unowned ones. Plated (square) against the AI's Spiked (star) is also the pair that stays clearest on a phone.
 - Your opponent always wears a different skin. The AI wears the one that contrasts most with yours: Classic, Plated and Hex get Spiked, and Spiked gets Plated, so round never faces hex. Puzzles, editor playtests, the editor itself and the title screen's demo battle use your skin for gold and the AI's pick for pink.
 - Online, each player wears their own pick. If you both picked the same, the pink side wears the contrasting one instead. The server decides once per match and sends it with `start`, so both players and spectators see the same skins. A skin you change in Settings applies from the next room you join. In the `?pvpdev` test mode the host decides by the same rule.
+
+<a id="team-colours"></a>**Team colours.** Your cannons' colour is one of eight presets, picked to sit well on the Dark Choco board (no free colour picker, so every pairing can be checked in advance):
+
+| Preset | Hex | Band |
+| --- | --- | --- |
+| Gold (your default) | `#ffc800` | light |
+| Strawberry (the AI's default) | `#f2637e` | mid |
+| Tangerine | `#ff7f24` | mid |
+| Peach | `#ffbc94` | light |
+| Lime | `#b8e655` | light |
+| Sky | `#86cbff` | light |
+| Blueberry | `#5b9dff` | mid |
+| Grape | `#b48cff` | mid |
+
+There is no red (the enemy ring is red), no mint or teal (the fan is mint), and no near-white (hits flash white). The four light presets and the four mid presets sit in two brightness bands, so a light-vs-mid pair also differs in brightness, which survives colour blindness and greyscale.
+
+- Pick yours in **Settings → Team colour** (under Cannon skin; each swatch is a cannon in that colour wearing your skin), or in the compact **Your colour** row on Play vs AI. It's saved on this device (`cannon-capture:colour:v1`). Both pickers say which colour the AI will wear.
+- Bullets, the capture tint and capture ring, the top-bar legend dots, shield barriers, heal popups, aim lines, the result screen, the editor, map thumbnails and the title screen's demo battle all follow the team colours. Buttons, the countdown and other menu accents stay gold.
+- **Compatibility matrix** ([`src/config/teamColours.ts`](src/config/teamColours.ts), tested in `tests/teamColours.test.ts`). Every pair is scored in OKLab under five visions: normal, protanopia, deuteranopia, tritanopia (Machado 2009 simulations) and greyscale. Each vision has a minimum distance (0.15 for normal, 0.07 for the others), and a pair's score is its worst vision divided by that vision's minimum. A pair is compatible when the score is at least 1. The tests also check every preset against the dark board, the grey neutral, the red and light rings, the mint fan and the white hit flash, and that a cannon half-way through a capture (its tint blended toward the attacker) still differs from both teams' bodies.
+- **The AI's colour** is the most contrasting preset to yours. Scores above 1.5 count as equally comfortable, and ties go to strawberry, then gold, so the defaults stay gold vs pink: Gold → Strawberry, Strawberry → Gold, Tangerine → Lime, Peach → Blueberry, Lime → Strawberry, Sky → Strawberry, Blueberry → Gold, Grape → Gold. The weakest of these is Tangerine vs Lime under deuteranopia, where they differ mainly in brightness (0.125, still well above 0.07).
+- **Online**, each player keeps their colour unless the pair fails the matrix (Sky with Blueberry, say, or both picking the same). Then the pink-seat player wears the best contrast to the gold seat's colour instead, and their banner says so. The server decides once per match and sends it in `start`, so both players and spectators agree. In `?pvpdev` the host decides by the same rule. Puzzles, editor playtests and the demo use your colour and the AI's pick.
 
 1. Click one of your cannons to select it (it gets a pulsing ring).
 2. Click anywhere on the board to set that spot as its aim point, or click an enemy or neutral cannon to aim at it. Free aiming lets you lead shots, bank them off walls, or let a fan carry them.
@@ -199,10 +220,10 @@ The editor builds a normal `LevelDef` (the same format as the campaign), so anyt
 
 Everything sits in two slim bars at the top, so the board gets the full width:
 
-- **Top toolbar:** the tools (Move, Gold, Enemy, Neutral, Wall, Fan, Delete), undo/redo, Snap, **Map ▾**, **Share ▾**, **?** (controls), then **Playtest**, **Save**, **My maps** and **Menu**.
+- **Top toolbar:** the tools (Move, Yours, Enemy, Neutral, Wall, Fan, Delete), undo/redo, Snap, **Map ▾**, **Share ▾**, **?** (controls), then **Playtest**, **Save**, **My maps** and **Menu**.
 - **Second bar:** the map name, the settings for whatever is selected, the save/validation status, and the zoom − / % / + / Fit buttons.
 
-- **Place:** pick a tool and click the board. The tools are gold, enemy and neutral cannons, walls, and fans.
+- **Place:** pick a tool and click the board. The tools are your, enemy and neutral cannons, walls, and fans.
 - **Move:** drag anything. A short click just selects it.
 - **Delete:** use the Delete tool, or select something and press Del.
 - **Edit the selection** right in the second bar:
@@ -218,7 +239,7 @@ Everything sits in two slim bars at the top, so the board gets the full width:
   - an optional hint banner
 - **Share ▾:** get or paste a share code (`CC1:...`), or download/upload a `.json` file.
 - **Playtest** jumps straight into the map, starting at the editor's view (zoom capped at near). **Editor** (top right, or the end screen) brings you back to the same working copy at exactly the zoom and position you left.
-- **Validation:** a map needs at least one gold cannon. Battles also need an enemy. Puzzles need neutrals and no enemy.
+- **Validation:** a map needs at least one of your (player) cannons. Battles also need an enemy. Puzzles need neutrals and no enemy.
 - The working copy is kept as a draft in `localStorage`, so a reload or a playtest never loses it. The camera (zoom and position) is saved with the draft and with each saved map, so a map reopens where you left it. A new map opens fitted to the board.
 
 ### Map sizes and the camera
@@ -246,7 +267,7 @@ The enemy AI works on any size and any number of cannons. It still plans with la
 
 | Key | Action |
 | --- | --- |
-| 1 / 2 / 3 | Place a gold / enemy / neutral cannon |
+| 1 / 2 / 3 | Place one of your / an enemy / a neutral cannon |
 | 4 / 5 | Place a wall / fan |
 | V | Move/select tool |
 | X | Delete tool |
@@ -449,7 +470,8 @@ Rules (all in [`src/config/pvpRules.ts`](src/config/pvpRules.ts)):
 - **Fair maps only**: Skirmish and three boards mirrored left/right (Wind Gap, Four Walls, Narrow Duel). No Huge maps. The same tower types and swap rules as single player.
 - **3-2-1-Go, then 5 minutes.** The server runs the countdown and sends it in its snapshots, so both players and anyone watching see the same 3, 2, 1. Orders work during it; firing and the 5-minute clock start at Go. A rematch counts down again. Take every cannon to win. When time runs out, whoever holds the most cannons wins; equal is a draw. Paused time doesn't count.
 - **Pauses**: 3 per player per match, each up to 30 s, not during the countdown (orders already work then, and a pause would only hold up the other player). Both screens pause. Orders you queue during a pause stay hidden from the other player until the round resumes. Only the player who paused can resume early.
-- **You are always gold** on your own screen. Sides swap every match.
+- **You always wear your own colour** and the light "yours" rings, on your screen and on everyone else's. Sides swap every match. (Before team colours, the pink seat's screen recoloured them gold. That swap is gone: the board still flips so your cannons are "yours", but colours follow the person, so your friend and any spectator see you in the same colour you see yourself in.)
+- **Team colours**: each player keeps their pick unless the pair fails the compatibility matrix, then the pink seat gets the best contrasting colour (see [Team colours](#team-colours)). Your `hello` carries your `colour`, and `start` carries `colours` (gold seat first). Both are optional: an older server sends no colours, and the game then shows your pick against the AI's contrast for it; an older game ignores them and shows gold vs pink.
 - **Skins**: each player wears their own pick (see [Cannon skins](#how-to-play)). On a tie, the pink side wears the contrasting skin. Your `hello` carries your skin, and the server's `start` carries both, gold first. Both are optional fields, so older games and servers still work: an older server's `start` has no skins, and the game then shows your pick against its contrast.
 - **Rematch** starts when both players press it (R on the end screen).
 - **Dropping out**: you have 45 s to come back (reload, or the same tab reconnects by itself) and keep your seat. After that, or if you leave, a Hard AI plays your side for the rest of the match. A room stays open while anyone is in it; if the host leaves, the other player becomes host.
@@ -481,16 +503,16 @@ Deploys: `.github/workflows/server.yml` tests and deploys the Worker on pushes t
 
 This was the step before online play (above), and it still works. Two copies of the game in **one browser** play each other. Nothing leaves the browser, and no account or server is needed. It is hidden behind `?pvpdev`:
 
-- **Split view**: [`?pvpdev=split`](https://sleepymiemoo.github.io/cannon-capture/?pvpdev=split) shows both players side by side. Left is the host, who plays gold. Right is player 2, who plays pink. Click a side to play it. This is the easiest way to try it alone.
-- **Two windows**: open [`?pvpdev`](https://sleepymiemoo.github.io/cannon-capture/?pvpdev), pick a map, then press **Host (gold)** and then **Open player 2 window**. Keep both windows in sight: a browser stops drawing a tab that is hidden behind another one, and the round only runs while the host's window is drawn. You can also join from any other window of the same browser: open `?pvpdev`, type the same room code and press **Join (pink)**.
-- Ownership rings online: each player's own cannons wear the light "yours" ring and the other player's the red one, whatever colour they are shown in (also with `&gold=0`). Spectators see the gold side with the light ring and the pink side with the red one.
-- Extra switches: `&gold=0` shows player 2 their own cannons in pink (by default each player sees themselves as gold). `&lag=150&jitter=50` fakes a slow network. `&map=crossfire` picks the host's map, and `&role=host|join&room=abcd` starts straight away.
+- **Split view**: [`?pvpdev=split`](https://sleepymiemoo.github.io/cannon-capture/?pvpdev=split) shows both players side by side. Left is the host, right is player 2, each in their own team colour. Click a side to play it. This is the easiest way to try it alone.
+- **Two windows**: open [`?pvpdev`](https://sleepymiemoo.github.io/cannon-capture/?pvpdev), pick a map, then press **Host** and then **Open player 2 window**. Keep both windows in sight: a browser stops drawing a tab that is hidden behind another one, and the round only runs while the host's window is drawn. You can also join from any other window of the same browser: open `?pvpdev`, type the same room code and press **Join**.
+- Ownership rings online: each player's own cannons wear the light "yours" ring and the other player's the red one, whatever their team colour. Spectators see the gold seat with the light ring and the pink seat with the red one.
+- Extra switches: `&lag=150&jitter=50` fakes a slow network. `&map=crossfire` picks the host's map, and `&role=host|join&room=abcd` starts straight away.
 
 How it works:
 
 - **The host is the authority.** The host's game runs the round in fixed 1/60 s steps (`src/sim/fixedStep.ts`). It sends a snapshot of every cannon and shot 20 times a second (`src/net/snapshot.ts`, about 10 KB/s of JSON on a small map). Player 2 never runs the round. Their screen shows the snapshots about 100 ms late, blending between two snapshots, and replays the host's events (shots, sparks, captures, sounds) when the picture reaches them.
 - **One order API.** Every click, key and menu choice is an `Order`: aim, swap, auto, autoAll, pause or resume (`src/sim/orders.ts`). Single player sends its orders through the same `applyOrder` as the network, which checks that the order is for that side's own cannons. Orders from the network are shape-checked first.
-- **Side swap.** Player 2's copy swaps gold and pink, so their own cannons are "yours" and the normal battle screen works unchanged.
+- **Side swap.** Player 2's copy swaps the two sides (but not the colours), so their own cannons are "yours" and the normal battle screen works unchanged.
 - **The transport** (`src/net/transport.ts`) is a `BroadcastChannel` here. The messages are plain JSON (`src/net/pvp.ts`), so a server (a WebSocket) can take the host's place later.
 - **Rules for now (not final):** there is no AI. A side wins when the other holds no cannons (neutrals may be left). Either player can pause or resume, and the menu doesn't pause. A restart from either side starts a new round for both.
 

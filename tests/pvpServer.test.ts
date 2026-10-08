@@ -448,6 +448,51 @@ describe('online room: skins', () => {
   })
 })
 
+describe('online room: team colours', () => {
+  const twoPlayers = (colourA?: string, colourB?: string, watcher = false) => {
+    const s = setup()
+    const say = (token: string, name: string, colour?: string) => {
+      const c = new FakeConn(s.host, s.room)
+      c.say({ t: 'hello', token, name, ...(colour ? { colour } : {}) })
+      return c
+    }
+    const a = say(TOKEN_A, 'A', colourA)
+    const b = say(TOKEN_B, 'B', colourB)
+    const w = watcher ? say('token-wwwwwwww', 'W') : null
+    a.say({ t: 'start' })
+    const end = () => {
+      for (const c of s.room.match!.sim.cannons) if (c.side === 'enemy') c.side = 'player'
+      s.run(100)
+      a.say({ t: 'rematch', on: true })
+      b.say({ t: 'rematch', on: true })
+    }
+    return { ...s, a, b, w, end }
+  }
+
+  it('each keeps their pick when the two go together; players and watchers get the same colours, gold seat first', () => {
+    const { a, b, w, host } = twoPlayers('blueberry', 'peach', true)
+    for (const c of [a, b, w!]) expect(c.last('start').colours).toEqual({ player: 'blueberry', enemy: 'peach' })
+    expect(host.saved?.seats[0]?.colour).toBe('blueberry')
+  })
+
+  it('a clashing pair: the pink seat wears the best contrast to gold’s; colours follow their players when sides swap', () => {
+    const { a, b, end } = twoPlayers('sky', 'blueberry')
+    expect(a.last('start').colours).toEqual({ player: 'sky', enemy: 'strawberry' })
+    end()
+    // Match 2: B is the gold seat and keeps blueberry; A (pink seat now) clashes with it and wears gold.
+    expect(b.last('start').side).toBe('player')
+    expect(b.last('start').colours).toEqual({ player: 'blueberry', enemy: 'gold' })
+    expect(a.last('start').colours).toEqual(b.last('start').colours)
+  })
+
+  it('the same pick, older clients (no colour) and junk fall back to colours that go together', () => {
+    expect(twoPlayers('grape', 'grape').a.last('start').colours).toEqual({ player: 'grape', enemy: 'gold' })
+    expect(twoPlayers(undefined, 'rainbow').a.last('start').colours).toEqual({ player: 'gold', enemy: 'strawberry' })
+    expect(parseClientMsg({ t: 'hello', token: TOKEN_A, name: 'x', colour: 'rainbow' })).toEqual({ t: 'hello', token: TOKEN_A, name: 'x' })
+    expect(parseClientMsg({ t: 'hello', token: TOKEN_A, name: 'x', colour: 'lime' })).toEqual({ t: 'hello', token: TOKEN_A, name: 'x', colour: 'lime' })
+  })
+})
+
 describe('online protocol helpers', () => {
   it('room codes, names and message shapes', () => {
     for (let i = 0; i < 50; i++) expect(isRoomCode(randomCode())).toBe(true)

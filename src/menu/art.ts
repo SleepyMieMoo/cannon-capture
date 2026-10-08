@@ -1,4 +1,4 @@
-import { cssHex, lerpColor, shade, theme } from '../config/theme'
+import { cssHex, lerpColor, shade, sideColor, theme } from '../config/theme'
 import { SKIN_SHAPE, type SkinId } from '../config/skins'
 
 /** Small inline SVGs for the menu (static strings, crisp at any DPI). */
@@ -18,8 +18,6 @@ export const ICONS = {
   back: ic('<path d="M15 5l-7 7 7 7"/>'),
 }
 
-const gold = cssHex(theme.player)
-const pink = cssHex(theme.enemy)
 const grey = cssHex(theme.neutral)
 const board = cssHex(theme.hud)
 const edge = cssHex(theme.boardEdge)
@@ -29,8 +27,6 @@ const sel = cssHex(theme.select)
 const ringYou = cssHex(theme.ringYou)
 const ringEnemy = cssHex(theme.ringEnemy)
 const ringEdge = cssHex(theme.ringEdge)
-const tinted = cssHex(lerpColor(theme.enemy, theme.player, 0.55))
-const healing = cssHex(lerpColor(theme.player, theme.enemy, 0.32))
 
 const cannon = (x: number, y: number, color: string, angle = 0, r = 15): string => {
   const bx = Math.cos(angle)
@@ -79,9 +75,8 @@ export function skinBody(skin: SkinId, x: number, y: number, color: number, k = 
   return `<circle cx="${x}" cy="${y}" r="${26 * k}" fill="${c}" stroke="${dark}" stroke-opacity=".28" stroke-width="${3 * k}"/><circle cx="${x - 6 * k}" cy="${y - 7 * k}" r="${26 * 0.42 * k}" fill="#fff" fill-opacity=".2"/>`
 }
 
-/** The skin picker's preview: a cannon in that skin with its barrel and ring, gold (yours) or pink. */
-export function skinPreview(skin: SkinId, side: 'player' | 'enemy' = 'player'): string {
-  const color = side === 'player' ? theme.player : theme.enemy
+/** The skin and colour pickers' preview: a cannon in that skin and colour (default: your current one) with its barrel and ring. */
+export function skinPreview(skin: SkinId, side: 'player' | 'enemy' = 'player', color = sideColor(side)): string {
   const ring = side === 'player' ? ringYou : ringEnemy
   const k = 0.62
   const r = 26 * k
@@ -89,11 +84,19 @@ export function skinPreview(skin: SkinId, side: 'player' | 'enemy' = 'player'): 
   return `<svg viewBox="0 0 64 64" aria-hidden="true"><line x1="32" y1="32" x2="${32 + r + 12}" y2="${32 - (r + 12) * 0.55}" stroke="${cssHex(color)}" stroke-opacity=".8" stroke-width="7" stroke-linecap="round"/>${skinBody(skin, 32, 32, color, k)}<circle cx="32" cy="32" r="${ringR}" fill="none" stroke="${ringEdge}" stroke-width="4"/><circle cx="32" cy="32" r="${ringR}" fill="none" stroke="${ring}" stroke-width="2.2"/></svg>`
 }
 
-/** How to play, one picture per tip (a wide tip spans the whole row, picture beside the text). */
-export const HOWTO: { title: string; text: string; art: string; wide?: boolean }[] = [
+/**
+ * How to play, one picture per tip (a wide tip spans the whole row, picture
+ * beside the text). Drawn in your team colours (yours and the AI's pick).
+ */
+export function howtoTips(): { title: string; text: string; art: string; wide?: boolean }[] {
+  const gold = cssHex(sideColor('player'))
+  const pink = cssHex(sideColor('enemy'))
+  const tinted = cssHex(lerpColor(sideColor('enemy'), sideColor('player'), 0.55))
+  const healing = cssHex(lerpColor(sideColor('player'), sideColor('enemy'), 0.32))
+  return [
   {
     title: 'Aim',
-    text: 'Click one of your gold cannons (the light ring means yours to steer), then click a cannon or a spot to aim at. It keeps firing there by itself.',
+    text: 'Click one of your cannons (the light ring means yours to steer), then click a cannon or a spot to aim at. It keeps firing there by itself.',
     art: svg(
       `${cannon(46, 58, gold, -0.25)}${own(46, 58, ringYou)}<line x1="74" y1="51" x2="178" y2="34" stroke="${sel}" stroke-width="2.5" stroke-dasharray="7 6"/>${cannon(196, 32, grey, Math.PI)}<circle cx="196" cy="32" r="22" fill="none" stroke="${sel}" stroke-width="2"/>${pointer(50, 62)}${pointer(200, 36)}${label(30, 92, '1  click yours', muted, 10, 'start')}${label(212, 92, '2  click a target', muted, 10, 'end')}`,
     ),
@@ -107,7 +110,7 @@ export const HOWTO: { title: string; text: string; art: string; wide?: boolean }
   },
   {
     title: 'Swap type',
-    text: 'Hover a cannon (long-press on touch) for its menu: Normal, Sniper, Machine gun or Shield. The barrel shows the type; the body’s shape is just its owner’s skin (pick yours in Settings).',
+    text: 'Hover a cannon (long-press on touch) for its menu: Normal, Sniper, Machine gun or Shield. The barrel shows the type; the body’s shape and colour are just its owner’s skin and team colour (pick yours in Settings).',
     art: svg(
       `${['Normal', 'Sniper', 'MG', 'Shield']
         .map((t, i) => `<rect x="${18 + i * 52}" y="12" width="48" height="22" rx="7" fill="${i === 1 ? gold : board}" stroke="${i === 1 ? gold : edge}" stroke-width="1.5"/>${label(42 + i * 52, 27, t, i === 1 ? cssHex(theme.hud) : ink, 10)}`)
@@ -144,6 +147,7 @@ export const HOWTO: { title: string; text: string; art: string; wide?: boolean }
     ),
   },
 ]
+}
 
 /** The keys line under the tips. */
 export const KEYS: [string, string][] = [

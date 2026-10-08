@@ -16,7 +16,7 @@ export const CAMPAIGN: LevelDef[] = [
     id: 'first-shots',
     name: 'First Shots',
     kind: 'puzzle',
-    hint: 'Click your gold cannon, then click a grey one. Captured cannons join you, so aim them too.',
+    hint: 'Click your cannon (the light ring), then click a grey one. Captured cannons join you, so aim them too.',
     par: 40,
     cannons: [
       { id: 'p1', name: 'P1', x: 220, y: 400, side: 'player' },
@@ -30,7 +30,7 @@ export const CAMPAIGN: LevelDef[] = [
   {
     id: 'tug-of-war',
     name: 'Tug of War',
-    hint: 'Pink fights back. Win the middle cannon first, then push.',
+    hint: 'The enemy fights back. Win the middle cannon first, then push.',
     par: 30,
     ai: { retargetMs: 2200, fireMs: 1300 },
     cannons: [
@@ -165,7 +165,7 @@ export const CAMPAIGN: LevelDef[] = [
     id: 'long-shot',
     name: 'Long Shot',
     kind: 'puzzle',
-    hint: 'Snipers (long barrel) shoot 2× as fast and far and punch through wind. Hover a gold cannon to swap its type, free here.',
+    hint: 'Snipers (long barrel) shoot 2× as fast and far and punch through wind. Hover one of your cannons to swap its type, free here.',
     aims: 3,
     par: 3,
     cannons: [
@@ -188,7 +188,7 @@ export const CAMPAIGN: LevelDef[] = [
   {
     id: 'sniper-duel',
     name: 'Sniper Duel',
-    hint: 'Pink has a sniper behind the wind. Swap a cannon to Sniper to reach it, and heal anything close to flipping.',
+    hint: 'The enemy has a sniper behind the wind. Swap a cannon to Sniper to reach it, and heal anything close to flipping.',
     par: 55,
     ai: { retargetMs: 1400 },
     cannons: [

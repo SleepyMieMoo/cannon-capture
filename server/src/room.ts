@@ -6,6 +6,7 @@ import { applyOrder, parseOrder } from '../../src/sim/orders'
 import { levelLanes, type LaneTable } from '../../src/sim/solver'
 import type { LevelDef, Side } from '../../src/types'
 import { pvpSkins, type SideSkins, type SkinId } from '../../src/config/skins'
+import { pvpColours, type SideColours, type TeamColourId } from '../../src/config/teamColours'
 
 /**
  * One online room: seats, the lobby, and the authoritative round. Plain
@@ -51,6 +52,8 @@ export interface SeatState {
   gone: boolean
   /** The cannon skin this player picked (from hello; older clients don't say). */
   skin?: SkinId
+  /** The team colour this player picked (from hello; older clients don't say). */
+  colour?: TeamColourId
 }
 
 /** Everything about a room that must survive it sleeping between matches. */
@@ -78,6 +81,8 @@ interface Match {
   sides: [Side, Side]
   /** What each side wears this match (decided once, at the start). */
   skins: SideSkins
+  /** Team colours per side this match (decided once, at the start). */
+  colours: SideColours
   pausesLeft: [number, number]
   pause: { seat: 0 | 1; until: number } | null
   ai: [boolean, boolean]
@@ -251,7 +256,7 @@ export class RoomCore {
     const seat = conn.data.token ? this.seatOf(conn.data.token) : null
     switch (msg.t) {
       case 'hello':
-        return this.hello(conn, msg.token, msg.name, now, msg.skin)
+        return this.hello(conn, msg.token, msg.name, now, msg.skin, msg.colour)
       case 'name': {
         conn.data.name = msg.name || conn.data.name
         conn.save()
@@ -289,7 +294,7 @@ export class RoomCore {
     this.sendTo(conn, { t: 'error', code: 'notallowed', msg })
   }
 
-  private hello(conn: Conn, token: string, name: string, now: number, skin?: SkinId): void {
+  private hello(conn: Conn, token: string, name: string, now: number, skin?: SkinId, colour?: TeamColourId): void {
     const st = this.state!
     if (conn.data.token) return
     // The same tab connecting again (a reload, a dropped line): the old connection goes.
@@ -327,6 +332,7 @@ export class RoomCore {
       if (name) s.name = name
       // Changes take effect at the next match (this one's skins are already shown).
       if (skin) s.skin = skin
+      if (colour) s.colour = colour
       // Back in time: take the seat back from the AI.
       const m = this.match
       if (m && !m.over && m.ai[seat]) {
@@ -417,6 +423,8 @@ export class RoomCore {
     // Each player wears their own pick; if both picked the same, pink wears the contrasting one.
     const seatOn = (side: Side): 0 | 1 => (sides[0] === side ? 0 : 1)
     const skins = pvpSkins(st.seats[seatOn('player')]?.skin, st.seats[seatOn('enemy')]?.skin)
+    // Team colours: each keeps theirs unless the two clash (the compat matrix); then the pink seat wears the best contrast to gold's.
+    const colours = pvpColours(st.seats[seatOn('player')]?.colour, st.seats[seatOn('enemy')]?.colour)
     let sim: BattleSim | null = null
     const log = new EventLog(() => sim?.clock ?? 0)
     sim = new BattleSim(level, null, log.tap({}), lanesFor(level))
@@ -431,6 +439,7 @@ export class RoomCore {
       tick: 0,
       sides,
       skins,
+      colours,
       pausesLeft: [PVP_RULES.pausesPerPlayer, PVP_RULES.pausesPerPlayer],
       pause: null,
       ai: [false, false],
@@ -462,6 +471,7 @@ export class RoomCore {
       side: seat === null ? 'player' : m.sides[seat],
       stepMs: PVP_RULES.stepMs,
       skins: m.skins,
+      colours: m.colours,
       ...(seat === null ? { spectate: true } : {}),
     }
   }

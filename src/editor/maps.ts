@@ -188,7 +188,7 @@ export function nextCannonId(side: Side, taken: Set<string> | string[]): string 
 export function validateMap(level: LevelDef): string[] {
   const count = (side: Side): number => level.cannons.filter((c) => c.side === side).length
   const errors: string[] = []
-  if (count('player') < 1) errors.push('Add at least one gold (player) cannon.')
+  if (count('player') < 1) errors.push('Add at least one of your (player) cannons.')
   if (level.kind === 'puzzle') {
     if (count('neutral') < 1) errors.push('Puzzles need at least one neutral cannon to capture.')
     if (count('enemy') > 0) errors.push('Puzzles have no enemy: switch to Battle or remove the red cannons.')
