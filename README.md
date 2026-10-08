@@ -33,6 +33,7 @@ A cannon tints toward whoever is hitting it, and a ring around it fills in their
 | Normal | Every 1 s (some early levels slow pink down) | 1 | Normal speed and range | 110°/s | Up to ±1.25° off | Short, thick barrel |
 | Sniper | Every 3 s | 2 | 2× speed and 2× range | Half (55°/s) | Exact | Long, thin barrel with a scope, a reticle on the body and two dots; long thin shot streaks |
 | Machine gun | Every 0.2 s (5 a second) | 0.3 | Normal speed, half the range | Double (220°/s) | Up to ±7° off | Twin short, chunky barrels with alternating flashes, three bars on the body; small, short tracers |
+| Shield | Never fires | — | Holds up a barrier instead | 110°/s (like Normal) | — | Short, wide emitter, a crest on the body, a curved barrier in front and a small health bar under it |
 
 - Every shot lives 4.5 s, so a normal shot reaches about 1,530 px (up to 3 wall bounces). Sniper shots fly twice as fast for the same time, about 3,060 px. Machine gun shots fly at normal speed for half the time, about 765 px.
 - Snipers do less damage per second (2 every 3 s) but have reach, perfect aim, and fast shots that punch through headwinds. They turn slowly, so re-aiming one takes a while.
@@ -41,9 +42,18 @@ A cannon tints toward whoever is hitting it, and a ring around it fills in their
 - Every type only fires once its barrel is lined up. Damage can be a fraction (0.3): the capture meter, healing, tint and ring all track it exactly.
 - Both sides always fire at the same rate. Difficulty never changes pink's speed (see below).
 
-**Swapping type in play.** Hover one of your cannons and a small menu (Normal / Sniper / Machine gun) pops up above it. Click one to swap. On touch, long-press a cannon, or tap the selected cannon again. With a cannon selected, **T** steps it to the next type (Normal → Sniper → Machine gun).
+**Shield.** A shield doesn't shoot. It holds a short curved barrier (110° wide, 50 px out) in front of itself, facing wherever its barrel points. Aim it like any cannon: select it and click a spot (or an enemy cannon, and it keeps turning to face that cannon). A ghost arc previews where the barrier will sit.
 
-- After a swap the cannon reloads for its new type's full interval (at least 1 s) before it shoots again: 1 s for Normal or a Machine gun, 3 s for a Sniper. A light ring on the cannon fills up while it reloads. So swapping back and forth never gains you damage.
+- The barrier stops enemy shots dead (they don't bounce). Your own shots pass straight through it.
+- It soaks 6 damage: 6 normal shots, 3 sniper shots or 20 machine gun bullets. Its strength shows as its thickness and brightness, and as the small bar under the cannon, in the team colour. It flashes white when hit.
+- When it breaks it shatters ("Shield down") and stays down for 5 s (a dashed outline refills as it recharges). Then it comes back with 2 hp ("Shield up") and regrows. After 2 s without a hit it regrows 1 hp per second, up to 6.
+- The shield cannon itself is a normal cannon: shots that go round or behind the barrier hit it and capture it as usual. A captured shield stays a shield and works for its new owner. Friendly shots still heal its capture meter, but they don't repair the barrier.
+- Swapping into a shield follows the usual reload (1 s); the barrier fades in during the reload and is only up once it is done. A neutral shield is unmanned: no barrier until someone captures it.
+- Every cannon counts toward winning, shields included: capture them all.
+
+**Swapping type in play.** Hover one of your cannons and a small menu (Normal / Sniper / Machine gun / Shield) pops up above it. Click one to swap. On touch, long-press a cannon, or tap the selected cannon again. With a cannon selected, **T** steps it to the next type (Normal → Sniper → Machine gun → Shield).
+
+- After a swap the cannon reloads for its new type's full interval (at least 1 s) before it shoots again: 1 s for Normal, a Machine gun or a Shield (whose barrier comes up when the reload is done), 3 s for a Sniper. A light ring on the cannon fills up while it reloads. So swapping back and forth never gains you damage.
 - In puzzles, swapping is free and does not spend an aim.
 - While a cannon is selected for aiming, only that cannon's own menu shows, so the menu never covers an aim click elsewhere.
 - Pink picks a type for each cannon's current job, the cannon it is attacking or the friend it is healing. It estimates how long each type would take to finish that job: the swap reload, plus the damage still needed divided by the type's expected damage rate on that lane. That rate counts how much of its spread actually lands. So a cannon goes machine gun when its target is close (on open ground, within about 300–350 px of a single cannon; further out so many spread shots miss that a normal cannon does more), sniper when only a sniper reaches (very far, or through a headwind), and normal otherwise. It keeps its type unless another is clearly quicker (1.15×), and it swaps a given cannon at most every 3 s at every difficulty (half that while healing a friend under attack; no wait if its current type can't hit the job at all). Its swaps follow the same rules as yours, reload included. If none of its cannons can reach one of yours as fitted, it sends the one that can after a swap.
@@ -54,6 +64,8 @@ A cannon tints toward whoever is hitting it, and a ring around it fills in their
   - **Hard** aims perfectly, uses every bank and fan shot, and reacts in 0.25 s.
   - **Impossible** plays like Hard, plus a look-ahead. Whenever a cannon is free to choose, it plays its best few options forward for 4 s in a quick copy of the round: its 3 best jobs, keeping its current job, and trading jobs with a teammate. Then it takes the one that leaves pink best off. The work is spread over a few frames (at most 120 simulation steps or 3 ms per frame), so even a Huge map doesn't stutter. In headless AI-vs-AI matches on 60 mirrored maps, played from both sides, Impossible won about 3 in 4 of the games that had a winner.
   - Aim error is just pink aiming at a slightly wrong point. Its shots follow exactly the same rules as yours.
+- **Pink and shields.** Pink sees your barriers. Every lane it knows also stores where the shot actually flies, plus up to two other ways to the same target (another bank shot, say). If one of your barriers is across its lane, it switches to a clear lane if it has one. If it doesn't, it counts how long breaking through would take (6 hp at its damage rate, then the 5 s window while the barrier is down) and weighs that against other jobs. So it may go after something else, or swap to a machine gun and shred the barrier. A shot that stops on a barrier makes it look for a way round straight away.
+- Pink raises its own shields sparingly. A cannon that is being captured from one direction (all hits within the arc), by several cannons at once (3 on Normal and Hard, 2 on Easy), that it can't out-shoot, and where none of the main attackers has a lane round the barrier, swaps to Shield and faces the shots. It drops the shield again once it is healed, the attack has stopped for 5 s, or the barrier breaks. At most a third of its team (rounded down) is ever a shield, and at least two cannons always keep shooting. Easy thinks of it later (at 6 of 8 progress), only about a third of the time, and points the barrier at the attacker rather than where the shots come from. Impossible doesn't use the rule blindly. It plays "shield up" and "carry on" forward for 6 s in its look-ahead and only raises the shield when that clearly comes out ahead. A shield the map gives pink stays a shield, facing where the map aimed it (or its nearest foe). In AI-vs-AI testing shields rarely beat shooting back, so pink uses them as a last resort.
 
 The enemy obeys the same turn speed. Your aim shows as a gold dashed line with a crosshair at free aim points; while a cannon is selected, a pale line previews where your next click would aim. Faint pink lines are the enemy's. The mint ring is a fan blowing downward. P1 starts aimed into the tall wall, so re-aim it. Restart from the corner, or press **R** on the end screen. Works with taps on touch screens too.
 
@@ -95,7 +107,7 @@ The win checks for Crossfire, Last Stand and Sniper Duel are skipped for now (th
    - `par` (seconds for battles; aims for puzzles with a budget)
    - `ai: { difficulty }` for the enemy: `easy`, `normal`, `hard` or `impossible`. Older levels with `ai: { retargetMs, fireMs }` still work: the difficulty is read from `fireMs` (1300 ms or more is Easy, 1100 ms or more is Normal, otherwise Hard; no `ai` block is Hard). Speed is no longer changed.
    - `size`: `small` (default), `medium`, `large` or `huge`
-   - `cannons` (`side`, optional `aimAt` cannon id or `aimPoint`), `walls` (rectangles, optional `angle` in radians about the centre), `fans` (`angle` in radians, `force`)
+   - `cannons` (`side`, optional `kind`: `sniper`, `machinegun` or `shield` (default normal), optional `aimAt` cannon id or `aimPoint`), `walls` (rectangles, optional `angle` in radians about the centre), `fans` (`angle` in radians, `force`)
 2. Add a map position for it in `NODES` in [`src/scenes/MapScene.ts`](src/scenes/MapScene.ts) (one per level, in order).
 3. Run `npm test`. It fails if a puzzle can't be solved within its budget, a battle can't be won by the autoplayer, or a cannon overlaps a wall or the board edge.
 4. Play it: `npm run dev`, then open `http://localhost:5173/?level=<id>`.
@@ -115,7 +127,7 @@ Everything sits in two slim bars at the top, so the board gets the full width:
 - **Move:** drag anything. A short click just selects it.
 - **Delete:** use the Delete tool, or select something and press Del.
 - **Edit the selection** right in the second bar:
-  - cannons: owner, **Type** (Normal / Sniper / Machine gun) and an optional starting aim. Click **Set aim**, then a cannon or a spot on the board. Press **T** to step the selected cannon through Normal → Sniper → Machine gun. The type set here is the cannon's starting type in play.
+  - cannons: owner, **Type** (Normal / Sniper / Machine gun / Shield) and an optional starting aim. Click **Set aim**, then a cannon or a spot on the board. Press **T** to step the selected cannon through Normal → Sniper → Machine gun → Shield. A shield's barrier is drawn where its aim points. The type set here is the cannon's starting type in play.
   - walls: length, thickness and rotation in 15° steps.
   - fans: direction, strength and radius.
 - **Snap to grid** (16 px) is on by default. **Undo/Redo** cover every edit, including New map and Import.
@@ -161,7 +173,7 @@ The enemy AI works on any size and any number of cannons. It still plans with la
 | X | Delete tool |
 | Del / Backspace | Delete the selection |
 | Q / E | Rotate the selected wall or fan by 15° |
-| T | Selected cannon: next type (Normal → Sniper → Machine gun) |
+| T | Selected cannon: next type (Normal → Sniper → Machine gun → Shield) |
 | G | Toggle snap |
 | P | Playtest |
 | Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) | Undo / redo |
@@ -219,7 +231,10 @@ All gameplay numbers live in [`src/config/tuning.ts`](src/config/tuning.ts).
 | `shotSpeed` | 340 | Shot speed in pixels per second |
 | `fanForce` | 540 | How hard fans accelerate a shot (px/s²) |
 | `aiRetargetMs` | 1600 | How often each AI cannon re-thinks its plan, at every difficulty (staggered per cannon) |
-| `towers.<type>` | see below | Per tower type (`normal`, `sniper`, `machinegun`): `fireMs`, `damage`, `speedMul`, `lifetimeMul`, `turnMul`, `spreadDeg` |
+| `towers.<type>` | see below | Per tower type (`normal`, `sniper`, `machinegun`, `shield`): `fireMs`, `damage`, `speedMul`, `lifetimeMul`, `turnMul`, `spreadDeg` |
+| `shield` | reach 50, arcDeg 110, thickness 8, hp 6, downMs 5000, returnHp 2, regenDelayMs 2000, regenPerSec 1 | The shield's barrier: how far out and how wide it is, its drawn thickness at full strength, how much damage it soaks, how long it stays down once broken, the hp it comes back with, and the regrowth (after that long without a hit, this many hp per second) |
+| `aiShield` | windowMs 4000, minHits 2, calmMs 5000, maxShare 0.34, winMargin 0.8, refaceDeg 15, rerouteMs 1500, soonMs 1500, lookEveryMs 2000, lookMs 6000, lookGain 3 | When the AI raises a shield (hits in the last windowMs, at least minHits, a duel it would lose by winMargin), when it drops it (calmMs without hits), the team cap, re-facing, how often an attacker re-picks a lane round a barrier, how soon a coming-back barrier counts as up, and Impossible's shield look-ahead |
+| `aiLevels.<level>.shieldAt` / `shieldChance` / `shieldAim` / `shieldShooters` | easy 6 / 0.35 / shooter / 2, normal 5 / 0.75 / shots / 3, hard 4 / 1 / shots / 3, impossible 4 / 1 / shots / 2 | Capture progress before it considers a shield, how often it then does, where it points the barrier, and how many different attackers it takes (Impossible also checks with its look-ahead) |
 | `aiSwap.cooldownMs` | 3000 | Least time between two type swaps of one AI cannon (half while healing), every difficulty |
 | `aiSwap.gain` | 1.15 | How much quicker another type must finish the job before the AI swaps |
 | `swapLockMs` | 1000 | Minimum reload after swapping type in play |
@@ -242,6 +257,7 @@ Per-type values in `TUNING.towers` (range = `speedMul` × `lifetimeMul` × the n
 | `normal` | null (`fireIntervalMs`) | 1 | 1 | 1 | 1 | 1.25 |
 | `sniper` | 3000 | 2 | 2 | 1 | 0.5 | 0 |
 | `machinegun` | 200 | 0.3 | 1 | 0.5 | 2 | 7 |
+| `shield` | null (never fires) | 0 | 1 | 1 | 1 | 0 |
 
 Colours live in [`src/config/theme.ts`](src/config/theme.ts), so the board can be reskinned without touching gameplay. All 11 themes are there as data; change `ACTIVE_THEME` to switch (default: Dark Choco). The level layout is data in [`src/levels/skirmish.ts`](src/levels/skirmish.ts).
 

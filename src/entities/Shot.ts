@@ -3,6 +3,7 @@ import {
   stepBall,
   type Ball,
   type BallisticsOpts,
+  type Barrier,
   type Body,
   type FanField,
   type StepResult,
@@ -27,10 +28,10 @@ export class Shot {
     this.side = side
   }
 
-  step(dt: number, walls: Rect[], fans: FanField[], bodies: Body[], opts: BallisticsOpts): StepResult {
+  step(dt: number, walls: Rect[], fans: FanField[], bodies: Body[], opts: BallisticsOpts, barriers?: Barrier[]): StepResult {
     this.prevX = this.ball.x
     this.prevY = this.ball.y
-    const result = stepBall(this.ball, dt, walls, fans, bodies, opts)
+    const result = stepBall(this.ball, dt, walls, fans, bodies, opts, barriers)
     this.ball = result.ball
     if (this.ball.age > (this.ball.lifeMs ?? TUNING.shotLifetimeMs)) this.ball.alive = false
     return result

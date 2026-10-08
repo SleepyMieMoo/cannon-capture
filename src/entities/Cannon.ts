@@ -1,13 +1,14 @@
 import type Phaser from 'phaser'
 import { TUNING } from '../config/tuning'
 import { lerpColor, shade, sideColor, theme } from '../config/theme'
-import { aimAngle, aimShot, type Ball } from '../sim/ballistics'
+import { aimAngle, aimShot, type Ball, type Barrier } from '../sim/ballistics'
 import { angleDelta, turnToward } from '../sim/aim'
 import { applyCaptureHit } from '../sim/capture'
 import { seededRandom } from '../sim/random'
 import {
   KINDS,
   damageFor,
+  firesAs,
   fireMsFor,
   maxShotSpeedFor,
   shotLifetimeFor,
@@ -16,6 +17,12 @@ import {
   turnSpeedDegFor,
 } from '../config/kinds'
 import type { CannonKind, Point, Side } from '../types'
+
+/** What a shot did to a barrier. */
+export interface AbsorbOutcome {
+  /** It broke the barrier. */
+  broke: boolean
+}
 
 export interface HitOutcome {
   flipped: boolean
@@ -69,6 +76,19 @@ export class Cannon {
   private pop = 1
   /** Seeded per cannon, so spread is random-looking but every run replays the same. */
   private readonly rng: () => number
+  /**
+   * Barrier state (see TUNING.shield). Kept whatever the type, so swapping
+   * away and back doesn't refill a broken barrier.
+   */
+  shieldHp: number = TUNING.shield.hp
+  /** Ms until a broken barrier comes back (0 when it isn't broken). */
+  shieldDown = 0
+  /** Ms since the barrier was last hit. */
+  shieldCalm = Infinity
+  /** Set when a broken barrier comes back; the sim reads and clears it. */
+  shieldReturned = false
+  private shieldFlash = 0
+  private shieldBreakFx = 0
 
   constructor(
     scene: Phaser.Scene | null,
@@ -113,6 +133,9 @@ export class Cannon {
     c.swapLeft = this.swapLeft
     c.sideMs = this.sideMs
     c.shotsFired = this.shotsFired
+    c.shieldHp = this.shieldHp
+    c.shieldDown = this.shieldDown
+    c.shieldCalm = this.shieldCalm
     return c
   }
 
@@ -179,6 +202,66 @@ export class Cannon {
     this.swapLeft = lock
     this.pop = Math.max(this.pop, 1.12)
     return true
+  }
+
+  /** True while it fires shots (every type but the shield). */
+  get fires(): boolean {
+    return firesAs(this.kind)
+  }
+
+  /** True while its barrier is up: a manned shield, done reloading, not broken. */
+  get shieldUp(): boolean {
+    return this.kind === 'shield' && this.side !== 'neutral' && this.swapLeft <= 0 && this.shieldDown <= 0 && this.shieldHp > 0
+  }
+
+  /** Its barrier where it stands now (whether or not it is up). */
+  barrierShape(facing: number = this.angle): Barrier {
+    const s = TUNING.shield
+    return {
+      id: this.id,
+      x: this.x,
+      y: this.y,
+      r: s.reach,
+      facing,
+      half: (s.arcDeg * Math.PI) / 360,
+      band: s.thickness / 2 + TUNING.shotRadius,
+      pad: TUNING.shotRadius / s.reach,
+    }
+  }
+
+  /** Its barrier, or null while it is down (or it isn't a shield). */
+  barrier(): Barrier | null {
+    return this.shieldUp ? this.barrierShape() : null
+  }
+
+  /** A shot worth `damage` hits the barrier. */
+  absorb(damage: number): AbsorbOutcome {
+    if (!this.shieldUp) return { broke: false }
+    this.shieldHp = Math.max(0, this.shieldHp - damage)
+    this.shieldCalm = 0
+    this.shieldFlash = 1
+    if (this.shieldHp > 1e-6) return { broke: false }
+    this.shieldHp = 0
+    this.shieldDown = TUNING.shield.downMs
+    this.shieldBreakFx = 1
+    return { broke: true }
+  }
+
+  /** Barrier upkeep: count down a break, regrow once it hasn't been hit for a while. */
+  private tickShield(dt: number): void {
+    const s = TUNING.shield
+    this.shieldFlash = Math.max(0, this.shieldFlash - dt / 200)
+    this.shieldBreakFx = Math.max(0, this.shieldBreakFx - dt / 650)
+    if (this.shieldDown > 0) {
+      this.shieldDown = Math.max(0, this.shieldDown - dt)
+      if (this.shieldDown > 0) return
+      this.shieldHp = s.returnHp
+      this.shieldCalm = s.regenDelayMs
+      this.shieldReturned = true
+      return
+    }
+    this.shieldCalm += dt
+    if (this.shieldCalm >= s.regenDelayMs && this.shieldHp < s.hp) this.shieldHp = Math.min(s.hp, this.shieldHp + (s.regenPerSec * dt) / 1000)
   }
 
   /** True while another side has capture progress on this cannon. */
@@ -279,6 +362,7 @@ export class Cannon {
     this.sideMs = fireMs
     this.muzzle = Math.max(0, this.muzzle - dt)
     this.pop = Math.max(1, this.pop - dt / 380)
+    this.tickShield(dt)
     if (this.side === 'neutral') return null
     this.checkHeal()
     if (this.target && this.target.side === this.side && this.target !== this.healing) this.target = null
@@ -288,7 +372,7 @@ export class Cannon {
       const step = ((turnSpeedDegFor(this.kind) * Math.PI) / 180) * (dt / 1000)
       this.angle = turnToward(this.angle, aimAngle(this, aim), step)
     }
-    if (frozen || !aim) return null
+    if (frozen || !aim || !this.fires) return null
 
     this.cooldown -= dt
     if (this.cooldown > 1e-6) return null
@@ -338,6 +422,7 @@ export class Cannon {
     this.body.strokeCircle(0, 0, TUNING.cannonRadius)
     if (this.kind === 'sniper') this.drawSniperBadge(this.body, color)
     else if (this.kind === 'machinegun') this.drawGunBadge(this.body, color)
+    else if (this.kind === 'shield') this.drawShieldBadge(this.body, color)
 
     if (this.swapLeft > 0 && this.swapTotal > 0) {
       // Swap reload: a light ring fills up until it can fire again.
@@ -408,6 +493,13 @@ export class Cannon {
         this.barrel.fillStyle(0xfff4d2, Math.min(1, this.muzzle / 60))
         this.barrel.fillCircle(r * 0.3 + len + 4, this.shotsFired % 2 ? -5.5 : 5.5, 4.5)
       }
+    } else if (this.kind === 'shield') {
+      // A short, wide emitter instead of a barrel, and the barrier in front of it.
+      this.barrel.fillStyle(shade(color, 0.5), 1)
+      this.barrel.fillRoundedRect(r * 0.35, -11, 14, 22, 5)
+      this.barrel.fillStyle(shade(color, 0.32), 1)
+      this.barrel.fillRoundedRect(r * 0.35 + 10, -13, 6, 26, 3)
+      this.drawBarrier(this.barrel, color)
     } else {
       this.barrel.fillStyle(shade(color, 0.62), 1)
       this.barrel.fillRoundedRect(r * 0.2, -5, r + 8, 10, 4)
@@ -436,6 +528,95 @@ export class Cannon {
     g.fillStyle(ink, 0.95)
     const pips = Math.max(1, Math.round(this.damage))
     for (let i = 0; i < pips; i++) g.fillCircle((i - (pips - 1) / 2) * 7, r * 0.5 + 9, 2.2)
+  }
+
+  /** Shield marking on the body: a little crest, plus the barrier's health bar under the cannon. */
+  private drawShieldBadge(g: Phaser.GameObjects.Graphics, color: number): void {
+    const r = TUNING.cannonRadius
+    const ink = shade(color, 0.35)
+    g.fillStyle(ink, 0.85)
+    g.beginPath()
+    g.moveTo(-8, -9)
+    g.lineTo(8, -9)
+    g.lineTo(8, 1)
+    g.lineTo(0, 10)
+    g.lineTo(-8, 1)
+    g.closePath()
+    g.fillPath()
+    g.fillStyle(color, 0.9)
+    g.fillRect(-1.5, -6, 3, 11)
+    if (this.side === 'neutral') return
+    // Health bar: the barrier's hp in the team colour, or a pale refill while it is down.
+    const s = TUNING.shield
+    const w = 36
+    const y = r + 13
+    g.fillStyle(0x000000, 0.4)
+    g.fillRoundedRect(-w / 2 - 1, y - 1, w + 2, 6, 3)
+    if (this.shieldDown > 0) {
+      g.fillStyle(0xfff4d2, 0.45)
+      g.fillRoundedRect(-w / 2, y, w * (1 - this.shieldDown / s.downMs), 4, 2)
+    } else if (this.shieldHp > 0) {
+      g.fillStyle(this.shieldFlash > 0 ? lerpColor(sideColor(this.side), 0xffffff, this.shieldFlash * 0.6) : sideColor(this.side), 1)
+      g.fillRoundedRect(-w / 2, y, w * (this.shieldHp / s.hp), 4, 2)
+    }
+  }
+
+  /**
+   * The barrier, drawn in barrel space (0 rad = facing). Up: thicker and
+   * more solid the more hp it has. Down: a faint outline that refills. While
+   * reloading into a shield it fades in; a neutral (unmanned) one is dashed.
+   */
+  private drawBarrier(g: Phaser.GameObjects.Graphics, color: number): void {
+    const s = TUNING.shield
+    const R = s.reach
+    const half = (s.arcDeg * Math.PI) / 360
+    const team = this.side === 'neutral' ? color : sideColor(this.side)
+    const arc = (width: number, c: number, alpha: number, from = -half, to = half) => {
+      if (alpha <= 0 || to <= from) return
+      g.lineStyle(width, c, alpha)
+      g.beginPath()
+      g.arc(0, 0, R, from, to, false)
+      g.strokePath()
+    }
+    const dashed = (width: number, c: number, alpha: number) => {
+      const n = 9
+      for (let i = 0; i < n; i++) {
+        const a = -half + ((2 * half) / n) * i
+        arc(width, c, alpha, a, a + ((2 * half) / n) * 0.55)
+      }
+    }
+    if (this.shieldBreakFx > 0) {
+      // Break: shards fly outward and fade.
+      const t = 1 - this.shieldBreakFx
+      for (let i = 0; i < 7; i++) {
+        const a = -half + ((2 * half) / 6) * i + Math.sin(i * 2.3) * 0.08
+        const d = R + t * (18 + (i % 3) * 8)
+        g.fillStyle(i % 2 ? 0xffffff : team, this.shieldBreakFx * 0.9)
+        g.fillTriangle(
+          Math.cos(a) * d,
+          Math.sin(a) * d,
+          Math.cos(a + 0.09) * (d + 6),
+          Math.sin(a + 0.09) * (d + 6),
+          Math.cos(a - 0.06) * (d + 4),
+          Math.sin(a - 0.06) * (d + 4),
+        )
+      }
+    }
+    if (this.side === 'neutral') return dashed(2, team, 0.35)
+    if (this.swapLeft > 0) {
+      const k = this.swapTotal > 0 ? 1 - this.swapLeft / this.swapTotal : 0
+      return arc(2 + 3 * k, team, 0.15 + 0.35 * k)
+    }
+    if (this.shieldDown > 0) {
+      dashed(2, team, 0.28)
+      arc(2, 0xfff4d2, 0.5, -half, -half + 2 * half * (1 - this.shieldDown / s.downMs))
+      return
+    }
+    const f = Math.max(0, Math.min(1, this.shieldHp / s.hp))
+    const c = this.shieldFlash > 0 ? lerpColor(team, 0xffffff, this.shieldFlash * 0.7) : team
+    arc(4 + 7 * f, 0x000000, 0.18 + 0.12 * f)
+    arc(3 + 6 * f, c, 0.4 + 0.5 * f)
+    arc(1.5, 0xffffff, 0.25 + 0.45 * f, -half * 0.85, half * 0.85)
   }
 
   /** Machine gun marking on the body: three short ammo-belt bars. */

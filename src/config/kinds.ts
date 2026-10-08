@@ -21,6 +21,8 @@ export interface KindSpec {
   damage: number
   /** Random aim error per shot, up to this many degrees either way. */
   spreadDeg: number
+  /** False for types that never shoot (the shield). */
+  fires: boolean
 }
 
 /** A number for the UI: whole numbers as is, fractions to one decimal (0.3, 1.5). */
@@ -29,10 +31,10 @@ export function fmtNum(n: number): string {
   return Number.isInteger(r) ? String(r) : r.toFixed(1)
 }
 
-function spec(id: CannonKind, label: string, extra: (t: Omit<KindSpec, 'id' | 'label' | 'blurb'>) => string): KindSpec {
+function spec(id: CannonKind, label: string, extra: (t: Omit<KindSpec, 'id' | 'label' | 'blurb' | 'fires'>) => string): KindSpec {
   const t = TUNING.towers[id]
   const base = { speedMul: t.speedMul, lifetimeMul: t.lifetimeMul, turnMul: t.turnMul, fireMs: t.fireMs, damage: t.damage, spreadDeg: t.spreadDeg }
-  return { id, label, ...base, blurb: extra(base) }
+  return { id, label, ...base, fires: t.damage > 0, blurb: extra(base) }
 }
 
 const reach = (m: number) => (m === 0.5 ? 'half the range' : `${fmtNum(m)}× range`)
@@ -50,9 +52,22 @@ export const KINDS: Record<CannonKind, KindSpec> = {
     'Machine gun',
     (t) => `${fmtNum(t.damage)} damage ${every(t.fireMs)}, ${reach(t.speedMul * t.lifetimeMul)}, spread ±${fmtNum(t.spreadDeg)}°, turns fast`,
   ),
+  shield: spec(
+    'shield',
+    'Shield',
+    () =>
+      `doesn't shoot; its barrier in front soaks ${fmtNum(TUNING.shield.hp)} damage, is down ${fmtNum(TUNING.shield.downMs / 1000)} s when broken, then regrows`,
+  ),
 }
 
 export const KIND_IDS: readonly CannonKind[] = CANNON_KINDS
+
+/** Types that shoot (everything but the shield): only these get lanes and jobs. */
+export const FIRING_KINDS: readonly CannonKind[] = CANNON_KINDS.filter((k) => KINDS[k].fires)
+
+export function firesAs(kind: CannonKind): boolean {
+  return KINDS[kind].fires
+}
 
 export function isKind(v: unknown): v is CannonKind {
   return typeof v === 'string' && (CANNON_KINDS as readonly string[]).includes(v)

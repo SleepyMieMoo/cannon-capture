@@ -1,7 +1,7 @@
 import { KIND_IDS, damageFor, laneKey, spreadDegFor } from '../config/kinds'
 import { TUNING } from '../config/tuning'
 import type { Cannon } from '../entities/Cannon'
-import { MIN_LANE_DEG, type LaneTable } from '../sim/solver'
+import { MIN_LANE_DEG, type Lane, type LaneTable } from '../sim/solver'
 import type { CannonKind, LevelDef } from '../types'
 import { levelDifficulty, type AiLevel } from './difficulty'
 
@@ -64,11 +64,54 @@ export function workLeft(cannon: Cannon, target: Cannon): number {
 
 /** Estimated ms to finish the job fitted as `kind` (a different type pays its swap reload first). */
 export function jobTime(cannon: Cannon, kind: CannonKind, target: Cannon, lanes: LaneTable): number {
-  const rate = kindRate(cannon, kind, target, lanes)
+  return laneTime(cannon, kind, target, lanes.get(laneKey(cannon.id, kind))?.get(target.id))
+}
+
+/** Expected damage per ms down one particular lane (0 if it is too narrow). */
+export function laneRate(cannon: Cannon, kind: CannonKind, lane: Lane | undefined): number {
+  if (!lane || lane.widthDeg < MIN_LANE_DEG) return 0
+  return (damageFor(kind) * hitShare(kind, lane.widthDeg)) / cannon.fireMsAs(kind)
+}
+
+/** The swap reload `cannon` pays before it can work as `kind`. */
+export function swapCost(cannon: Cannon, kind: CannonKind): number {
+  return kind === cannon.kind ? 0 : Math.max(TUNING.swapLockMs, cannon.fireMsAs(kind))
+}
+
+/** jobTime down one particular lane. */
+export function laneTime(cannon: Cannon, kind: CannonKind, target: Cannon, lane: Lane | undefined): number {
+  const rate = laneRate(cannon, kind, lane)
   if (rate <= 0) return Infinity
   const left = Math.max(workLeft(cannon, target), damageFor(kind))
-  const reload = kind === cannon.kind ? 0 : Math.max(TUNING.swapLockMs, cannon.fireMsAs(kind))
-  return reload + left / rate
+  return swapCost(cannon, kind) + left / rate
+}
+
+/**
+ * Ms to put `work` damage on a cannon behind `shield`'s barrier at `rate`
+ * per ms, shooting through it: break it, use the window while it is down,
+ * break it again when it comes back, and so on (no regrowth under fire).
+ */
+export function throughBarrier(work: number, rate: number, shield: Cannon): number {
+  if (rate <= 0) return Infinity
+  const s = TUNING.shield
+  let t = 0
+  let left = work
+  let hp = shield.shieldUp ? shield.shieldHp : shield.shieldDown > 0 ? -1 : s.hp
+  let down = shield.shieldDown
+  for (let i = 0; i < 100; i++) {
+    if (hp < 0) {
+      const dealt = Math.min(left, rate * down)
+      t += dealt / rate
+      left -= dealt
+      if (left <= 1e-9) return t
+      hp = s.returnHp
+    } else {
+      t += hp / rate
+      hp = -1
+      down = s.downMs
+    }
+  }
+  return t
 }
 
 /**
@@ -135,6 +178,18 @@ export class SwapGovernor {
    * Decide (and, through `swap`, make) a type change for `cannon`'s job.
    * Returns true when it swapped.
    */
+  /** True when the cooldown lets `cannon` swap now (half the wait when `urgent`). */
+  allow(cannon: Cannon, urgent = false): boolean {
+    if (cannon.swapping) return false
+    const since = this.now - (this.last.get(cannon.id) ?? -Infinity)
+    return since >= (urgent ? this.policy.cooldownMs / 2 : this.policy.cooldownMs)
+  }
+
+  /** Record a swap made outside consider(). */
+  mark(cannon: Cannon): void {
+    this.last.set(cannon.id, this.now)
+  }
+
   consider(cannon: Cannon, target: Cannon, lanes: LaneTable, swap: (c: Cannon, kind: CannonKind) => boolean): boolean {
     const kind = this.preview(cannon, target, lanes)
     if (kind === cannon.kind) return false

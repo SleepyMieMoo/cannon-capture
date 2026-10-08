@@ -56,7 +56,20 @@ export const TUNING = {
     normal: { speedMul: 1, lifetimeMul: 1, turnMul: 1, fireMs: null, damage: 1, spreadDeg: 1.25 },
     sniper: { speedMul: 2, lifetimeMul: 1, turnMul: 0.5, fireMs: 3000, damage: 2, spreadDeg: 0 },
     machinegun: { speedMul: 1, lifetimeMul: 0.5, turnMul: 2, fireMs: 200, damage: 0.3, spreadDeg: 7 },
+    /** Doesn't fire (damage 0): it holds up a barrier instead (see `shield`). */
+    shield: { speedMul: 1, lifetimeMul: 1, turnMul: 1, fireMs: null, damage: 0, spreadDeg: 0 },
   },
+  /**
+   * The shield tower's barrier: an arc `arcDeg` wide, `reach` px from the
+   * cannon's centre, facing where its barrel points. It absorbs shots from
+   * the other sides (no bounce); your own shots pass through. Each shot
+   * takes its damage off `hp` (6 = 6 normal shots, 3 sniper shots, 20 machine
+   * gun bullets). At 0 it breaks and stays down for downMs, then comes back
+   * with returnHp. It regrows regenPerSec once it hasn't been hit for
+   * regenDelayMs (and right away after coming back). `thickness`: how thick
+   * it is for collisions (px). Neutral cannons are unmanned: no barrier.
+   */
+  shield: { reach: 50, arcDeg: 110, thickness: 8, hp: 6, downMs: 5000, returnHp: 2, regenDelayMs: 2000, regenPerSec: 1 },
   /**
    * Swapping a cannon's type in play: it reloads for its new type's full
    * fire interval (at least this long) before it can shoot again.
@@ -85,6 +98,30 @@ export const TUNING = {
    */
   aiPlan: { crowdMs: 3000 },
   /**
+   * How the AI uses shields to defend. A cannon of its own that is being
+   * captured (see aiLevels.shieldAt), took at least minHits shots in the last
+   * windowMs from at least aiLevels.shieldShooters different foes (or has
+   * nothing it could shoot at all), all from directions one barrier can
+   * cover and with no lane for them round it, and would lose the duel (it
+   * can't capture its attacker in winMargin of the time the attacker needs to
+   * capture it) swaps to Shield, facing the threat. A guard is a short
+   * stand: it goes back to shooting once it is healed, nothing has hit it
+   * for calmMs, or its barrier breaks (it regrows meanwhile). (Measured in
+   * AI-vs-AI games: against a foe that banks round barriers, a shield rarely
+   * beats just shooting back, so the AI keeps it for clear cases.) At
+   * most maxShare of the team are shields at once (rounded down), so it
+   * never turtles. refaceDeg: a guard turns to face the shots once they come
+   * from this far off its facing. rerouteMs: least time between two
+   * re-routes of one cannon around an enemy barrier. soonMs: a broken
+   * enemy barrier coming back within this long already counts as in the way.
+   * Impossible doesn't follow these rules blindly: it plays "shield up" and
+   * "carry on" forward (see aiLookahead) and only raises the shield when that
+   * comes out ahead by lookGain, weighing it at most every lookEveryMs per
+   * cannon and looking lookMs ahead (a shield pays off, or doesn't, over a
+   * longer stretch than a choice of target).
+   */
+  aiShield: { windowMs: 4000, minHits: 2, calmMs: 5000, maxShare: 0.34, winMargin: 0.8, refaceDeg: 15, rerouteMs: 1500, soonMs: 1500, lookEveryMs: 2000, lookMs: 6000, lookGain: 3 },
+  /**
    * Difficulty is intelligence only: every level fires, turns, thinks and
    * swaps exactly like you. What differs:
    * - aimError: how far off its first shot at a new job is, in half-widths
@@ -103,12 +140,19 @@ export const TUNING = {
    *   finished or lost). commitMs / margin: see aiPlan.
    * - lookahead: try its best few jobs in a quick headless simulation
    *   first (see aiLookahead).
+   * - shieldAt: capture progress on one of its cannons before it thinks of
+   *   swapping it to Shield (see aiShield); shieldChance: how often it then
+   *   actually does; shieldAim: 'shooter' faces the attacking cannon (the
+   *   obvious, often wrong choice when shots bank in), 'shots' faces where
+   *   the shots actually come from and keeps turning to follow them.
+   *   shieldShooters: how many different attackers it takes (fewer is
+   *   rasher; Impossible then checks the idea in its look-ahead).
    */
   aiLevels: {
-    easy: { aimError: 1.9, overshoot: 0.6, correct: 0.45, maxTricks: 0, misjudge: 0.15, reactMs: 1200, commitMs: 5000, margin: 1.4, lookahead: false },
-    normal: { aimError: 1.0, overshoot: 0.6, correct: 0.45, maxTricks: 1, misjudge: 0.07, reactMs: 600, commitMs: 4000, margin: 1.3, lookahead: false },
-    hard: { aimError: 0, overshoot: 0.6, correct: 0, maxTricks: 99, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: false },
-    impossible: { aimError: 0, overshoot: 0.6, correct: 0, maxTricks: 99, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: true },
+    easy: { aimError: 1.9, overshoot: 0.6, correct: 0.45, maxTricks: 0, misjudge: 0.15, reactMs: 1200, commitMs: 5000, margin: 1.4, lookahead: false, shieldAt: 6, shieldChance: 0.35, shieldAim: 'shooter', shieldShooters: 2 },
+    normal: { aimError: 1.0, overshoot: 0.6, correct: 0.45, maxTricks: 1, misjudge: 0.07, reactMs: 600, commitMs: 4000, margin: 1.3, lookahead: false, shieldAt: 5, shieldChance: 0.75, shieldAim: 'shots', shieldShooters: 3 },
+    hard: { aimError: 0, overshoot: 0.6, correct: 0, maxTricks: 99, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: false, shieldAt: 4, shieldChance: 1, shieldAim: 'shots', shieldShooters: 3 },
+    impossible: { aimError: 0, overshoot: 0.6, correct: 0, maxTricks: 99, misjudge: 0, reactMs: 250, commitMs: 4000, margin: 1.3, lookahead: true, shieldAt: 4, shieldChance: 1, shieldAim: 'shots', shieldShooters: 2 },
   },
   /**
    * Impossible's look-ahead. When a cannon is free to pick a new job it

@@ -62,11 +62,12 @@ function aimAll(sim: BattleSim): void {
 
 describe('machine gun', () => {
   it('is a tower type everywhere: menu, editor, T key order', () => {
-    expect(KIND_IDS).toEqual(['normal', 'sniper', 'machinegun'])
+    expect(KIND_IDS).toEqual(['normal', 'sniper', 'machinegun', 'shield'])
     expect(KINDS.machinegun.label).toBe('Machine gun')
     expect(nextKind('normal')).toBe('sniper')
     expect(nextKind('sniper')).toBe('machinegun')
-    expect(nextKind('machinegun')).toBe('normal')
+    expect(nextKind('machinegun')).toBe('shield')
+    expect(nextKind('shield')).toBe('normal')
     expect(KINDS.machinegun.blurb).toContain('0.3 damage every 0.2 s')
   })
 
