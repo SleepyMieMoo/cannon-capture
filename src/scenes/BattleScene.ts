@@ -46,6 +46,7 @@ import { randomId, type Transport } from '../net/transport'
 import type { OnlineRoom, OnlineStart } from '../net/onlineClient'
 import { looksClash } from '../config/looks'
 import { NameTags } from '../render/nameTags'
+import { GLOW, SideGlow, glowColours, glowEdges } from '../render/sideGlow'
 import { clock, endTexts, nameOnSide, tagNames, netLine, opponentLine, pauseCheck, pauseLabel, rematchLine, sideIndex } from '../net/onlineView'
 import { PVP_RULES } from '../config/pvpRules'
 
@@ -151,6 +152,8 @@ export class BattleScene extends Phaser.Scene {
   private skinsNow: SideSkins = vsAiSkins(DEFAULT_SKIN)
   /** Owners' names on the cannons, when two players' looks clash (null: not a two-player round). */
   private tags: NameTags | null = null
+  /** Each team's side of the board, washed in its colour. */
+  private glow: SideGlow | null = null
   /** The HUD legend (null before the HUD is made). */
   private legend: { g: Phaser.GameObjects.Graphics; groups: { side: Side; x: number }[] } | null = null
   private restarting = false
@@ -182,6 +185,8 @@ export class BattleScene extends Phaser.Scene {
   private dropAt: [number | null, number | null] = [null, null]
   private hint!: Phaser.GameObjects.Text
   private pauseLink!: Phaser.GameObjects.Text
+  /** Online: the host turned pauses off for this match (no Pause button, Space does nothing). */
+  private pausesOff = false
   /** Paused: a frame round the board and a label at its top (UI camera; never blocks the board). */
   private pausedFx!: Phaser.GameObjects.Graphics
   private pausedLabel!: Phaser.GameObjects.Text
@@ -322,6 +327,8 @@ export class BattleScene extends Phaser.Scene {
     this.clockText = null
     this.legend = null
     this.tags = null
+    this.glow = null
+    this.pausesOff = false
     this.netText = null
     this.dropAt = [null, null]
     this.steps.reset()
@@ -370,6 +377,9 @@ export class BattleScene extends Phaser.Scene {
     // 3-2-1-Go before every round this screen runs (a network view shows the host's or server's countdown instead).
     if (!pvp || pvp.role === 'host') this.sim.startCountdown(DEBUG.countdown ?? TUNING.countdownMs)
     if (pvp) this.startPvp(pvp)
+    // Side glow, from where each side's cannons start (this view's sides, so a flipped view glows its own side in its colour).
+    this.glow = new SideGlow(this, this.board, glowEdges(this.cannons, this.board), DEBUG.glow ?? GLOW.alpha)
+    this.glow.paint(glowColours(this.colours))
     // Name tags: two-player rounds only (they show while the looks clash), or forced with ?debug&tags=1.
     if (pvp || DEBUG.tags) {
       this.tags = new NameTags(this, this.cannons, () => {})
@@ -725,6 +735,7 @@ export class BattleScene extends Phaser.Scene {
     this.colours = c
     applyTeamColours(c)
     this.paintLegend()
+    this.glow?.paint(glowColours(c))
   }
 
   /** The HUD legend's dots and counts in the team colours (again when they change: a LAN joiner's colour arrives late). */
@@ -825,6 +836,7 @@ export class BattleScene extends Phaser.Scene {
   private bindOnline(room: OnlineRoom, start: OnlineStart): void {
     this.online = room
     this.me = start.spectate ? null : sideIndex(start.side)
+    this.pausesOff = start.pauses === false
     room.entered = start.match
     const off = room.onChange(() => this.onRoomChange())
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, off)
@@ -866,7 +878,7 @@ export class BattleScene extends Phaser.Scene {
       this.showBanner(
         this.me === null
           ? `Watching room ${this.online.code}: ${nameOnSide(info, 0)} (${this.colourName('player')}) vs ${nameOnSide(info, 1)} (${this.colourName('enemy')}).${this.tags?.shown ? ' Their looks are alike, so names are on the cannons.' : ''}`
-          : `Online · room ${this.online.code} · you are ${this.colourName('player')} (light rings). ${this.tags?.shown ? 'Your looks are alike, so names are on the cannons (white: yours). ' : ''}Take every cannon, or hold the most when the ${mins} clock runs out.`,
+          : `Online · room ${this.online.code} · you are ${this.colourName('player')} (light rings). ${this.tags?.shown ? 'Your looks are alike, so names are on the cannons (white: yours). ' : ''}Take every cannon, or hold the most when the ${mins} clock runs out.${this.pausesOff ? ' Pauses are off in this room.' : ''}`,
       )
       return
     }
@@ -980,14 +992,26 @@ export class BattleScene extends Phaser.Scene {
 
   /** Tactical pause on/off (Space, or the HUD's Pause / Resume). */
   togglePause(): void {
-    if (this.ended || this.restarting || this.battleMenu?.open) return
+    // Online, the host can turn pauses off: then Space (and the HUD link) do nothing.
+    if (this.ended || this.restarting || this.battleMenu?.open || this.pausesOff) return
     if (this.pvp && this.sim.countdown > 0) {
       // Shown in place of the countdown's hint line, where the player is already looking.
       this.countNoteLeft = 1600
       return
     }
     this.order({ t: this.sim.paused ? 'resume' : 'pause' })
-    this.pauseLink?.setText(this.sim.paused ? 'Resume' : 'Pause').setFontStyle(this.sim.paused ? 'bold' : 'normal')
+    this.syncPauseLink()
+  }
+
+  /** The HUD's Pause / Resume link (online with pauses off: a muted "No pauses"). */
+  private syncPauseLink(): void {
+    const link = this.pauseLink
+    if (!link) return
+    if (this.pausesOff) {
+      if (link.text !== 'No pauses') link.setText('No pauses').setFontStyle('normal').setAlpha(0.55).disableInteractive()
+      return
+    }
+    link.setText(this.sim.paused ? 'Resume' : 'Pause').setFontStyle(this.sim.paused ? 'bold' : 'normal')
   }
 
   private onLoseFocus(): void {
@@ -1316,7 +1340,7 @@ export class BattleScene extends Phaser.Scene {
     if (!this.battleMenu?.open) return
     this.battleMenu.hide()
     this.menuHold.release()
-    this.pauseLink?.setText(this.sim.paused ? 'Resume' : 'Pause').setFontStyle(this.sim.paused ? 'bold' : 'normal')
+    this.syncPauseLink()
     // Turn keys back on after this frame, so the Esc that closed the menu doesn't reopen it.
     this.events.once(Phaser.Scenes.Events.POST_UPDATE, () => {
       if (this.input.keyboard) this.input.keyboard.enabled = true
@@ -1437,6 +1461,7 @@ export class BattleScene extends Phaser.Scene {
     link(GAME_WIDTH - 112, 'Menu', () => this.openMenu())
     link(GAME_WIDTH - 196, 'Settings', () => this.settings.toggle())
     this.pauseLink = link(GAME_WIDTH - 276, 'Pause', () => this.togglePause())
+    this.syncPauseLink()
   }
 
   private refreshHud(): void {
@@ -1473,7 +1498,7 @@ export class BattleScene extends Phaser.Scene {
       this.clockText.setText(time)
       this.clockText.setColor(x && x.tl < 30_000 ? cssHex(theme.enemy) : theme.text)
     }
-    const net = netLine(x, this.me, this.online!.rttAvg)
+    const net = netLine(x, this.me, this.online!.rttAvg, this.pausesOff)
     if (this.netText && this.netText.text !== net) this.netText.setText(net)
     if (this.sim.paused) {
       const label = pauseLabel(x, this.me, this.online!.info)

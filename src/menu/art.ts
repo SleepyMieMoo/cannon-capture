@@ -110,7 +110,7 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
   },
   {
     title: 'Swap type',
-    text: 'Hover a cannon (long-press on touch) for its menu: Normal, Sniper, Machine gun or Shield. The barrel shows the type; the body’s shape and colour are just its owner’s skin and team colour (pick yours in Settings).',
+    text: 'Hover a cannon (long-press on touch) for its menu: Normal, Sniper, Machine gun or Shield. The barrel shows the type; the body’s shape and colour are just its owner’s skin and team colour (pick yours in Settings). Each side’s edge of the board glows in its team’s colour.',
     art: svg(
       `${['Normal', 'Sniper', 'MG', 'Shield']
         .map((t, i) => `<rect x="${18 + i * 52}" y="12" width="48" height="22" rx="7" fill="${i === 1 ? gold : board}" stroke="${i === 1 ? gold : edge}" stroke-width="1.5"/>${label(42 + i * 52, 27, t, i === 1 ? cssHex(theme.hud) : ink, 10)}`)
@@ -126,7 +126,7 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
   },
   {
     title: 'Pause',
-    text: 'Space (or Pause) freezes the round. Aim and swap as much as you like; it all happens at once when you resume.',
+    text: 'Space (or Pause) freezes the round. Aim and swap as much as you like; it all happens at once when you resume. Online, the room’s host can turn pauses off.',
     art: svg(
       `<rect x="28" y="30" width="10" height="34" rx="3" fill="${gold}"/><rect x="44" y="30" width="10" height="34" rx="3" fill="${gold}"/>${cannon(100, 64, gold, -0.35)}<line x1="124" y1="56" x2="200" y2="30" stroke="${sel}" stroke-width="2.5" stroke-dasharray="6 6"/><circle cx="104" cy="64" r="22" fill="none" stroke="${sel}" stroke-width="1.5" stroke-dasharray="5 5"/>${key(178, 76, 'Space', 56)}`,
     ),

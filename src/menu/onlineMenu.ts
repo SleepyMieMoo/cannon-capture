@@ -5,7 +5,7 @@ import { TEAM_COLOUR } from '../config/teamColours'
 import { PVP_RULES } from '../config/pvpRules'
 import { drawThumb } from '../editor/thumb'
 import { MAP_SIZES } from '../levels/board'
-import { PVP_MAPS, cleanName, normaliseCode, isRoomCode, pvpLevel, type SeatInfo } from '../net/online'
+import { COUNTDOWN_CHOICES, DEFAULT_SETTINGS, PVP_MAPS, cleanName, normaliseCode, isRoomCode, pvpLevel, type RoomInfo, type RoomSettings, type SeatInfo } from '../net/online'
 import type { OnlineRoom } from '../net/onlineClient'
 import { h } from '../ui/overlay'
 import { ICONS } from './art'
@@ -36,10 +36,62 @@ export interface MenuKit {
 
 const mins = (ms: number): string => `${Math.round(ms / 60000)}-minute`
 
-export const RULES_LINE =
-  `${mins(PVP_RULES.matchMs)} matches: take every cannon, or hold the most when time runs out. ` +
-  `${PVP_RULES.pausesPerPlayer} pauses each, up to ${PVP_RULES.pauseMaxMs / 1000} s. ` +
-  `Drop out for more than ${PVP_RULES.graceMs / 1000} s and an AI plays your side. Sides swap every rematch. You always wear your own colour and skin with the light rings; if your looks are too alike, names appear on the cannons.`
+/** The online rules in one paragraph, for these match settings (the defaults on the Play with friends screen). */
+export function rulesLine(s: RoomSettings = DEFAULT_SETTINGS): string {
+  return (
+    `${mins(PVP_RULES.matchMs)} matches: take every cannon, or hold the most when time runs out. ` +
+    (s.countdown > 0 ? `A ${s.countdown}-second countdown first. ` : 'No countdown: firing starts at once. ') +
+    (s.pauses ? `${PVP_RULES.pausesPerPlayer} pauses each, up to ${PVP_RULES.pauseMaxMs / 1000} s. ` : 'No pauses. ') +
+    `Drop out for more than ${PVP_RULES.graceMs / 1000} s and an AI plays your side. Sides swap every rematch. You always wear your own colour and skin with the light rings; if your looks are too alike, names appear on the cannons. ` +
+    'Your side of the board glows in your colour.'
+  )
+}
+
+export const RULES_LINE = rulesLine() + ' The host can change the countdown, pauses and sides in the room.'
+
+const COUNTDOWN_LABEL: Record<number, string> = { 0: 'Chaotic rush', 3: 'Standard', 5: 'Relaxed' }
+
+/**
+ * The host's match settings: countdown, pauses, sides. The host edits them
+ * between matches; the guest and watchers see the same, read-only. Each
+ * change goes to the server, which sends the room back to everyone.
+ */
+function settingsBlock(room: OnlineRoom, r: RoomInfo): HTMLElement[] {
+  const s = r.settings
+  // An older server has no settings: say what it plays.
+  if (!s) return [h('div.mm-h', {}, 'Match settings'), h('div.mm-note', {}, 'This room’s server plays a 3-second countdown, 3 pauses each, host on the left.')]
+  const edit = r.you.host && r.phase !== 'playing'
+  const segs = COUNTDOWN_CHOICES.map((c) => {
+    const b = h('button.mm-seg', { type: 'button', dataset: { id: 'countdown-' + c }, 'aria-pressed': String(c === s.countdown), disabled: !edit },
+      h('span', {}, c === 0 ? '0 s' : `${c} s`), h('small', {}, COUNTDOWN_LABEL[c] ?? ''))
+    b.addEventListener('click', () => room.send({ t: 'settings', countdown: c }))
+    return b
+  })
+  const sw = h('input.mm-switch', { type: 'checkbox', role: 'switch', checked: !s.pauses, id: 'mm-nopause', disabled: !edit, dataset: { id: 'nopause' } }) as HTMLInputElement
+  sw.addEventListener('change', () => room.send({ t: 'settings', pauses: !sw.checked }))
+  const left = r.left ?? r.host ?? 0
+  const who = (seat: 0 | 1): string => {
+    const name = r.seats[seat]?.name ?? 'open seat'
+    const tags = [seat === r.you.seat ? 'you' : '', seat === r.host ? 'host' : ''].filter(Boolean).join(', ')
+    return tags ? `${name} (${tags})` : name
+  }
+  const swap = h('button.mm-btn', { type: 'button', dataset: { id: 'swap' }, disabled: !edit }, 'Swap sides')
+  swap.addEventListener('click', () => room.send({ t: 'swap' }))
+  const afterMatch = r.match > 0 ? ' Rematches swap sides from here.' : ' Each rematch then swaps.'
+  return [
+    h('div.mm-h', { style: 'margin-top:14px' }, edit ? 'Match settings' : 'Match settings (the host sets these)'),
+    h('div.mm-sub', {}, 'Countdown'),
+    h('div.mm-segs.mm-segs3', {}, ...segs),
+    h('div.mm-row', {}, sw, h('label', { htmlFor: 'mm-nopause' }, 'Disable pauses')),
+    h('div.mm-note', {}, s.pauses ? `Pauses on: ${PVP_RULES.pausesPerPlayer} each, up to ${PVP_RULES.pauseMaxMs / 1000} s.` : 'Pauses off: no Pause button, and Space does nothing.'),
+    h('div.mm-sub', {}, 'Sides'),
+    h('div.mm-sides', { dataset: { id: 'sides' } },
+      h('div', {}, h('small', {}, 'Left'), h('b', {}, who(left))),
+      h('div', {}, h('small', {}, 'Right'), h('b', {}, who(left === 0 ? 1 : 0))),
+    ),
+    h('div.mm-row', {}, edit ? swap : null, h('span.mm-note', {}, (r.match > 0 ? 'Next match.' : 'First match.') + afterMatch)),
+  ]
+}
 
 export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
   const err = h('div.mm-err', { role: 'status' })
@@ -176,7 +228,8 @@ export function lobbyScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
       h('div', {},
         h('div.mm-h', {}, host && !playing ? 'Pick the map' : 'Map'),
         h('div.mm-cards', {}, ...cards),
-        h('div.mm-note.mm-rules', {}, 'Fair maps only: both sides start the same. ' + RULES_LINE),
+        ...settingsBlock(room, r),
+        h('div.mm-note.mm-rules', {}, 'Fair maps only: both sides start the same. ' + rulesLine(r.settings)),
       ),
       h('div.mm-side', {},
         h('div.mm-h', {}, 'Invite code'),

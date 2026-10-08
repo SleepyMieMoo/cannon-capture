@@ -1,5 +1,5 @@
 import { PVP_LIMITS, PVP_RULES } from '../../src/config/pvpRules'
-import { PVP_MAPS, parseClientMsg, pvpLevel, pvpMap, type ClientMsg, type MatchResult, type RoomInfo, type SeatInfo, type ServerMsg } from '../../src/net/online'
+import { DEFAULT_SETTINGS, PVP_MAPS, parseClientMsg, pvpLevel, pvpMap, readSettings, type ClientMsg, type RoomSettings, type MatchResult, type RoomInfo, type SeatInfo, type ServerMsg } from '../../src/net/online'
 import { EventLog, encodeSnap, type SnapExtra } from '../../src/net/snapshot'
 import { BattleSim } from '../../src/sim/BattleSim'
 import { applyOrder, parseOrder } from '../../src/sim/orders'
@@ -71,6 +71,10 @@ export interface RoomState {
   rematch: [boolean, boolean]
   result: MatchResult | null
   sides: [Side, Side]
+  /** The host's match settings (rooms saved before settings existed have none: the defaults). */
+  settings?: RoomSettings
+  /** The seat on the left side next match (null/missing: the host's). */
+  left?: 0 | 1 | null
 }
 
 interface Match {
@@ -83,6 +87,8 @@ interface Match {
   skins: SideSkins
   /** Team colours per side this match (decided once, at the start). */
   colours: SideColours
+  /** Pauses allowed this match (the host's setting when it started). */
+  pauses: boolean
   pausesLeft: [number, number]
   pause: { seat: 0 | 1; until: number } | null
   ai: [boolean, boolean]
@@ -142,6 +148,8 @@ export class RoomCore {
       rematch: [false, false],
       result: null,
       sides: ['player', 'enemy'],
+      settings: { ...DEFAULT_SETTINGS },
+      left: null,
     }
     this.host.save(this.state)
     this.host.setAlarm(now + PVP_LIMITS.emptyRoomMs)
@@ -263,6 +271,19 @@ export class RoomCore {
         if (seat !== null) st.seats[seat]!.name = conn.data.name
         return this.changed()
       }
+      case 'settings': {
+        if (seat === null || seat !== st.host || this.running) return this.refuse(conn, 'Only the host changes the match settings, between matches.')
+        const cur = this.settings()
+        st.settings = { countdown: msg.countdown ?? cur.countdown, pauses: msg.pauses ?? cur.pauses }
+        st.rematch = [false, false]
+        return this.changed()
+      }
+      case 'swap': {
+        if (seat === null || seat !== st.host || this.running) return this.refuse(conn, 'Only the host swaps sides, between matches.')
+        st.left = this.leftSeat() === 0 ? 1 : 0
+        st.rematch = [false, false]
+        return this.changed()
+      }
       case 'map': {
         if (seat === null || seat !== st.host || this.running || !pvpMap(msg.id)) return this.refuse(conn, 'Only the host picks the map, between matches.')
         st.map = msg.id
@@ -312,6 +333,8 @@ export class RoomCore {
         seat = free as 0 | 1
         st.seats[seat] = { token, name: name || `Player ${seat + 1}`, leftAt: null, gone: false }
         st.rematch = [false, false]
+        // A new player: sides go back to the default (host on the left).
+        st.left = null
         if (st.host === null) st.host = seat
       }
     }
@@ -414,11 +437,27 @@ export class RoomCore {
 
   // ---------------------------------------------------------------- the match
 
+  /** The match settings now (the defaults until the host changes them). */
+  settings(): RoomSettings {
+    return readSettings(this.state?.settings ?? DEFAULT_SETTINGS)
+  }
+
+  /** The seat that plays the left side next match: the host's unless swapped. */
+  leftSeat(): 0 | 1 {
+    const st = this.state!
+    return st.left ?? st.host ?? 0
+  }
+
   private startMatch(now: number): void {
     const st = this.state!
     const no = st.matchNo + 1
-    const swap = PVP_RULES.swapSidesEachMatch && (no - 1) % 2 === 1
-    const sides: [Side, Side] = swap ? ['enemy', 'player'] : ['player', 'enemy']
+    // The left side is the 'player' (gold) side of every PvP map. The host
+    // starts there unless they swapped; each rematch then swaps (fair maps
+    // are mirrored, so either side is fair).
+    const left = this.leftSeat()
+    const sides: [Side, Side] = left === 0 ? ['player', 'enemy'] : ['enemy', 'player']
+    st.left = PVP_RULES.swapSidesEachMatch ? (left === 0 ? 1 : 0) : left
+    const settings = this.settings()
     const level = pvpLevel(pvpMap(st.map) ?? PVP_MAPS[0])
     // Each player always wears their own skin and colour (clients show name tags when the two clash; config/looks.ts).
     const seatOn = (side: Side): 0 | 1 => (sides[0] === side ? 0 : 1)
@@ -429,7 +468,8 @@ export class RoomCore {
     sim = new BattleSim(level, null, log.tap({}), lanesFor(level))
     sim.makePvp()
     // 3-2-1-Go: nothing fires and the match clock stands still until Go (both screens and watchers show it).
-    sim.startCountdown(PVP_RULES.countdownMs)
+    // 3, 5 or 0 s ("Chaotic rush": firing starts at once), as the host set it.
+    sim.startCountdown(settings.countdown * 1000)
     log.bind(sim)
     this.match = {
       id: rid(),
@@ -439,7 +479,9 @@ export class RoomCore {
       sides,
       skins,
       colours,
-      pausesLeft: [PVP_RULES.pausesPerPlayer, PVP_RULES.pausesPerPlayer],
+      pauses: settings.pauses,
+      // Pauses off: nobody has any (older games show "0 pauses left" and the server refuses them).
+      pausesLeft: settings.pauses ? [PVP_RULES.pausesPerPlayer, PVP_RULES.pausesPerPlayer] : [0, 0],
       pause: null,
       ai: [false, false],
       last: now,
@@ -471,6 +513,7 @@ export class RoomCore {
       stepMs: PVP_RULES.stepMs,
       skins: m.skins,
       colours: m.colours,
+      ...(m.pauses ? {} : { pauses: false }),
       ...(seat === null ? { spectate: true } : {}),
     }
   }
@@ -650,6 +693,8 @@ export class RoomCore {
       sides: st.sides,
       rematch: [...st.rematch],
       result: st.result,
+      settings: this.settings(),
+      left: this.leftSeat(),
     }
   }
 

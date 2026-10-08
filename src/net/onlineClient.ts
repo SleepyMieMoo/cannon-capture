@@ -77,7 +77,7 @@ export async function createRoom(): Promise<string> {
 }
 
 export type RoomStatus = 'connecting' | 'open' | 'reconnecting' | 'closed'
-export type OnlineStart = StartMsg & { spectate?: boolean }
+export type OnlineStart = StartMsg & { spectate?: boolean; pauses?: boolean }
 
 const now = () => performance.now()
 

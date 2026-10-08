@@ -21,6 +21,10 @@ export type ClientMsg =
   | { t: 'name'; name: string }
   /** Host: the map for the next match. */
   | { t: 'map'; id: string }
+  /** Host, between matches: change the match settings (only the fields given). */
+  | { t: 'settings'; countdown?: CountdownChoice; pauses?: boolean }
+  /** Host, between matches: swap which seat plays the left side next match. */
+  | { t: 'swap' }
   /** Host: start the match (both seats taken). */
   | { t: 'start' }
   /** After a match: ask for (or cancel) a rematch. It starts when both players ask. */
@@ -30,6 +34,35 @@ export type ClientMsg =
   | { t: 'leave' }
   /** Keep-alive while a match runs (the plain {"t":"ping"} is answered without waking the room). */
   | { t: 'hb' }
+
+/** Pre-round countdown choices, in seconds (0: "Chaotic rush", firing starts at once). */
+export const COUNTDOWN_CHOICES = [0, 3, 5] as const
+export type CountdownChoice = (typeof COUNTDOWN_CHOICES)[number]
+
+/**
+ * What the host can set in the room before a match. Every new room starts
+ * with DEFAULT_SETTINGS; they carry over to rematches until the host changes
+ * them between matches. The server is the authority. The 5-minute limit is
+ * not a setting (yet).
+ */
+export interface RoomSettings {
+  countdown: CountdownChoice
+  /** Pauses allowed (PVP_RULES.pausesPerPlayer each). */
+  pauses: boolean
+}
+
+export const DEFAULT_SETTINGS: Readonly<RoomSettings> = { countdown: 3, pauses: true }
+
+export const isCountdownChoice = (v: unknown): v is CountdownChoice => (COUNTDOWN_CHOICES as readonly unknown[]).includes(v)
+
+/** Settings from a message or stored state; anything missing or broken is the default (older servers send none). */
+export function readSettings(v: unknown): RoomSettings {
+  const s = v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
+  return {
+    countdown: isCountdownChoice(s.countdown) ? s.countdown : DEFAULT_SETTINGS.countdown,
+    pauses: typeof s.pauses === 'boolean' ? s.pauses : DEFAULT_SETTINGS.pauses,
+  }
+}
 
 export interface SeatInfo {
   name: string
@@ -63,6 +96,10 @@ export interface RoomInfo {
   sides: [Side, Side]
   rematch: [boolean, boolean]
   result: MatchResult | null
+  /** The host's match settings (older servers leave them out: the defaults, not changeable). */
+  settings?: RoomSettings
+  /** The seat that plays the left side next match (older servers leave it out). */
+  left?: 0 | 1
 }
 
 /** Server to game. */
@@ -71,9 +108,10 @@ export type ServerMsg =
   /**
    * `skins`: what each side wears, gold ('player') first, as the server
    * decided (every client and watcher shows the same). `colours`: the same
-   * for team colours. Old servers leave them out.
+   * for team colours. Old servers leave them out. `pauses: false`: the host
+   * turned pauses off for this match (left out when they're allowed).
    */
-  | { t: 'start'; match: string; level: LevelDef; side: Side; stepMs: number; spectate?: boolean; skins?: SideSkins; colours?: SideColours }
+  | { t: 'start'; match: string; level: LevelDef; side: Side; stepMs: number; spectate?: boolean; skins?: SideSkins; colours?: SideColours; pauses?: boolean }
   | { t: 'snap'; match: string; s: Snap }
   | { t: 'ack'; seq: number; ok: boolean }
   | { t: 'error'; code: 'noroom' | 'bad' | 'rate' | 'notallowed' | 'full' | 'closed'; msg: string }
@@ -138,6 +176,20 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
         : null
     case 'name':
       return { t: 'name', name: cleanName(m.name, '') }
+    case 'settings': {
+      const out: Extract<ClientMsg, { t: 'settings' }> = { t: 'settings' }
+      if (m.countdown !== undefined) {
+        if (!isCountdownChoice(m.countdown)) return null
+        out.countdown = m.countdown
+      }
+      if (m.pauses !== undefined) {
+        if (typeof m.pauses !== 'boolean') return null
+        out.pauses = m.pauses
+      }
+      return out
+    }
+    case 'swap':
+      return { t: 'swap' }
     case 'map':
       return typeof m.id === 'string' && m.id.length <= 40 ? { t: 'map', id: m.id } : null
     case 'start':

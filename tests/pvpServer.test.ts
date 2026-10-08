@@ -491,6 +491,126 @@ describe('online room: team colours', () => {
   })
 })
 
+describe('online room: host settings', () => {
+  const room3 = () => {
+    const s = setup()
+    const a = s.join(TOKEN_A, 'Nova')
+    const b = s.join(TOKEN_B, 'Kim')
+    const w = s.join('token-wwwwwwww', 'W')
+    const end = () => {
+      for (const c of s.room.match!.sim.cannons) if (c.side === 'enemy') c.side = 'player'
+      s.run(100)
+    }
+    return { ...s, a, b, w, end }
+  }
+
+  it('every new room starts with the defaults: 3 s countdown, pauses on, host on the left', () => {
+    const { a, b, w, room } = room3()
+    for (const c of [a, b, w]) {
+      expect(c.room_.settings).toEqual({ countdown: 3, pauses: true })
+      expect(c.room_.left).toBe(0)
+    }
+    a.say({ t: 'start' })
+    expect(room.match!.sim.countdown).toBe(3000)
+    expect(a.last('start').side).toBe('player')
+    expect(a.last('start').pauses).toBeUndefined()
+    expect(room.match!.pausesLeft).toEqual([PVP_RULES.pausesPerPlayer, PVP_RULES.pausesPerPlayer])
+  })
+
+  it('only the host changes them, only between matches; guest and watchers see every change', () => {
+    const { a, b, w, room } = room3()
+    b.say({ t: 'settings', countdown: 0 })
+    expect(b.last('error').code).toBe('notallowed')
+    w.say({ t: 'swap' })
+    expect(w.last('error').code).toBe('notallowed')
+    expect(room.settings()).toEqual({ countdown: 3, pauses: true })
+    a.say({ t: 'settings', countdown: 5 })
+    a.say({ t: 'settings', pauses: false })
+    for (const c of [a, b, w]) expect(c.room_.settings).toEqual({ countdown: 5, pauses: false })
+    a.say({ t: 'settings', countdown: 4 }) // not a choice: refused as a bad message
+    expect(room.settings().countdown).toBe(5)
+    a.say({ t: 'start' })
+    a.say({ t: 'settings', countdown: 0 })
+    expect(a.last('error').code).toBe('notallowed')
+    expect(room.settings().countdown).toBe(5)
+  })
+
+  it('countdown 0 ("Chaotic rush"): firing starts at once', () => {
+    const { a, room, run } = room3()
+    a.say({ t: 'settings', countdown: 0 })
+    a.say({ t: 'start' })
+    expect(room.match!.sim.countdown).toBe(0)
+    run(1500)
+    expect(room.match!.sim.shots.length + room.match!.sim.cannons.filter((c) => c.captureProgress > 0).length).toBeGreaterThan(0)
+  })
+
+  it('pauses off: nobody can pause, the start says so (older games see 0 pauses left)', () => {
+    const { a, b, w, room, run } = room3()
+    a.say({ t: 'settings', pauses: false })
+    a.say({ t: 'start' })
+    for (const c of [a, b, w]) expect(c.last('start').pauses).toBe(false)
+    run(PVP_RULES.countdownMs + 200)
+    a.say({ t: 'order', seq: 1, o: { t: 'pause' } })
+    expect(a.last('ack')).toEqual({ t: 'ack', seq: 1, ok: false })
+    expect(room.match!.sim.paused).toBe(false)
+    expect(a.snap.x?.pl).toEqual([0, 0])
+  })
+
+  it('swap sides: the host plays the right side; looks and "you" follow the person; rematches swap from there; settings carry over', () => {
+    const s = setup()
+    const say = (token: string, name: string, colour: string) => {
+      const c = new FakeConn(s.host, s.room)
+      c.say({ t: 'hello', token, name, colour })
+      return c
+    }
+    const a = say(TOKEN_A, 'Nova', 'blueberry')
+    const b = say(TOKEN_B, 'Kim', 'peach')
+    a.say({ t: 'settings', countdown: 5 })
+    a.say({ t: 'swap' })
+    expect(b.room_.left).toBe(1)
+    a.say({ t: 'swap' })
+    expect(b.room_.left).toBe(0)
+    a.say({ t: 'swap' })
+    a.say({ t: 'start' })
+    // Kim (seat 1) has the left, gold-side cannons; Nova plays the right.
+    expect(a.last('start').side).toBe('enemy')
+    expect(b.last('start').side).toBe('player')
+    expect(a.last('start').colours).toEqual({ player: 'peach', enemy: 'blueberry' })
+    expect(s.room.match!.sides).toEqual(['enemy', 'player'])
+    // After the match the room shows the next sides: swapped back.
+    for (const c of s.room.match!.sim.cannons) if (c.side === 'enemy') c.side = 'player'
+    s.run(100)
+    expect(a.room_.left).toBe(0)
+    a.say({ t: 'rematch', on: true })
+    b.say({ t: 'rematch', on: true })
+    expect(a.last('start').side).toBe('player')
+    expect(a.last('start').colours).toEqual({ player: 'blueberry', enemy: 'peach' })
+    expect(s.room.match!.sim.countdown).toBe(5000)
+    // The left side is the gold ('player') side on every PvP map.
+    for (const l of PVP_MAPS) {
+      const xs = (side: string) => l.cannons.filter((c) => c.side === side).map((c) => c.x)
+      expect(Math.max(...xs('player'))).toBeLessThan(Math.min(...xs('enemy')))
+    }
+  })
+
+  it('a change between matches resets rematch votes; a room saved before settings existed plays the defaults', () => {
+    const { a, b, room, end } = room3()
+    a.say({ t: 'start' })
+    end()
+    b.say({ t: 'rematch', on: true })
+    a.say({ t: 'settings', countdown: 0 })
+    expect(a.room_.rematch).toEqual([false, false])
+    const st = JSON.parse(JSON.stringify(room.state)) as RoomState
+    delete (st as Partial<RoomState>).settings
+    delete (st as Partial<RoomState>).left
+    const old = new RoomCore(new FakeHost(), st)
+    expect(old.settings()).toEqual({ countdown: 3, pauses: true })
+    expect(parseClientMsg({ t: 'settings', countdown: 0, pauses: false })).toEqual({ t: 'settings', countdown: 0, pauses: false })
+    expect(parseClientMsg({ t: 'settings', pauses: 'no' })).toBeNull()
+    expect(parseClientMsg({ t: 'swap' })).toEqual({ t: 'swap' })
+  })
+})
+
 describe('online room: names for the name tags', () => {
   it('no name: the room says Player 1 / Player 2; names (and changes) reach both players and watchers', () => {
     const s = setup()
