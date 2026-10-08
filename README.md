@@ -15,7 +15,21 @@ You are gold. The enemy is strawberry pink. Warm grey cannons are neutral and do
 3. Cannons don't snap. The barrel turns toward its aim at a limited speed, and a cannon only fires once it has finished turning and is lined up. After that it fires about once a second. The fire timer keeps counting while the barrel turns, so a long turn doesn't add an extra wait: the cannon fires as soon as it lines up, if its timer is ready. Big swings still cost you shots, because nothing fires mid-turn.
 4. Setting an aim deselects the cannon automatically, so a stray extra click can't re-aim it. To re-aim, select it again. Before aiming, click the selected cannon again (or press **Esc**) to cancel, or click another of your cannons to switch to it.
 
-A cannon tints toward whoever is hitting it, and a ring around it fills in their colour. At eight hits it flips. Capture every cannon to win. Lose when none are yours. A newly captured cannon swings toward the nearest foe on its own.
+A cannon tints toward whoever is hitting it, and a ring around it fills in their colour. At eight hits it flips. Capture every cannon to win. Lose when none are yours. A newly captured cannon swings toward the nearest foe on its own (see Auto-target).
+
+**Auto-target.** Your cannons help themselves in two ways, and only these two:
+
+- When the cannon a gun of yours was shooting becomes yours, that gun picks the nearest foe (one it has a lane to) and carries on.
+- A cannon you capture aims at the nearest foe.
+
+Nothing else is automatic. Free aim points are never changed, cannons you haven't aimed stay idle, and a gun that finished healing a friend goes back to the aim you gave it before.
+
+- **Settings** (top right in every battle) has the global **Auto-target** switch. Off: none of your cannons ever picks a target by itself. A gun whose target is captured drops it and holds its fire with its barrel where it was, until you aim it (cannons with no aim never fire). Cannons you capture wait for orders too. It starts **on** at the start of every game (each level, restart or new map).
+- **Per cannon:** the hover menu (long-press on touch) has an **Auto** switch after the tower types, or press **M** over a cannon. A cannon on manual shows a small crossed-out crosshair badge at its top left.
+- Global on: every cannon auto-targets except the ones you switched to manual. Global off: none do. Each cannon's own switch is kept and applies again when the global one is back on. A cannon you capture (or take back) starts with its own switch on, so it follows the global setting.
+- The switches only act at those moments. Turning auto-target back on doesn't re-aim an idle cannon until its next capture moment.
+- Puzzles never auto-target, whatever the switches say, since every aim there is yours to spend. The Settings panel shows the switch greyed out there, and the hover menu leaves out the Auto pill.
+- The AI's cannons ignore all of this. Pink plans its own targets.
 
 **Healing.** Each cannon has one capture meter, like a tug of war:
 

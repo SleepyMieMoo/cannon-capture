@@ -59,6 +59,13 @@ export class Cannon {
   private resumeAim: SavedAim | null = null
   selected = false
   hovered = false
+  /**
+   * Your per-cannon auto-target toggle (see BattleSim.autoTargets): when off,
+   * this cannon never picks a target by itself. Only matters on your side.
+   */
+  autoTarget = true
+  /** Drawn: show the "manual" badge (auto-target is off for this cannon right now). */
+  manualBadge = false
 
   private readonly body?: Phaser.GameObjects.Graphics
   private readonly barrel?: Phaser.GameObjects.Graphics
@@ -136,6 +143,7 @@ export class Cannon {
     c.shieldHp = this.shieldHp
     c.shieldDown = this.shieldDown
     c.shieldCalm = this.shieldCalm
+    c.autoTarget = this.autoTarget
     return c
   }
 
@@ -454,6 +462,8 @@ export class Cannon {
       this.body.strokeCircle(0, 0, TUNING.cannonRadius + 2 + t * 10)
     }
 
+    if (this.manualBadge) this.drawManualBadge(this.body)
+
     if (this.selected || this.hovered) {
       const pulse = this.selected ? 0.55 + 0.45 * Math.sin(time / 140) : 0.45
       this.body.lineStyle(2, this.selected ? theme.select : 0xffffff, pulse)
@@ -528,6 +538,28 @@ export class Cannon {
     g.fillStyle(ink, 0.95)
     const pips = Math.max(1, Math.round(this.damage))
     for (let i = 0; i < pips; i++) g.fillCircle((i - (pips - 1) / 2) * 7, r * 0.5 + 9, 2.2)
+  }
+
+  /**
+   * Auto-target off: a small badge at the cannon's top left, a crosshair
+   * with a slash through it ("picks no targets by itself").
+   */
+  private drawManualBadge(g: Phaser.GameObjects.Graphics): void {
+    const r = TUNING.cannonRadius
+    const x = -r * 0.78
+    const y = -r * 0.78
+    g.fillStyle(theme.hud, 0.95)
+    g.fillCircle(x, y, 9)
+    g.lineStyle(1.5, sideColor(this.side), 1)
+    g.strokeCircle(x, y, 9)
+    g.lineStyle(1.5, 0xfff4d2, 0.95)
+    g.strokeCircle(x, y, 4)
+    g.lineBetween(x - 7, y, x - 5, y)
+    g.lineBetween(x + 5, y, x + 7, y)
+    g.lineBetween(x, y - 7, x, y - 5)
+    g.lineBetween(x, y + 5, x, y + 7)
+    g.lineStyle(2, theme.enemy, 1)
+    g.lineBetween(x - 5.5, y + 5.5, x + 5.5, y - 5.5)
   }
 
   /** Shield marking on the body: a little crest, plus the barrier's health bar under the cannon. */
