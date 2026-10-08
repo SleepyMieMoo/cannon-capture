@@ -1,4 +1,4 @@
-import { CONTRAST, SKINS, SKIN_LABEL } from '../config/skins'
+import { CONTRAST, SKINS, SKIN_LABEL, type SkinId } from '../config/skins'
 import { loadSkin, saveSkin } from './skinPref'
 import { CONTRAST_COLOUR, TEAM_COLOUR, TEAM_COLOURS, vsAiColours, type TeamColourId } from '../config/teamColours'
 import { applyTeamColours, cssHex } from '../config/theme'
@@ -16,6 +16,11 @@ import { DIFFICULTY, loadMenuPrefs, pickMap, puzzleChoices, saveMenuPrefs, vsAiM
 import { injectMenuStyles } from './menuStyles'
 import { friendsScreen, lobbyScreen, type MenuKit, type OnlineMenu } from './onlineMenu'
 import { MenuNav, vsAiLevel, type MapChoice, type MenuScreen } from './routes'
+import { copyText } from '../ui/copyText'
+import { LINKS } from './credits'
+import { versionLabel } from '../version'
+import { dayLabel, KIND_LABEL, WHATS_NEW } from './whatsNew'
+import { KEPT_KEYS, PREF_KEYS } from './prefs'
 
 /** What the menu asks the game to do. */
 export interface MenuActions {
@@ -32,6 +37,20 @@ export interface MenuActions {
   perf?: { get(): boolean; set(on: boolean): void; onChange(fn: (on: boolean) => void): () => void }
   /** Online play with friends (left out inside Discord and in tests). */
   online?: OnlineMenu
+  /** Profile: the online name (the same one the room screen saves). */
+  name?: { get(): string; set(name: string): void }
+  /** Profile → Reset all preferences, after the confirm. */
+  resetPrefs?(): void
+  /** Copy debug info: the report text (version, browser, screen, settings; nothing personal). */
+  debugInfo?(): string
+}
+
+const link = (href: string, text: string): HTMLAnchorElement => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text)
+
+/** The big Profile preview: your cannon (skin + colour), or the AI's contrast to it. */
+function mePreview(ai: boolean, skin: SkinId): string {
+  const colour = loadColour()
+  return ai ? skinPreview(CONTRAST[skin], 'enemy', TEAM_COLOUR[CONTRAST_COLOUR[colour]].hex) : skinPreview(skin, 'player', TEAM_COLOUR[colour].hex)
 }
 
 const icon = (svg: string): HTMLSpanElement => h('span', { innerHTML: svg, style: 'display:inline-flex' })
@@ -146,6 +165,12 @@ export class MainMenu {
             ? this.puzzles()
             : screen === 'settings'
               ? this.settings()
+              : screen === 'profile'
+                ? this.profile()
+                : screen === 'credits'
+                  ? this.credits()
+                  : screen === 'whatsnew'
+                    ? this.whatsNew()
               : screen === 'friends' && this.actions.online
                 ? friendsScreen(this.kit, this.actions.online)
                 : screen === 'lobby' && this.actions.online
@@ -206,11 +231,13 @@ export class MainMenu {
         this.button('levels', BRAND.levelsLabel, () => this.actions.levels(), { icon: ICONS.levels }),
         this.button('editor', 'Map editor', () => this.actions.editor(), { icon: ICONS.editor }),
         this.button('maps', 'My maps', () => this.actions.myMaps(), { icon: ICONS.maps }),
+        this.button('profile', 'Profile', go('profile'), { icon: ICONS.profile }),
         this.button('settings', 'Settings', go('settings'), { icon: ICONS.settings }),
         this.button('howto', 'How to play', go('howto'), { icon: ICONS.help }),
+        this.button('credits', 'Credits', go('credits'), { icon: ICONS.credits }),
       ),
       soon,
-      h('div.mm-foot', {}, 'Colours from ChocoNeko’s Dark Choco theme'),
+      h('div.mm-foot', {}, this.versionButton()),
     )
   }
 
@@ -385,6 +412,7 @@ export class MainMenu {
     const skin = loadSkin()
     for (const el of this.root.querySelectorAll<HTMLElement>('[data-pv-skin]')) el.innerHTML = skinPreview(el.dataset.pvSkin as typeof skin)
     for (const el of this.root.querySelectorAll<HTMLElement>('[data-pv-colour]')) el.innerHTML = skinPreview(skin, 'player', TEAM_COLOUR[el.dataset.pvColour as TeamColourId].hex)
+    for (const el of this.root.querySelectorAll<HTMLElement>('[data-pv-me]')) el.innerHTML = mePreview(el.dataset.pvMe === 'ai', skin)
     for (const draw of this.thumbs) draw()
   }
 
@@ -408,7 +436,6 @@ export class MainMenu {
     const perf = this.actions.perf
     const perfSw = perf ? h('input.mm-switch', { type: 'checkbox', role: 'switch', checked: perf.get(), id: 'mm-perf', dataset: { id: 'perf' } }) : null
     perfSw?.addEventListener('change', () => perf?.set(perfSw.checked))
-    const a = (href: string, text: string): HTMLAnchorElement => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text)
     return this.screenFrame('Settings', 'Saved on this device', [
       h('div.mm-set', {},
         h('div', {},
@@ -427,22 +454,175 @@ export class MainMenu {
             : []),
         ),
         h('div', {},
+          h('div.mm-h', {}, 'Your looks and name'),
+          h('div.mm-note', {}, 'Cannon skin, team colour, online name and the Play vs AI difficulty are in Profile.'),
+          h('div.mm-row', {}, this.button('to-profile', 'Open Profile', () => this.open('profile', 'to-profile'), { icon: ICONS.profile, cls: 'small' })),
+          h('div.mm-h', { style: 'margin-top:16px' }, 'Bug reports'),
+          h('div.mm-note', {}, 'Copies the game version, browser, screen size, renderer and these settings, nothing personal, to paste into a bug report.'),
+          h('div.mm-row', {}, this.copyDebugButton('debug-settings')),
+          h('div.mm-h', { style: 'margin-top:16px' }, 'About'),
+          h('div.mm-row', {}, this.button('to-credits', 'Credits', () => this.open('credits', 'to-credits'), { icon: ICONS.credits, cls: 'small' }), this.versionButton()),
+        ),
+      ),
+    ])
+  }
+
+  /** "v0.1.0 · abc1234 · What's new": subtle, under the menu and on Profile and Credits. */
+  private versionButton(id = 'version'): HTMLButtonElement {
+    return h('button.mm-ver', { type: 'button', dataset: { id }, title: 'What’s new in this version', onclick: () => this.open('whatsnew', id) }, versionLabel(), h('span', {}, ' · What’s new'))
+  }
+
+  /** Copy debug info, with a toast (or the text shown selected when the clipboard is blocked). */
+  private copyDebugButton(id: string): HTMLButtonElement {
+    const b = this.button(id, 'Copy debug info', () => {
+      const text = this.actions.debugInfo?.() ?? ''
+      void copyText(text).then((how) => {
+        if (how === 'manual') {
+          this.manualCopy(text)
+          this.toast('Copy blocked here: the info is selected, press Ctrl+C (or long-press, Copy).')
+        } else this.toast('Debug info copied: paste it into your bug report.')
+      })
+    }, { icon: ICONS.copy, cls: 'small' })
+    if (!this.actions.debugInfo) b.disabled = true
+    return b
+  }
+
+  private manualCopy(text: string): void {
+    const box = h('textarea.mm-copybox', { readOnly: true, rows: 6, 'aria-label': 'Debug info' }) as HTMLTextAreaElement
+    box.value = text
+    this.root.querySelector('.mm-copybox')?.remove()
+    ;(this.root.querySelector('.mm-body') ?? this.root).append(box)
+    box.focus()
+    box.select()
+  }
+
+  private toastTimer = 0
+
+  private toast(text: string): void {
+    this.root.querySelector('.mm-toast')?.remove()
+    const t = h('div.mm-toast', { role: 'status' }, text)
+    this.root.append(t)
+    window.clearTimeout(this.toastTimer)
+    this.toastTimer = window.setTimeout(() => t.remove(), 2600)
+  }
+
+  /** The small "v… · What's new" line at the end of a screen. */
+  private versionFoot(): HTMLElement {
+    return h('div.mm-verfoot', {}, this.versionButton())
+  }
+
+  private profile(): HTMLElement {
+    const name = this.actions.name
+    const nameIn = h('input.mm-input', { id: 'mm-pname', type: 'text', maxLength: 16, placeholder: 'Your name (optional)', value: name?.get() ?? '', autocomplete: 'nickname', dataset: { id: 'pname' } }) as HTMLInputElement
+    const saved = h('span.mm-saved', { 'aria-live': 'polite' })
+    nameIn.addEventListener('change', () => {
+      name?.set(nameIn.value)
+      nameIn.value = name?.get() ?? nameIn.value
+      saved.textContent = 'Saved'
+      window.setTimeout(() => (saved.textContent = ''), 1500)
+    })
+    if (!name) nameIn.disabled = true
+    // Difficulty: the one Play vs AI starts on (it remembers your last pick there too).
+    const blurb = h('div.mm-note', {}, DIFFICULTY[this.prefs.difficulty].blurb)
+    const segs = AI_LEVELS.map((d) => {
+      const b = h('button.mm-seg', { type: 'button', dataset: { id: 'pdiff-' + d }, 'aria-pressed': String(d === this.prefs.difficulty), title: DIFFICULTY[d].blurb }, DIFFICULTY[d].label)
+      b.addEventListener('click', () => {
+        this.prefs = { ...this.prefs, difficulty: d }
+        saveMenuPrefs(this.prefs)
+        for (const x of segs) x.setAttribute('aria-pressed', String(x === b))
+        blurb.textContent = DIFFICULTY[d].blurb
+      })
+      return b
+    })
+    // Reset, with a confirm step in place (no browser dialog: Discord's frame blocks those).
+    const resetArea = h('div.mm-reset')
+    const showAsk = (): void => {
+      resetArea.replaceChildren(this.button('reset', 'Reset all preferences', showConfirm, { icon: ICONS.reset, cls: 'small' }))
+    }
+    const showConfirm = (): void => {
+      const yes = this.button('reset-yes', 'Reset', () => {
+        this.actions.resetPrefs?.()
+        this.prefs = loadMenuPrefs()
+        applyTeamColours(vsAiColours(loadColour()))
+        this.render('reset')
+        this.toast('Preferences reset to the defaults.')
+      }, { cls: 'small.danger' })
+      const no = this.button('reset-no', 'Cancel', () => {
+        showAsk()
+        resetArea.querySelector<HTMLElement>('[data-id="reset"]')?.focus()
+      }, { cls: 'small' })
+      resetArea.replaceChildren(
+        h('div.mm-confirm', { role: 'alertdialog', 'aria-label': 'Reset all preferences?' },
+          h('b', {}, 'Reset all preferences?'),
+          h('div.mm-note', {}, `Back to the defaults: ${PREF_KEYS.map((k) => k.what).join(', ')}. Kept: ${KEPT_KEYS.map((k) => k.what).join(', ')}.`),
+          h('div.mm-row', {}, yes, no),
+        ),
+      )
+      no.focus()
+    }
+    showAsk()
+    if (!this.actions.resetPrefs) resetArea.querySelector<HTMLButtonElement>('button')!.disabled = true
+    return this.screenFrame('Profile', 'You, on this device', [
+      h('div.mm-set', {},
+        h('div', {},
+          h('div.mm-me', { 'aria-label': 'Preview: your cannon against the AI’s' },
+            h('div', {}, h('span.pv', { innerHTML: mePreview(false, loadSkin()), dataset: { pvMe: 'you' } }), h('small', {}, 'You')),
+            h('span.vs', {}, 'vs'),
+            h('div', {}, h('span.pv.ai', { innerHTML: mePreview(true, loadSkin()), dataset: { pvMe: 'ai' } }), h('small', {}, 'The AI')),
+          ),
+          h('label.mm-h', { htmlFor: 'mm-pname' }, 'Online name'),
+          h('div.mm-row', {}, nameIn, saved),
+          h('div.mm-note', {}, this.actions.online ? 'Shown to the other player and spectators in Play with friends. The room screen uses the same name.' : 'Used in Play with friends (in a browser; online play isn’t available here yet).'),
+          h('div.mm-h', { style: 'margin-top:16px' }, 'Play vs AI difficulty'),
+          h('div.mm-segs', {}, ...segs),
+          blurb,
+          h('div.mm-h', { style: 'margin-top:16px' }, 'Reset'),
+          resetArea,
+        ),
+        h('div', {},
           h('div.mm-h', {}, 'Cannon skin'),
           this.skinPicker(false),
           h('div.mm-note', {}, 'Only the body’s shape: the barrel still shows the type, the ring still shows the owner. A captured cannon takes its new owner’s skin. Online, each player always wears their own.'),
           h('div.mm-h', { style: 'margin-top:16px' }, 'Team colour'),
           this.colourPicker(false),
           h('div.mm-note', {}, 'Your cannons, shots and capture colour. The rings don’t change: light is always yours, red always the enemy’s. Online, each player always wears their own; if your looks are too alike, small name tags appear on the cannons.'),
-          h('div.mm-h', { style: 'margin-top:16px' }, 'Credits'),
-          h('ul.mm-credits', {},
-            h('li', {}, h('b', {}, 'Game: '), 'SleepyMie'),
-            h('li', {}, h('b', {}, 'Colours: '), 'ChocoNeko’s Dark Choco theme'),
-            h('li', {}, h('b', {}, 'Pop sound: '), a('https://pixabay.com/sound-effects/film-special-effects-pop-cartoon-328167/', '“Pop Cartoon”'), ' by ', a('https://pixabay.com/users/creatorshome-49707711/', 'CreatorsHome'), ' on Pixabay (', a('https://pixabay.com/service/license-summary/', 'Pixabay Content License'), ')'),
-            h('li', {}, h('b', {}, 'Engine: '), 'Phaser 3'),
+        ),
+      ),
+      this.versionFoot(),
+    ])
+  }
+
+  private credits(): HTMLElement {
+    const row = (what: string, ...who: (Node | string)[]): HTMLElement => h('div.mm-cred-row', {}, h('dt', {}, what), h('dd', {}, ...who))
+    return this.screenFrame('Credits', 'Who and what made this game', [
+      h('dl.mm-cred', {},
+        row('Game', 'by ', h('b', {}, 'SleepyMie'), ' · ', link(LINKS.sleepyMie, 'sleepymiemoo.github.io')),
+        row('Colours', 'Inspired by ', link(LINKS.choconeko, 'ChocoNeko’s Dark Choco theme')),
+        row('Pop sound', link(LINKS.pop, '“Pop Cartoon”'), ' by ', link(LINKS.creatorsHome, 'CreatorsHome'), ' on Pixabay, under the ', link(LINKS.pixabayLicense, 'Pixabay Content License'), '. Trimmed for the game; please get the original from Pixabay.'),
+        row('Engine', link(LINKS.phaser, 'Phaser 3')),
+        row('Online server', link(LINKS.workers, 'Cloudflare Workers'), ' with Durable Objects'),
+        row('Made with', link(LINKS.typescript, 'TypeScript'), ' and ', link(LINKS.vite, 'Vite')),
+        row('Font', 'Verdana (or your device’s closest match). No web fonts are downloaded.'),
+        row('Special thanks', 'Playtesters, for every round and every bug report'),
+        row('Source code', link(LINKS.repo, 'github.com/SleepyMieMoo/cannon-capture')),
+      ),
+      this.versionFoot(),
+    ])
+  }
+
+  private whatsNew(): HTMLElement {
+    return this.screenFrame('What’s new', versionLabel(), [
+      h('div.mm-news', {},
+        ...WHATS_NEW.map((day) =>
+          h('section', {},
+            h('div.mm-h', {}, dayLabel(day.date)),
+            h('ul', {}, ...day.entries.map((e) => h('li', {}, h(`span.mm-kind.${e.kind}`, {}, KIND_LABEL[e.kind]), h('div', {}, h('b', {}, e.title), h('span', {}, e.text))))),
           ),
         ),
       ),
-    ])
+    ],
+    h('div.mm-bar', {}, h('div.mm-pick', {}, h('div.n', {}, versionLabel()), h('div.mm-note', {}, 'Found a bug? Copy this, then paste it into your report.')), this.copyDebugButton('debug')),
+    )
   }
 
   private howto(): HTMLElement {

@@ -50,6 +50,43 @@ export function injectMenuStyles(): void {
 .mm-soon { font: inherit; font-size: clamp(11px, 1.7vmin, 13px); color: ${theme.textMuted}; background: transparent; border: 1.5px dashed ${cssHex(theme.boardEdge)}; border-radius: 999px; padding: 5px 14px; display: inline-flex; gap: 8px; align-items: center; opacity: .8; cursor: default; }
 .mm-soon b { color: ${theme.text}; }
 .mm-foot { color: ${theme.textMuted}; font-size: clamp(10px, 1.5vmin, 12px); opacity: .75; text-align: center; }
+.mm-ver { font: inherit; font-size: clamp(10px, 1.5vmin, 12px); color: ${theme.textMuted}; background: transparent; border: 0; border-radius: 8px; padding: 4px 10px; min-height: 30px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.mm-ver span { opacity: .8; }
+.mm-ver:hover { color: ${theme.text}; text-decoration: underline; text-underline-offset: 3px; }
+.mm-ver:focus-visible { outline: 2px solid ${gold}; outline-offset: 1px; }
+.mm-verfoot { display: flex; justify-content: center; margin-top: 14px; opacity: .85; }
+.mm-btn.small { min-height: 42px; font-size: clamp(12px, 1.9vmin, 14px); padding: 4px 14px; border-radius: 11px; gap: 8px; }
+.mm-btn.danger { background: ${cssHex(theme.enemy)}; border-color: ${cssHex(theme.enemy)}; color: ${theme.ink}; }
+.mm-btn.danger:hover { background: ${cssHex(theme.enemy)}; filter: brightness(1.08); border-color: ${theme.text}; }
+.mm-toast { position: fixed; left: 50%; bottom: calc(max(10px, var(--discord-safe-area-inset-bottom, env(safe-area-inset-bottom))) + clamp(76px, 13vmin, 100px)); transform: translateX(-50%); z-index: 9; max-width: min(92vw, 460px); background: ${rgba(theme.panel, 0.98)}; color: ${theme.text}; border: 2px solid ${gold}; border-radius: 12px; padding: 10px 16px; font-weight: bold; text-align: center; box-shadow: 0 8px 24px ${rgba(0, 0.45)}; animation: mm-toast-in .16s ease-out; }
+@keyframes mm-toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+.mm-copybox { width: 100%; margin-top: 10px; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; color: ${theme.text}; background: ${rgba(theme.panel, 0.95)}; border: 2px solid ${gold}; border-radius: 10px; padding: 8px; resize: vertical; user-select: text; }
+.mm-me { display: flex; align-items: center; justify-content: center; gap: clamp(14px, 4vmin, 40px); background: ${rgba(theme.panel, 0.8)}; border: 1px solid ${cssHex(theme.boardEdge)}; border-radius: 14px; padding: 8px 12px; margin-bottom: 12px; }
+.mm-me > div { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.mm-me .pv { display: block; width: clamp(72px, 13vmin, 104px); aspect-ratio: 1; }
+.mm-me .pv svg { width: 100%; height: 100%; display: block; }
+.mm-me .pv.ai { transform: scaleX(-1); }
+.mm-me small { color: ${theme.textMuted}; font-weight: bold; }
+.mm-me .vs { color: ${theme.textMuted}; font-weight: bold; font-size: 1.1em; }
+.mm-saved { color: ${gold}; font-size: 12px; min-width: 3em; }
+.mm-row .mm-input { flex: 1; }
+.mm-confirm { background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.enemy)}; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.mm-confirm .mm-row { margin: 4px 0 0; }
+.mm-cred { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0; max-width: 760px; margin-inline: auto; }
+.mm-cred-row { display: contents; }
+.mm-cred dt, .mm-cred dd { margin: 0; padding: 9px 10px; border-bottom: 1px solid ${rgba(theme.boardEdge, 0.7)}; line-height: 1.45; }
+.mm-cred dt { font-weight: bold; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: ${theme.textMuted}; padding-top: 11px; }
+.mm-cred dd { color: ${theme.text}; }
+.mm-cred a, .mm-news a { color: ${gold}; }
+.mm-news { max-width: 760px; margin-inline: auto; }
+.mm-news ul { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mm-news li { display: flex; gap: 10px; align-items: flex-start; background: ${rgba(theme.panel, 0.85)}; border: 1px solid ${cssHex(theme.boardEdge)}; border-radius: 12px; padding: 8px 10px; }
+.mm-news li > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mm-news li span:not(.mm-kind) { color: ${theme.textMuted}; line-height: 1.4; }
+.mm-kind { flex: none; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: .05em; border-radius: 999px; padding: 2px 8px; margin-top: 1px; min-width: 64px; text-align: center; }
+.mm-kind.new { background: ${gold}; color: ${theme.ink}; }
+.mm-kind.change { background: ${cssHex(theme.grid)}; color: ${theme.text}; border: 1px solid ${cssHex(theme.boardEdge)}; }
+.mm-kind.fix { background: transparent; color: ${gold}; border: 1px solid ${gold}; }
 
 .mm-screen {
   width: min(980px, 100%); max-height: 100%; display: flex; flex-direction: column;
@@ -164,8 +201,8 @@ export function injectMenuStyles(): void {
 .mm-keys kbd, .bm kbd { font: inherit; font-weight: bold; color: ${theme.text}; background: ${cssHex(theme.hud)}; border: 1.5px solid ${cssHex(theme.boardEdge)}; border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; margin-right: 4px; }
 
 @media (max-height: 540px) and (min-aspect-ratio: 4/3) {
-  .mm-home { width: min(780px, 100%); gap: 4px; }
-  .mm-grid { grid-template-columns: repeat(3, 1fr); }
+  .mm-home { width: min(860px, 100%); gap: 4px; }
+  .mm-grid { grid-template-columns: repeat(4, 1fr); }
   .mm-tag { display: none; }
   .mm-how { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .mm-tip svg { max-height: 50px; }
@@ -175,6 +212,10 @@ export function injectMenuStyles(): void {
   .mm-head { padding-top: 6px; padding-bottom: 6px; }
 }
 @media (max-width: 480px) {
+  .mm-cred { grid-template-columns: minmax(0, 1fr); }
+  .mm-cred dt { border-bottom: 0; padding-bottom: 0; }
+  .mm-cred dd { padding-top: 2px; }
+  .mm-kind { min-width: 0; }
   .mm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .mm-card { padding: 4px; }
   .mm-card .m { display: none; }

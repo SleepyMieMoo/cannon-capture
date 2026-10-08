@@ -6,7 +6,8 @@ export interface AudioSettings {
   muted: boolean
 }
 
-const KEY = 'cannon-capture:audio:v1'
+export const AUDIO_KEY = 'cannon-capture:audio:v1'
+const KEY = AUDIO_KEY
 
 export function loadAudioSettings(): AudioSettings {
   const fallback = { volume: SFX.defaultVolume, muted: false }

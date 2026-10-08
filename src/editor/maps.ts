@@ -11,8 +11,8 @@ import type { AiLevel, CannonDef, FanDef, LevelDef, MapSize, Side, WallDef } fro
 
 export const LIMITS = { cannons: 60, walls: 160, fans: 40, name: 40 }
 export const SHARE_PREFIX = 'CC1:'
-const STORE_KEY = 'cannon-capture:maps:v1'
-const DRAFT_KEY = 'cannon-capture:editor-draft:v1'
+export const STORE_KEY = 'cannon-capture:maps:v1'
+export const DRAFT_KEY = 'cannon-capture:editor-draft:v1'
 
 export type Difficulty = AiLevel
 /** The editor's Difficulty menu. Difficulty is how smart pink plays, never how fast. */

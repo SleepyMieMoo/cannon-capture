@@ -1,5 +1,18 @@
 import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vitest/config'
+
+/** The game's version, from package.json (shown under the main menu and in What's new). */
+const version = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version
+
+/** Short commit of this build ('dev' when git isn't there). */
+function commit(): string {
+  try {
+    return (process.env.GITHUB_SHA ?? execSync('git rev-parse HEAD').toString()).trim().slice(0, 7)
+  } catch {
+    return 'dev'
+  }
+}
 
 /** Build id for the performance overlay: short commit and its date (stable for the same commit). */
 function buildId(): string {
@@ -22,6 +35,8 @@ export default defineConfig(({ command, isPreview }) => ({
   base: isPreview ? '/cannon-capture/' : command === 'build' ? './' : '/',
   define: {
     __BUILD_ID__: JSON.stringify(command === 'build' ? buildId() : 'dev'),
+    __APP_VERSION__: JSON.stringify(version),
+    __COMMIT__: JSON.stringify(command === 'build' ? commit() : 'dev'),
   },
   build: {
     chunkSizeWarningLimit: 2000,

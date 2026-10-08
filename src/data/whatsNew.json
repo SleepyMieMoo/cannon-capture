@@ -1,0 +1,24 @@
+{
+  "_about": "What's new: shown from the version line under the main menu (src/menu/whatsNew.ts). Newest first. Keep entries short and player-friendly.",
+  "days": [
+    {
+      "date": "2026-10-08",
+      "entries": [
+        { "kind": "new", "title": "Profile, Credits and What’s new", "text": "Your online name, skin, colour and difficulty live together in Profile, with a button to reset them. Credits has its own page. Tap the version under the menu to see this list, and use Copy debug info when you report a bug." },
+        { "kind": "fix", "title": "The title battle stays after alt-tab", "text": "The battle behind the main menu no longer disappears when you switch away and come back. Online, coming back jumps straight to the live round without a burst of old sounds." },
+        { "kind": "new", "title": "Battle top bar and Surrender", "text": "Proper buttons that stay readable on phones and in Discord, a tug-of-war bar showing how many cannons each side holds, and Surrender (after a confirm) in every mode." },
+        { "kind": "new", "title": "Room settings and side glow", "text": "Online hosts can pick the countdown (0, 3 or 5 s), turn pauses off and swap sides. Each half of the board glows softly in its team’s colour." },
+        { "kind": "new", "title": "Name tags when looks clash", "text": "Online, everyone keeps their own skin and colour. If the two teams look too alike, small name tags appear on the cannons." },
+        { "kind": "new", "title": "Team colours", "text": "Pick one of eight team colours. The AI always wears the colour that contrasts most with yours." },
+        { "kind": "new", "title": "3-2-1-Go countdown", "text": "Every round starts with a short countdown. You can already aim during it, and nobody fires before Go." },
+        { "kind": "change", "title": "Healers re-aim by themselves", "text": "When a heal is done and auto-target is on, the healer picks a fresh target instead of waiting." },
+        { "kind": "new", "title": "Cannon skins", "text": "Choose the shape of your cannons. A captured cannon takes its new owner’s skin." },
+        { "kind": "new", "title": "Heal guide", "text": "How to play has a new card on healing your own cannons while they are being captured." },
+        { "kind": "new", "title": "Ownership rings", "text": "A light ring marks your cannons and a red ring the enemy’s, so you can tell who owns what at a glance, whatever the colours." },
+        { "kind": "change", "title": "Difficulty retune", "text": "Easy, Normal and Hard now land about 25%, 50% and 75% of first shots, and need a moment to correct after a miss. Impossible is unchanged." },
+        { "kind": "new", "title": "Back to editor", "text": "When you test a map, a Back to editor button (or the E key) takes you straight back to your edit." },
+        { "kind": "change", "title": "Shield turns faster", "text": "The Shield tower now turns three times as fast as a normal cannon, the quickest of all." }
+      ]
+    }
+  ]
+}

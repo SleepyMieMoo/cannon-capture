@@ -1,7 +1,8 @@
 import { DEFAULT_SKIN, isSkin, type SkinId } from '../config/skins'
 
 /** Your cannon skin, saved on this device. */
-const KEY = 'cannon-capture:skin:v1'
+export const SKIN_KEY = 'cannon-capture:skin:v1'
+const KEY = SKIN_KEY
 
 export function parseSkinPref(raw: string | null | undefined): SkinId {
   return isSkin(raw) ? raw : DEFAULT_SKIN
@@ -21,6 +22,16 @@ const listeners = new Set<(skin: SkinId) => void>()
 export function onSkinChange(fn: (skin: SkinId) => void): () => void {
   listeners.add(fn)
   return () => listeners.delete(fn)
+}
+
+/** Back to the default skin (Profile → Reset): forget the pick and tell the listeners. */
+export function clearSkin(): void {
+  try {
+    localStorage.removeItem(KEY)
+  } catch {
+    // Storage blocked: nothing saved anyway.
+  }
+  for (const fn of listeners) fn(DEFAULT_SKIN)
 }
 
 export function saveSkin(skin: SkinId): void {

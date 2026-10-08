@@ -1,7 +1,8 @@
 import { withWin, type Progress } from './sim/stars'
 
 /** Campaign progress lives in localStorage on this device only. */
-const KEY = 'cannon-capture:progress:v1'
+export const PROGRESS_KEY = 'cannon-capture:progress:v1'
+const KEY = PROGRESS_KEY
 
 export function loadProgress(): Progress {
   try {

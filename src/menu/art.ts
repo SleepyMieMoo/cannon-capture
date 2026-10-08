@@ -16,6 +16,10 @@ export const ICONS = {
   help: ic('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 1-1 1.7"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>'),
   friends: ic('<circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3 2.8-5 5.5-5s4.9 2 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c2.6-.2 4.5 1.6 5 4.3"/>'),
   back: ic('<path d="M15 5l-7 7 7 7"/>'),
+  profile: ic('<circle cx="12" cy="8.5" r="3.6"/><path d="M4.5 20c.8-3.8 3.9-6.2 7.5-6.2s6.7 2.4 7.5 6.2"/>'),
+  credits: ic('<path d="M12 20s-7-4.4-7-9.6A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.4C19 15.6 12 20 12 20z"/>'),
+  copy: ic('<rect x="8" y="8" width="11" height="12" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>'),
+  reset: ic('<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4 4v4h4"/>'),
 }
 
 const grey = cssHex(theme.neutral)

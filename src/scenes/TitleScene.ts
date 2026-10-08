@@ -9,9 +9,15 @@ import { MainMenu } from '../menu/mainMenu'
 import type { MenuScreen } from '../menu/routes'
 import { bindSceneResolution } from '../render/resolution'
 import { discord } from '../platform/runtime'
-import { isRoomCode, normaliseCode } from '../net/online'
+import { cleanName, isRoomCode, normaliseCode } from '../net/online'
 import { createRoom, online, saveName, savedName, type OnlineRoom } from '../net/onlineClient'
 import type { OnlineMenu } from '../menu/onlineMenu'
+import { resetAllPreferences } from '../menu/prefs'
+import { loadMenuPrefs } from '../menu/menuModel'
+import { loadSkin } from '../menu/skinPref'
+import { loadColour } from '../menu/colourPref'
+import { settingsText } from '../menu/debugInfo'
+import { debugReport } from '../perf/debugEnv'
 import { DemoWatch, keepDemoRunning, type DemoScenes } from './demoWatch'
 
 let launchedFromUrl = false
@@ -153,6 +159,26 @@ export class TitleScene extends Phaser.Scene {
         previewSound: () => previewPop(this),
         perf: { get: () => perf.shown, set: (on) => perf.setShown(on), onChange: (fn) => perf.onChange(fn) },
         online: onlineMenu,
+        name: {
+          get: () => savedName(),
+          set: (raw) => {
+            const name = cleanName(raw, '')
+            saveName(name)
+            if (online.room && online.room.name !== name) online.room.setName(name)
+          },
+        },
+        resetPrefs: () => {
+          perf.setShown(false)
+          resetAllPreferences()
+          applyAudioSettings(this.sound, loadAudioSettings())
+        },
+        debugInfo: () => {
+          const audio = loadAudioSettings()
+          return debugReport(
+            this.game,
+            settingsText({ sound: !audio.muted, volume: audio.volume, perf: perf.shown, skin: loadSkin(), colour: loadColour(), difficulty: loadMenuPrefs().difficulty }),
+          )
+        },
       },
       screen,
     )
