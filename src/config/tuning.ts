@@ -57,7 +57,7 @@ export const TUNING = {
     sniper: { speedMul: 2, lifetimeMul: 1, turnMul: 0.5, fireMs: 3000, damage: 2, spreadDeg: 0 },
     machinegun: { speedMul: 1, lifetimeMul: 0.5, turnMul: 2, fireMs: 200, damage: 0.3, spreadDeg: 7 },
     /** Doesn't fire (damage 0): it holds up a barrier instead (see `shield`). */
-    shield: { speedMul: 1, lifetimeMul: 1, turnMul: 1, fireMs: null, damage: 0, spreadDeg: 0 },
+    shield: { speedMul: 1, lifetimeMul: 1, turnMul: 3, fireMs: null, damage: 0, spreadDeg: 0 },
   },
   /**
    * The shield tower's barrier: an arc `arcDeg` wide, `reach` px from the
