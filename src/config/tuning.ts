@@ -37,13 +37,8 @@ export const TUNING = {
   shotLifetimeMs: 4500,
   /** Default fan acceleration in pixels per second squared. */
   fanForce: 540,
-  /** How often the enemy re-aims every cannon. */
+  /** How often each enemy cannon re-thinks its plan (a map's ai.retargetMs overrides it). */
   aiRetargetMs: 1600,
-  /**
-   * Each point of capture progress already inflicted by the enemy counts as
-   * this many pixels closer, so the AI finishes weak cannons.
-   */
-  aiFinishBias: 80,
   /**
    * The AI sends one helper to heal its own cannon once a foe has this much
    * capture progress on it (out of captureThreshold).
@@ -82,6 +77,22 @@ export const TUNING = {
     cooldownMs: { easy: 6000, normal: 3500, hard: 2500 },
     gain: { easy: 1.4, normal: 1.15, hard: 1.08 },
   },
-  /** Keep the current target unless a new one is clearly better, in pixels. */
-  aiRetargetSlack: 200,
+  /**
+   * How the AI commits to a plan (see src/ai/AiController.ts). Each cannon
+   * thinks on its own staggered tick (the map's ai.retargetMs: Easy 2.4 s,
+   * Normal 1.8 s, Hard 1.3 s). A job (a foe to capture or a friend to heal,
+   * plus the tower type for it) is kept until it is done, impossible, or,
+   * after at least commitMs, another job looks `margin` times quicker.
+   * It never changes its mind mid-turn unless the job fell through.
+   * reactMs: how soon it responds to real events (a friend under attack,
+   * a job finished or lost). crowdMs: the extra cost, per cannon already on
+   * it, of piling onto the same target (not charged when the other side is
+   * capturing it: then ganging up wins the race).
+   */
+  aiPlan: {
+    commitMs: { easy: 5000, normal: 4000, hard: 4000 },
+    margin: { easy: 1.4, normal: 1.3, hard: 1.3 },
+    reactMs: { easy: 1200, normal: 600, hard: 250 },
+    crowdMs: 3000,
+  },
 } as const

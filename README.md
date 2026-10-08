@@ -47,6 +47,7 @@ A cannon tints toward whoever is hitting it, and a ring around it fills in their
 - In puzzles, swapping is free and does not spend an aim.
 - While a cannon is selected for aiming, only that cannon's own menu shows, so the menu never covers an aim click elsewhere.
 - Pink picks a type for each cannon's current job, the cannon it is attacking or the friend it is healing. It estimates how long each type would take to finish that job: the swap reload, plus the damage still needed divided by the type's expected damage rate on that lane. That rate counts how much of its spread actually lands. So a cannon goes machine gun when its target is close (on open ground, within about 300–350 px of a single cannon; further out so many spread shots miss that a normal cannon does more), sniper when only a sniper reaches (very far, or through a headwind), and normal otherwise. It keeps its type unless another is clearly quicker (Easy 1.4×, Normal 1.15×, Hard 1.08×), and it swaps a given cannon at most every 6 / 3.5 / 2.5 s (half that while healing a friend under attack; no wait if its current type can't hit the job at all). Its swaps follow the same rules as yours, reload included. If none of its cannons can reach one of yours as fitted, it sends the one that can after a swap.
+- **How pink plans (plain rules, no library).** Each pink cannon commits to one job at a time (a cannon to capture or a friend to heal, plus the type for it) and sticks with it until the job is done, falls through (the target was captured, or there is no lane to it any more), or, after at least 4 s (5 s on Easy), another job looks clearly quicker (1.3× quicker, 1.4× on Easy). It never changes its mind while its barrel is still turning onto the current job. A job's cost is its estimated time: swap reload, turning, shot travel, and the damage still needed at the type's real hit rate. The team shares its claims: each teammate already on a target adds 3 s to it, so pink spreads out instead of piling onto the nearest cannon, but it happily ganges up on a cannon you are capturing. Each cannon thinks on its own tick, staggered across the team (Easy 2.4 s, Normal 1.8 s, Hard 1.3 s, the map's `ai.retargetMs`), so pink never re-plans everything at once. Real events get a quicker reaction: a friend with 4 of 8 capture progress on it gets a helper (two helpers at 6 of 8), and a cannon whose job ended picks a new one, after 0.25 s on Hard, 0.6 s on Normal, 1.2 s on Easy. Unaimed pink cannons choose a job in the first moments of a round, a moment apart; cannons the map aims keep that aim for at least one think interval. With `?debug`, `__cc.sim.ai.log` lists every decision with its reason.
 
 The enemy obeys the same turn speed. Your aim shows as a gold dashed line with a crosshair at free aim points; while a cannon is selected, a pale line previews where your next click would aim. Faint pink lines are the enemy's. The mint ring is a fan blowing downward. P1 starts aimed into the tall wall, so re-aim it. Restart from the corner, or press **R** on the end screen. Works with taps on touch screens too.
 
@@ -86,7 +87,7 @@ The win checks for Crossfire, Last Stand and Sniper Duel are skipped for now (th
    - `id`, `name`, `hint` (one line, shown on the map card and as a banner when the level starts)
    - `kind: 'puzzle'` (otherwise it's a battle), and `aims` (the budget) for puzzles
    - `par` (seconds for battles; aims for puzzles with a budget)
-   - `ai: { retargetMs, fireMs }` to tune the enemy
+   - `ai: { retargetMs, fireMs }` to tune the enemy (`retargetMs`: how often each enemy cannon re-thinks its plan)
    - `size`: `small` (default), `medium`, `large` or `huge`
    - `cannons` (`side`, optional `aimAt` cannon id or `aimPoint`), `walls` (rectangles, optional `angle` in radians about the centre), `fans` (`angle` in radians, `force`)
 2. Add a map position for it in `NODES` in [`src/scenes/MapScene.ts`](src/scenes/MapScene.ts) (one per level, in order).
@@ -211,13 +212,16 @@ All gameplay numbers live in [`src/config/tuning.ts`](src/config/tuning.ts).
 | `aimToleranceDeg` | 0.5 | A cannon only fires once its barrel is within this many degrees of its aim (turn finished) |
 | `shotSpeed` | 340 | Shot speed in pixels per second |
 | `fanForce` | 540 | How hard fans accelerate a shot (px/s²) |
-| `aiRetargetMs` | 1600 | How often the enemy re-aims |
-| `aiFinishBias` | 80 | How strongly the AI finishes a cannon it is already capturing |
+| `aiRetargetMs` | 1600 | How often each enemy cannon re-thinks its plan, when a map sets no `ai.retargetMs` (staggered per cannon) |
 | `towers.<type>` | see below | Per tower type (`normal`, `sniper`, `machinegun`): `fireMs`, `damage`, `speedMul`, `lifetimeMul`, `turnMul`, `spreadDeg` |
 | `aiSwap.cooldownMs` | easy 6000 / normal 3500 / hard 2500 | Least time between two type swaps of one AI cannon (half while healing) |
 | `aiSwap.gain` | easy 1.4 / normal 1.15 / hard 1.08 | How much quicker another type must finish the job before the AI swaps |
 | `swapLockMs` | 1000 | Minimum reload after swapping type in play |
-| `aiHealAtProgress` | 4 | The AI sends a healer once a foe has this much capture progress on one of its cannons |
+| `aiHealAtProgress` | 4 | The AI sends a healer once a foe has this much capture progress on one of its cannons (a second one two hits from flipping) |
+| `aiPlan.commitMs` | easy 5000 / normal 4000 / hard 4000 | Least time an AI cannon keeps a job before it may switch to a clearly quicker one (done or impossible jobs end at once) |
+| `aiPlan.margin` | easy 1.4 / normal 1.3 / hard 1.3 | How much quicker a new job must look before an AI cannon drops its current one |
+| `aiPlan.reactMs` | easy 1200 / normal 600 / hard 250 | How soon the AI reacts to events: a friend under attack, a job finished or lost |
+| `aiPlan.crowdMs` | 3000 | Extra cost per teammate already on a target, so the AI spreads out (not charged when the other side is capturing that target) |
 
 Per-type values in `TUNING.towers` (range = `speedMul` × `lifetimeMul` × the normal range):
 

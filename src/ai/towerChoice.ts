@@ -122,18 +122,29 @@ export class SwapGovernor {
   }
 
   /**
-   * Decide (and, through `swap`, make) a type change for `cannon`'s job.
-   * Returns true when it swapped.
+   * The type `cannon` would be fitted as for this job right now: the best
+   * type if that beats the current one by the policy's gain and the cooldown
+   * allows a swap (or the current type can't hit the job at all), else its
+   * current type.
    */
-  consider(cannon: Cannon, target: Cannon, lanes: LaneTable, swap: (c: Cannon, kind: CannonKind) => boolean): boolean {
-    if (cannon.swapping) return false
+  preview(cannon: Cannon, target: Cannon, lanes: LaneTable): CannonKind {
+    if (cannon.swapping) return cannon.kind
     const kind = bestKind(cannon, target, lanes, this.policy.gain)
-    if (kind === cannon.kind) return false
+    if (kind === cannon.kind) return kind
     const stuck = kindRate(cannon, cannon.kind, target, lanes) <= 0
     const since = this.now - (this.last.get(cannon.id) ?? -Infinity)
     // Healing a friend under attack is urgent: half the wait.
     const wait = target.side === cannon.side ? this.policy.cooldownMs / 2 : this.policy.cooldownMs
-    if (!stuck && since < wait) return false
+    return stuck || since >= wait ? kind : cannon.kind
+  }
+
+  /**
+   * Decide (and, through `swap`, make) a type change for `cannon`'s job.
+   * Returns true when it swapped.
+   */
+  consider(cannon: Cannon, target: Cannon, lanes: LaneTable, swap: (c: Cannon, kind: CannonKind) => boolean): boolean {
+    const kind = this.preview(cannon, target, lanes)
+    if (kind === cannon.kind) return false
     if (!swap(cannon, kind)) return false
     this.last.set(cannon.id, this.now)
     return true
