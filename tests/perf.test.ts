@@ -71,6 +71,7 @@ describe('perf stats', () => {
     expect(line).toBe(
       'Cannon Capture perf | build abc1234 2026-10-08 | Huge Arena (huge, impossible) | FPS 59.9 | frame avg 16.7 ms, 1% low 21.2 ms (47 FPS), worst 33.4 ms over 300 frames | logic 2.10/6.00 ms | sim 1.50/4.00 ms (AI 0.90/3.10, look-ahead 0.40/3.00) | render 3.25/8.00 ms | 40 cannons, 31 shots, 3 sounds | canvas 2400x1440 (css 1200x720, DPR 2) | WebGL (ANGLE (NVIDIA)) | web desktop | Chrome 141 · Windows',
     )
+    expect(perfReport({ ...snap, counts: { cannons: 1, shots: 0, sounds: 1 } })).toContain('| 1 cannon, 0 shots, 1 sound |')
     expect(perfReport({ ...snap, frame: null, sim: null, ai: null, look: null, counts: null, gpu: null })).toContain('frame - | logic 2.10/6.00 ms | sim - | render 3.25/8.00 ms | no battle')
   })
 })

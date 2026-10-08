@@ -4,7 +4,7 @@ import type { LevelDef } from '../types'
 import { aiDifficulty } from '../ai/towerChoice'
 import { discord } from '../platform/runtime'
 import { loadPerfShown, isPerfKey, savePerfShown } from './perfPrefs'
-import { avgMax, browserLabel, fpsLevel, fpsOf, frameLevel, perfReport, Series, summarize, type PerfLevel, type PerfSnapshot } from './perfStats'
+import { avgMax, browserLabel, fpsLevel, fpsOf, frameLevel, perfReport, plural, Series, summarize, type PerfLevel, type PerfSnapshot } from './perfStats'
 
 /** Stats cover this much recent time; FPS itself uses the last second. */
 const WINDOW_MS = 5000
@@ -272,8 +272,7 @@ export class PerfMonitor {
     const am = (x: { avg: number; max: number } | null) => (x ? `${num(x.avg)}<i>/${num(x.max)}</i>` : '–')
     this.q('pf-sim').innerHTML = s.sim ? `sim ${am(s.sim)} · AI ${am(s.ai)} · look-ahead ${am(s.look)} ms` : 'sim – (no battle running)'
     this.q('pf-gfx').innerHTML = `update ${am(s.logic)} · render ${am(s.render)} ms`
-    const n = (k: number, word: string) => `${k} ${word}${k === 1 ? '' : 's'}`
-    this.q('pf-count').textContent = s.counts ? `${n(s.counts.cannons, 'cannon')} · ${n(s.counts.shots, 'shot')} · ${n(s.counts.sounds, 'sound')}` : '–'
+    this.q('pf-count').textContent = s.counts ? `${plural(s.counts.cannons, 'cannon')} · ${plural(s.counts.shots, 'shot')} · ${plural(s.counts.sounds, 'sound')}` : '–'
     this.q('pf-env').textContent = `${s.canvas.w}×${s.canvas.h} @${+s.canvas.dpr.toFixed(2)}x · ${s.renderer} · ${s.platform} · ${s.build}`
     this.q('pf-env').title = [s.gpu, s.browser].filter(Boolean).join(' · ')
     this.spark(now)

@@ -1,10 +1,12 @@
 # Cannon Capture
 
+![Cannon Capture: gold and pink cannons mid-fight on the Dark Choco board](art/preview-1280x720.png)
+
 A small battle prototype by **SleepyMie**. Cannons sit on a board and fire on their own. Hit a cannon enough times and it flips to your colour and starts shooting for you. Walls block shots. A fan shoves them off course.
 
 The look uses the colour themes from ChocoNeko, SleepyMie's studio ([`css/themes.css`](https://github.com/SleepyMieMoo/choconeko-site/blob/main/css/themes.css)). Only the colours are shared, with no ChocoNeko characters or story.
 
-It's a standalone browser game with Play vs AI (pick a map and a difficulty), puzzles, the original ten levels, and a map editor for making and sharing your own boards. A Discord Activity build comes later.
+It's a standalone browser game with Play vs AI (pick a map and a difficulty), puzzles, the original ten levels, and a map editor for making and sharing your own boards. It also runs as a Discord Activity (see [below](#run-as-a-discord-activity)).
 
 ## Main menu
 
@@ -381,10 +383,29 @@ The same build runs as a [Discord Activity](https://docs.discord.com/developers/
 
 Never commit or paste the **client secret**; nothing here uses it. For a local build with the ID, put `VITE_DISCORD_CLIENT_ID=<id>` in `.env.local` (git-ignored).
 
+**Art** (in [`art/`](art/), drawn by the game itself; see [Store art](#store-art)):
+
+| File | Size | Developer Portal field |
+| --- | --- | --- |
+| `art/discord-icon-1024.png` (or `-512`) | 1024x1024 | **Settings → General Information → App Icon** (the round icon on the shelf tile) |
+| `art/discord-cover-1920x1080.png` | 1920x1080 | **Activities → Art Assets → Cover Art** (the tile's main image, shown cropped to 16:9 or 13:11) |
+| `art/discord-embedded-background-1920x1080.png` | 1920x1080 | **Activities → Art Assets → Embedded Background** (optional, Grid view) |
+
 **Not done yet:**
 
 - Rich presence (`setActivity`) needs the `rpc.activities.write` scope, so it needs OAuth: `authorize` plus `authenticate`, with the token exchanged on a server that holds the client secret.
 - Multiplayer ("Play with friends").
+
+## Store art
+
+The Discord art, the README preview and the favicon are rendered by the game's own drawing code (real board, cannons, shots, shield and fan), not drawn by hand. [`art/art.ts`](art/art.ts) stages a short scripted battle (seeded, so every run gives the same picture) and [`scripts/render-art.mjs`](scripts/render-art.mjs) screenshots it in headless Chrome at the exact sizes:
+
+```bash
+npm run art                       # writes art/*.png, public/favicon.png, public/apple-touch-icon.png
+npm run art -- --checks /tmp/art  # also: the icon at 32/64/128 px and shelf-tile mocks
+```
+
+It needs Chrome or Chromium (`CHROME_PATH`, else `/usr/bin/google-chrome`). The title uses Verdana, the game's font; without it installed the browser falls back to a similar font. The art page is dev-only and not part of the game build. The cover keeps the title and the main fight in the middle, so the 13:11 crop on the Activity Shelf still shows them.
 
 ## Layout
 

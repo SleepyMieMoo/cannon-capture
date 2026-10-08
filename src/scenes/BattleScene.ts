@@ -20,6 +20,7 @@ import { boardFor, insideBoard } from '../levels/board'
 import { bindSceneResolution } from '../render/resolution'
 import { WorldCamera } from '../render/WorldCamera'
 import { drawBoardSurface } from '../render/boardSurface'
+import { crosshair, dash, drawShots } from '../render/battleMarks'
 import { clampPoint } from '../sim/aim'
 import { BattleSim, type Outcome } from '../sim/BattleSim'
 import { MirrorBot, makeBot, type Bot } from '../sim/bots'
@@ -1217,51 +1218,7 @@ export class BattleScene extends Phaser.Scene {
       g.strokeCircle(ping.x, ping.y, 8 + (1 - ping.life) * 22)
     }
 
-    for (const shot of this.sim.shots) {
-      const color = sideColor(shot.side)
-      if (shot.kind === 'machinegun') {
-        // Machine gun round: a small, short tracer (cheap to draw, there are lots).
-        const { vx, vy } = shot.ball
-        const v = Math.hypot(vx, vy) || 1
-        const tx = shot.ball.x - (vx / v) * 11
-        const ty = shot.ball.y - (vy / v) * 11
-        g.lineStyle(5, color, 0.95)
-        g.lineBetween(tx, ty, shot.ball.x, shot.ball.y)
-        g.lineStyle(2, 0xffffff, 0.8)
-        g.lineBetween(tx + (vx / v) * 5, ty + (vy / v) * 5, shot.ball.x, shot.ball.y)
-        continue
-      }
-      if (shot.kind === 'sniper') {
-        // Sniper round: a long, thin streak and a smaller, brighter head.
-        const { vx, vy } = shot.ball
-        const v = Math.hypot(vx, vy) || 1
-        const len = 46
-        g.lineStyle(TUNING.shotRadius * 0.9, color, 0.32)
-        g.beginPath()
-        g.moveTo(shot.ball.x - (vx / v) * len, shot.ball.y - (vy / v) * len)
-        g.lineTo(shot.ball.x, shot.ball.y)
-        g.strokePath()
-        g.lineStyle(2, 0xffffff, 0.5)
-        g.beginPath()
-        g.moveTo(shot.ball.x - (vx / v) * len * 0.5, shot.ball.y - (vy / v) * len * 0.5)
-        g.lineTo(shot.ball.x, shot.ball.y)
-        g.strokePath()
-        g.fillStyle(color, 1)
-        g.fillCircle(shot.ball.x, shot.ball.y, TUNING.shotRadius * 0.8)
-        g.fillStyle(0xffffff, 0.95)
-        g.fillCircle(shot.ball.x, shot.ball.y, 2.2)
-        continue
-      }
-      g.lineStyle(TUNING.shotRadius * 1.6, color, 0.28)
-      g.beginPath()
-      g.moveTo(shot.prevX, shot.prevY)
-      g.lineTo(shot.ball.x, shot.ball.y)
-      g.strokePath()
-      g.fillStyle(color, 1)
-      g.fillCircle(shot.ball.x, shot.ball.y, TUNING.shotRadius)
-      g.fillStyle(0xffffff, 0.85)
-      g.fillCircle(shot.ball.x, shot.ball.y, 2.4)
-    }
+    drawShots(g, this.sim.shots)
 
     for (const spark of this.sparks) {
       const k = spark.size ?? 1
@@ -1287,50 +1244,5 @@ export class BattleScene extends Phaser.Scene {
       }
     }
     return best
-  }
-}
-
-function crosshair(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, color: number, alpha: number): void {
-  g.lineStyle(2, color, Math.min(1, alpha))
-  g.strokeCircle(x, y, r)
-  g.beginPath()
-  g.moveTo(x - r - 5, y)
-  g.lineTo(x - r + 4, y)
-  g.moveTo(x + r - 4, y)
-  g.lineTo(x + r + 5, y)
-  g.moveTo(x, y - r - 5)
-  g.lineTo(x, y - r + 4)
-  g.moveTo(x, y + r - 4)
-  g.lineTo(x, y + r + 5)
-  g.strokePath()
-}
-
-function dash(
-  g: Phaser.GameObjects.Graphics,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  startInset: number,
-  endInset: number,
-  color: number,
-  alpha: number,
-): void {
-  const dx = x2 - x1
-  const dy = y2 - y1
-  const len = Math.hypot(dx, dy)
-  if (len < startInset + endInset) return
-  const ux = dx / len
-  const uy = dy / len
-  g.lineStyle(2, color, alpha)
-  let traveled = startInset
-  const end = len - endInset
-  while (traveled < end) {
-    const next = Math.min(traveled + 10, end)
-    g.beginPath()
-    g.moveTo(x1 + ux * traveled, y1 + uy * traveled)
-    g.lineTo(x1 + ux * next, y1 + uy * next)
-    g.strokePath()
-    traveled = next + 8
   }
 }

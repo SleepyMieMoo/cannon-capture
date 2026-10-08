@@ -8,13 +8,15 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "art": "node scripts/render-art.mjs"
   },
   "dependencies": {
     "@discord/embedded-app-sdk": "^2.5.0",
     "phaser": "^3.88.2"
   },
   "devDependencies": {
+    "playwright-core": "1.59",
     "typescript": "^5.6.3",
     "vite": "^6.3.5",
     "vitest": "^3.2.4"
