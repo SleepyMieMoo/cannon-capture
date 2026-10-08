@@ -11,6 +11,7 @@ import { MapScene } from './scenes/MapScene'
 import { TitleBgScene } from './scenes/TitleBgScene'
 import { TitleScene } from './scenes/TitleScene'
 import { mountPvpPanel, mountSplitView } from './net/pvpDev'
+import { music } from './audio/music'
 
 // ?pvpdev=split shows two copies of the game side by side instead (player vs player test mode).
 const split = mountSplitView()
@@ -67,4 +68,9 @@ function boot(parent: HTMLElement): void {
   if (DEBUG.enabled) (window as unknown as { __perf: typeof perf }).__perf = perf
   // ?pvpdev: the player vs player test panel.
   mountPvpPanel(game)
+  // The jukebox (src/audio/music.ts): one player for the whole game, so songs carry on
+  // between scenes. It downloads the song only once the page is idle (after the first
+  // menu paint) and starts on the first click, tap or key if the browser blocks autoplay.
+  game.events.once(Phaser.Core.Events.READY, () => music.bootLater())
+  if (DEBUG.enabled) (window as unknown as { __music: typeof music }).__music = music
 }

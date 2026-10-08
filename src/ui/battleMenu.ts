@@ -25,6 +25,10 @@ export class BattleMenu {
   private readonly sub: HTMLDivElement
   private readonly list: HTMLDivElement
   private readonly onKey = (e: KeyboardEvent): void => this.key(e)
+  /** The last list of buttons (a panel's Back returns to it). */
+  private last: { title: string; sub: string; items: BattleMenuItem[] } | null = null
+  /** Clean-up for a panel shown in place of the buttons (the jukebox). */
+  private panelOff: (() => void) | null = null
 
   constructor(
     scene: Phaser.Scene,
@@ -47,6 +51,8 @@ export class BattleMenu {
   }
 
   show(title: string, sub: string, items: BattleMenuItem[]): void {
+    this.closePanel()
+    this.last = { title, sub, items }
     this.title.textContent = title
     this.sub.textContent = sub
     this.list.replaceChildren(
@@ -64,7 +70,30 @@ export class BattleMenu {
     this.list.querySelector<HTMLElement>('button')?.focus({ preventScroll: true })
   }
 
+  /**
+   * Show a panel (the jukebox) in place of the buttons, with a Back button to
+   * the list it came from. Esc still closes the whole menu.
+   */
+  showPanel(title: string, sub: string, panel: { el: HTMLElement; destroy(): void }): void {
+    if (!this.open) return panel.destroy()
+    this.closePanel()
+    this.panelOff = panel.destroy
+    this.title.textContent = title
+    this.sub.textContent = sub
+    const back = h('button.mm-btn', { type: 'button', dataset: { id: 'panel-back' }, onclick: () => this.last && this.show(this.last.title, this.last.sub, this.last.items) })
+    back.append(h('span', { innerHTML: ICONS.back, style: 'display:inline-flex' }), 'Back')
+    this.list.replaceChildren(panel.el, back)
+    this.overlay.place()
+    ;(this.list.querySelector<HTMLElement>('[data-autofocus]') ?? back).focus({ preventScroll: true })
+  }
+
+  private closePanel(): void {
+    this.panelOff?.()
+    this.panelOff = null
+  }
+
   hide(): void {
+    this.closePanel()
     if (!this.open) return
     this.open = false
     this.overlay.el.style.display = 'none'
@@ -80,7 +109,7 @@ export class BattleMenu {
       e.preventDefault()
       this.onRestart()
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      const items = [...this.list.querySelectorAll<HTMLElement>('button')]
+      const items = [...this.list.querySelectorAll<HTMLElement>('button, input')]
       const i = items.indexOf(document.activeElement as HTMLElement)
       const d = e.key === 'ArrowDown' ? 1 : -1
       items[(i < 0 ? 0 : i + d + items.length) % items.length]?.focus()

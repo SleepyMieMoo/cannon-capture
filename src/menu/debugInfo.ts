@@ -36,6 +36,8 @@ export interface DebugSettings {
   skin: string
   colour: string
   difficulty: string
+  /** Music: on, volume, the song playing and the default one (left out when there is no jukebox). */
+  music?: { on: boolean; volume: number; track: string; default: string }
 }
 
 export function settingsText(s: DebugSettings): Record<string, string> {
@@ -45,6 +47,7 @@ export function settingsText(s: DebugSettings): Record<string, string> {
     skin: s.skin,
     colour: s.colour,
     'vs AI difficulty': s.difficulty,
+    ...(s.music ? { music: s.music.on ? `on, ${Math.round(s.music.volume * 100)}%, ${s.music.track} (default ${s.music.default})` : `off (default ${s.music.default})` } : {}),
   }
 }
 

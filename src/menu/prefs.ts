@@ -1,4 +1,5 @@
 import { AUDIO_KEY } from '../audio/audioSettings'
+import { MUSIC_KEY } from '../audio/musicSettings'
 import { DRAFT_KEY, STORE_KEY } from '../editor/maps'
 import { NAME_KEY } from '../net/onlineClient'
 import { PERF_KEY } from '../perf/perfPrefs'
@@ -18,6 +19,7 @@ export const PREF_KEYS: readonly { key: string; what: string }[] = [
   { key: COLOUR_KEY, what: 'team colour' },
   { key: MENU_KEY, what: 'Play vs AI difficulty and map' },
   { key: AUDIO_KEY, what: 'sound and volume' },
+  { key: MUSIC_KEY, what: 'music, default song and music volume' },
   { key: PERF_KEY, what: 'performance overlay' },
 ]
 
