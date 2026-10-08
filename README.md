@@ -80,7 +80,14 @@ Nothing else is automatic. Free aim points are never changed, cannons you haven'
 
 **Healing.** Each cannon has one capture meter, like a tug of war:
 
-- Your own shots heal your cannons. If pink is part-way through capturing one of your gold cannons, select another gold cannon and click the damaged one. Every hit takes one point of pink's progress back off, so the tint and the ring shrink and a gold ring pulses out with a "+1 heal" popup. Once it is whole, the healer goes back to whatever it was aiming at before.
+- Your own shots heal your cannons. If pink is part-way through capturing one of your gold cannons, select another gold cannon and click the damaged one. Every hit takes one point of pink's progress back off, so the tint and the ring shrink and a gold ring pulses out with a "+1 heal" popup.
+- **After the heal.** The frame the friend is whole, the healer goes back to the aim it had before you sent it to heal (a target cannon or a free aim point). If you sent it to heal a second friend first, it still goes back to that original aim. Auto-target (global or per cannon) doesn't change any of this:
+  - It was aiming at a foe or a free point: it goes back to that and carries on.
+  - It had no aim before (a cannon you never aimed): it stops firing and waits for you to aim it.
+  - Its old target was captured by your side while it was healing: it drops it and waits for you to aim it, even with auto-target on. Auto-target only re-aims guns at the moment a target falls, and at that moment this gun was busy healing.
+  - The friend fell to pink anyway: the healer keeps shooting it, now as a capture.
+  - Shots already in the air when the friend is whole just stop on it and do nothing.
+- How to play has a **Heal friends** card with the same rules.
 - A healthy cannon can't be overhealed: friendly shots that hit a cannon at full health just stop there and do nothing.
 - Neutrals work the same way. If pink is part-way through a neutral and you shoot it, you push their progress back first. Once their progress is gone, your hits start counting toward your own capture (and the other way round).
 - The enemy heals too. Once you are halfway through one of its cannons, it sends its nearest cannon with a clear shot to heal it.

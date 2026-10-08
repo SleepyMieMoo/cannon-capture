@@ -361,7 +361,7 @@ export class MainMenu {
     return this.screenFrame('How to play', 'Capture every cannon to win', [
       h('div.mm-how', {},
         ...HOWTO.map((t, i) => {
-          const tip = h('div.mm-tip', {}, h('div', { innerHTML: t.art }), h('b', {}, t.title), h('span', {}, t.text))
+          const tip = h(t.wide ? 'div.mm-tip.wide' : 'div.mm-tip', {}, h('div', { innerHTML: t.art }), h('b', {}, t.title), h('span', {}, t.text))
           if (i === 0) tip.dataset.first = ''
           return tip
         }),

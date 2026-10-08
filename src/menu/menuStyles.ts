@@ -131,6 +131,8 @@ export function injectMenuStyles(): void {
 .mm-tip svg { width: 100%; height: auto; max-height: 92px; display: block; }
 .mm-tip b { font-size: 1.02em; }
 .mm-tip span { color: ${theme.textMuted}; line-height: 1.4; font-size: .95em; }
+.mm-tip.wide { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); grid-template-rows: auto 1fr; column-gap: 12px; row-gap: 2px; align-items: start; }
+.mm-tip.wide > div { grid-row: 1 / span 2; align-self: center; }
 .mm-keys { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; color: ${theme.textMuted}; justify-content: center; }
 .mm-keys kbd, .bm kbd { font: inherit; font-weight: bold; color: ${theme.text}; background: ${cssHex(theme.hud)}; border: 1.5px solid ${cssHex(theme.boardEdge)}; border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; margin-right: 4px; }
 
@@ -155,11 +157,13 @@ export function injectMenuStyles(): void {
 @media (max-width: 720px) {
   .mm-play, .mm-set { grid-template-columns: minmax(0, 1fr); }
   .mm-how { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mm-tip.wide { display: flex; }
   .mm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mm-head .mm-sub { display: none; }
 }
 @media (max-width: 720px) and (max-height: 540px) {
   .mm-how { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mm-tip.wide { display: grid; }
   .mm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
