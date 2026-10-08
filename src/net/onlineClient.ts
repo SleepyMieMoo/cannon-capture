@@ -37,6 +37,9 @@ export function tabToken(): string {
 }
 
 /** Where a default name comes from when the player hasn't typed one (null: none, the room says Player 1/2). */
+/** Where the typed online name is kept (the room screen and Profile share it). */
+export const NAME_KEY = 'cc-online-name'
+
 let nameSource: (() => string | null | undefined) | null = null
 
 /**
@@ -52,7 +55,7 @@ export function setNameSource(fn: (() => string | null | undefined) | null): voi
 export function savedName(): string {
   let typed = ''
   try {
-    typed = localStorage.getItem('cc-online-name') ?? ''
+    typed = localStorage.getItem(NAME_KEY) ?? ''
   } catch {
     // Private mode: fine.
   }
@@ -61,7 +64,7 @@ export function savedName(): string {
 
 export function saveName(name: string): void {
   try {
-    localStorage.setItem('cc-online-name', name)
+    localStorage.setItem(NAME_KEY, name)
   } catch {
     // Private mode: fine.
   }

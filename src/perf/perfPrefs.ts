@@ -1,5 +1,6 @@
 /** Whether the performance overlay is shown: remembered on this device, forced on by ?perf. */
-const KEY = 'cannon-capture:perf:v1'
+export const PERF_KEY = 'cannon-capture:perf:v1'
+const KEY = PERF_KEY
 
 export function loadPerfShown(search: string): boolean {
   if (new URLSearchParams(search).has('perf')) return true

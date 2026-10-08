@@ -4,6 +4,7 @@ import type { LevelDef } from '../types'
 import { aiDifficulty } from '../ai/towerChoice'
 import { discord } from '../platform/runtime'
 import { loadPerfShown, isPerfKey, savePerfShown } from './perfPrefs'
+import { copyText } from '../ui/copyText'
 import { avgMax, browserLabel, fpsLevel, fpsOf, frameLevel, perfReport, plural, Series, summarize, type PerfLevel, type PerfSnapshot } from './perfStats'
 
 /** Stats cover this much recent time; FPS itself uses the last second. */
@@ -335,32 +336,6 @@ export class PerfMonitor {
   }
 }
 
-/** Clipboard API, then the old execCommand trick, else 'manual'. */
-export async function copyText(text: string): Promise<'clipboard' | 'execCommand' | 'manual'> {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text)
-      return 'clipboard'
-    }
-  } catch {
-    // Permissions policy or no user gesture: try the next way.
-  }
-  try {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    ta.setAttribute('readonly', '')
-    ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'
-    document.body.appendChild(ta)
-    ta.select()
-    const ok = document.execCommand('copy')
-    ta.remove()
-    if (ok) return 'execCommand'
-  } catch {
-    // Fall through to manual.
-  }
-  return 'manual'
-}
-
 function isTyping(el: Element | null): boolean {
   if (!el) return false
   if (el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true
@@ -417,3 +392,5 @@ function injectStyles(): void {
 
 /** The one overlay for this page. */
 export const perf = new PerfMonitor()
+
+export { copyText }

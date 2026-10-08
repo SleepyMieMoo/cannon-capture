@@ -12,7 +12,8 @@ export interface MenuPrefs {
   mapId: string
 }
 
-const KEY = 'cannon-capture:menu:v1'
+export const MENU_KEY = 'cannon-capture:menu:v1'
+const KEY = MENU_KEY
 export const DEFAULT_PREFS: MenuPrefs = { difficulty: 'normal', mapId: SKIRMISH.id }
 
 export function loadMenuPrefs(): MenuPrefs {
