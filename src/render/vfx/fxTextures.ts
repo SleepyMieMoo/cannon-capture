@@ -18,6 +18,9 @@ export const SWEEP_W = 128
 /** The void wall's inner swirl: a small seamless tile. */
 export const VOID_TEX = 'fx-void'
 export const VOID_W = 64
+/** A portal's swirl: white spiral arms fading out to the rim (tinted per pair, turned per frame). */
+export const PORTAL_TEX = 'fx-portal'
+export const PORTAL_W = 96
 
 type Draw = (ctx: CanvasRenderingContext2D, w: number, h: number) => void
 
@@ -65,6 +68,28 @@ export function bakeFxTextures(textures: Phaser.Textures.TextureManager): void {
           ctx.arc(cx + ox, cy + oy, r * 0.55, a0 + 1, a0 + 1 + sweep * 0.7)
           ctx.stroke()
         }
+      }
+    }
+  })
+  bake(textures, PORTAL_TEX, PORTAL_W, PORTAL_W, (ctx, w) => {
+    const c = w / 2
+    ctx.lineCap = 'round'
+    for (let arm = 0; arm < 3; arm++) {
+      const a0 = (arm * Math.PI * 2) / 3
+      for (let k = 0; k < 40; k++) {
+        const t0 = k / 40
+        const t1 = (k + 1) / 40
+        const r0 = 4 + t0 * (c - 6)
+        const r1 = 4 + t1 * (c - 6)
+        const p0 = a0 + t0 * 4.2
+        const p1 = a0 + t1 * 4.2
+        // Bright towards the middle, gone at the rim.
+        ctx.strokeStyle = `rgba(255,255,255,${(0.95 * (1 - t0) ** 1.2).toFixed(3)})`
+        ctx.lineWidth = 2 + 4 * (1 - t0)
+        ctx.beginPath()
+        ctx.moveTo(c + Math.cos(p0) * r0, c + Math.sin(p0) * r0)
+        ctx.lineTo(c + Math.cos(p1) * r1, c + Math.sin(p1) * r1)
+        ctx.stroke()
       }
     }
   })

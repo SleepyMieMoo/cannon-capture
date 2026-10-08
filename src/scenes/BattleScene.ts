@@ -22,7 +22,9 @@ import { Sfx, preloadSfx } from '../audio/Sfx'
 import { Cannon, haloR, setRingScale } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
 import { Glass } from '../entities/Glass'
-import { BRICK, VOID_COLOURS } from '../config/obstacles'
+import { BRICK, PORTAL, VOID_COLOURS, portalColour } from '../config/obstacles'
+import { Portal } from '../entities/Portal'
+import { mouthOnSegment, portalExit, portalMouths, type PortalMouth } from '../sim/portals'
 import { Pillar } from '../entities/Pillar'
 import { Wall } from '../entities/Wall'
 import { CAMPAIGN, SKIRMISH, campaignIndex, findLevel } from '../levels'
@@ -149,6 +151,9 @@ export class BattleScene extends Phaser.Scene {
   private fans: Fan[] = []
   private pillars: Pillar[] = []
   private glass: Glass[] = []
+  private portals: Portal[] = []
+  /** Portal mouths for aim previews (see sim/portals). */
+  private mouths: PortalMouth[] = []
   private sparks: Spark[] = []
   /** Gameplay effects (auras, flashes, trails, bursts): render/vfx/Vfx.ts. */
   private vfx: Vfx | null = null
@@ -348,6 +353,9 @@ export class BattleScene extends Phaser.Scene {
 
   create(): void {
     this.walls = []
+    this.pillars = []
+    this.glass = []
+    this.portals = []
     this.fans = []
     this.sparks = []
     this.vfx = null
@@ -387,6 +395,8 @@ export class BattleScene extends Phaser.Scene {
     this.level.walls.forEach((rect) => this.walls.push(new Wall(this, rect)))
     this.level.pillars?.forEach((def) => this.pillars.push(new Pillar(this, def)))
     this.level.glass?.forEach((def) => this.glass.push(new Glass(this, def)))
+    this.mouths = portalMouths(this.level.portals)
+    this.mouths.forEach((m) => this.portals.push(new Portal(this, m, m.pair)))
     this.level.fans.forEach((def) => this.fans.push(new Fan(this, def)))
 
     this.sfx = new Sfx(this, () => ({ rect: this.wc.visibleRect(), zoom: this.wc.zoom }))
@@ -441,6 +451,10 @@ export class BattleScene extends Phaser.Scene {
       },
       shieldBack: (shield) => this.popup(shield.x, shield.y - 8, 'Shield up', cssHex(sideColor(shield.side))),
       wallHit: (_index, x, y) => (this.plainSparks ? this.sparks.push({ x, y, life: 0.8, color: BRICK.light, size: 0.7 }) : this.vfx?.wallHit(x, y)),
+      portal: (x1, y1, x2, y2, pair) => {
+        if (!this.plainSparks) return this.vfx?.portal(x1, y1, x2, y2, portalColour(pair))
+        this.sparks.push({ x: x1, y: y1, life: 0.8, color: portalColour(pair), size: 0.8 }, { x: x2, y: y2, life: 1, color: portalColour(pair), size: 1 })
+      },
       wallBroken: (index) => {
         const rect = this.level.walls[index]
         if (!rect) return
@@ -644,6 +658,7 @@ export class BattleScene extends Phaser.Scene {
       if (wall.isBreakable) wall.setHealth(this.sim.wallHealth(i))
     }
     for (const pane of this.glass) pane.draw(time, moving)
+    for (const portal of this.portals) portal.tick(time, moving)
     for (const fan of this.fans) fan.draw(time)
 
     this.wc.update(dt)
@@ -2295,7 +2310,8 @@ export class BattleScene extends Phaser.Scene {
       const end = this.clipAim(cannon.x, cannon.y, aim.x, aim.y, walls)
       const blocked = end.x !== aim.x || end.y !== aim.y
       const endInset = cannon.target && !blocked ? TUNING.cannonRadius + 14 : 4
-      dash(g, cannon.x, cannon.y, end.x, end.y, TUNING.cannonRadius + 14, endInset, color, alpha)
+      if (!this.aimThroughPortal(g, cannon.x, cannon.y, end, walls, TUNING.cannonRadius + 14, color, alpha))
+        dash(g, cannon.x, cannon.y, end.x, end.y, TUNING.cannonRadius + 14, endInset, color, alpha)
       if (!cannon.target) {
         crosshair(g, aim.x, aim.y, mine && cannon.selected ? 11 : 8, color, mine ? alpha + 0.1 : alpha)
       }
@@ -2321,12 +2337,14 @@ export class BattleScene extends Phaser.Scene {
       if (hover && (hover.side !== 'player' || hover.damaged)) {
         const end = this.clipAim(sel.x, sel.y, hover.x, hover.y, walls)
         const blocked = end.x !== hover.x || end.y !== hover.y
-        dash(g, sel.x, sel.y, end.x, end.y, haloR() + 2, blocked ? 4 : haloR() + 2, theme.select, 0.9)
+        if (!this.aimThroughPortal(g, sel.x, sel.y, end, walls, haloR() + 2, theme.select, 0.9))
+          dash(g, sel.x, sel.y, end.x, end.y, haloR() + 2, blocked ? 4 : haloR() + 2, theme.select, 0.9)
         g.lineStyle(2, theme.select, 0.6 + 0.3 * Math.sin(time / 120))
         g.strokeCircle(hover.x, hover.y, haloR())
       } else if (!this.hover && this.pointer) {
         const end = this.clipAim(sel.x, sel.y, this.pointer.x, this.pointer.y, walls)
-        dash(g, sel.x, sel.y, end.x, end.y, haloR() + 2, 4, theme.select, 0.55)
+        if (!this.aimThroughPortal(g, sel.x, sel.y, end, walls, haloR() + 2, theme.select, 0.55))
+          dash(g, sel.x, sel.y, end.x, end.y, haloR() + 2, 4, theme.select, 0.55)
         crosshair(g, this.pointer.x, this.pointer.y, 10, theme.select, 0.75)
       }
     }
@@ -2346,6 +2364,33 @@ export class BattleScene extends Phaser.Scene {
       g.fillStyle(spark.color, spark.life * 0.7)
       g.fillCircle(spark.x, spark.y, (4 + (1 - spark.life) * 10) * k)
     }
+  }
+
+  /**
+   * An aim line that runs into a portal mouth: dashed to the mouth, then on
+   * from the linked mouth the way the shot would come out (one hop, as far
+   * as the line had left, at least 140 px, up to the next obstacle). False
+   * when the line meets no portal (draw it as usual).
+   */
+  private aimThroughPortal(g: Phaser.GameObjects.Graphics, x: number, y: number, end: Point, walls: WallDef[], startInset: number, color: number, alpha: number): boolean {
+    if (!this.mouths.length) return false
+    const hit = mouthOnSegment(this.mouths, x, y, end.x, end.y)
+    if (!hit) return false
+    const from = this.mouths[hit.k]
+    const to = this.mouths[from.to]
+    const len = Math.hypot(end.x - x, end.y - y) || 1
+    const out = portalExit(from, to, hit.x, hit.y, (end.x - x) / len, (end.y - y) / len)
+    const rest = Math.max(140, len * (1 - hit.t))
+    const sx = out.x + out.vx * PORTAL.radius
+    const sy = out.y + out.vy * PORTAL.radius
+    const stop = this.clipAim(sx, sy, sx + out.vx * rest, sy + out.vy * rest, walls)
+    dash(g, x, y, hit.x, hit.y, startInset, 2, color, alpha)
+    dash(g, sx, sy, stop.x, stop.y, 0, 4, color, alpha * 0.85)
+    // Ring both mouths in the pair's colour so the link reads.
+    g.lineStyle(2, portalColour(from.pair), Math.min(1, alpha + 0.2))
+    g.strokeCircle(from.x, from.y, PORTAL.radius + 4)
+    g.strokeCircle(to.x, to.y, PORTAL.radius + 4)
+    return true
   }
 
   /** The aim line stops at the first wall, pillar or solid side of a glass pane. */

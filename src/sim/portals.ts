@@ -66,3 +66,30 @@ export function mouthAt(mouths: readonly PortalMouth[], x: number, y: number, sk
   }
   return -1
 }
+
+/**
+ * The first mouth a straight path from (x1, y1) to (x2, y2) falls into, and
+ * where (aim previews): `t` is the share of the way along. Mouths the start
+ * already sits in are skipped.
+ */
+export function mouthOnSegment(mouths: readonly PortalMouth[], x1: number, y1: number, x2: number, y2: number): { k: number; t: number; x: number; y: number } | null {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const a = dx * dx + dy * dy
+  if (a < 1e-9) return null
+  const r2 = PORTAL.trigger * PORTAL.trigger
+  let best: { k: number; t: number; x: number; y: number } | null = null
+  mouths.forEach((m, k) => {
+    const fx = x1 - m.x
+    const fy = y1 - m.y
+    const c = fx * fx + fy * fy - r2
+    if (c <= 0) return
+    const b = 2 * (fx * dx + fy * dy)
+    const disc = b * b - 4 * a * c
+    if (disc < 0) return
+    const t = (-b - Math.sqrt(disc)) / (2 * a)
+    if (t < 0 || t > 1 || (best && t >= best.t)) return
+    best = { k, t, x: x1 + dx * t, y: y1 + dy * t }
+  })
+  return best
+}
