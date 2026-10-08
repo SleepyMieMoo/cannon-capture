@@ -30,7 +30,7 @@ interface Fired {
   t: number
   damage: number
   speed: number
-  life: number
+  range: number
   /** Degrees between the shot's direction and the barrel. */
   off: number
 }
@@ -44,7 +44,7 @@ function shotLog(sim: BattleSim): Fired[] {
       if (ball) {
         let off = Math.atan2(ball.vy, ball.vx) - c.angle
         off = Math.atan2(Math.sin(off), Math.cos(off))
-        log.push({ id: c.id, t: sim.clock, damage: c.damage, speed: Math.hypot(ball.vx, ball.vy), life: ball.lifeMs ?? TUNING.shotLifetimeMs, off: (off * 180) / Math.PI })
+        log.push({ id: c.id, t: sim.clock, damage: c.damage, speed: Math.hypot(ball.vx, ball.vy), range: ball.range ?? 0, off: (off * 180) / Math.PI })
       }
       return ball
     }
@@ -86,7 +86,7 @@ describe('machine gun', () => {
     expect(mg[0].damage).toBe(0.3)
     const normal = log.find((s) => s.id === 'p3')!
     expect(mg[0].speed).toBeCloseTo(normal.speed, 5)
-    expect(mg[0].life * mg[0].speed).toBeCloseTo((normal.life * normal.speed) / 2, 5)
+    expect(mg[0].range).toBeCloseTo(normal.range / 2, 5)
     expect(shotRangeFor('machinegun')).toBeCloseTo(shotRangeFor('normal') / 2, 5)
     // Out of range: N1 is 900 px away and the gun reaches about 765 px past its muzzle, so nothing lands.
     expect(sim.byId('n1')!.captureProgress).toBe(0)

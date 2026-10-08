@@ -36,12 +36,12 @@ function runUntil(sim: BattleSim, done: () => boolean, maxMs = 20000, dt = 1000 
 }
 
 function shotLog(sim: BattleSim) {
-  const log: { id: string; t: number; damage: number; speed: number; life: number }[] = []
+  const log: { id: string; t: number; damage: number; speed: number; range: number }[] = []
   for (const c of sim.cannons) {
     const orig = c.update.bind(c)
     c.update = (dt, frozen, ms) => {
       const ball = orig(dt, frozen, ms)
-      if (ball) log.push({ id: c.id, t: sim.clock, damage: c.damage, speed: Math.hypot(ball.vx, ball.vy), life: ball.lifeMs ?? TUNING.shotLifetimeMs })
+      if (ball) log.push({ id: c.id, t: sim.clock, damage: c.damage, speed: Math.hypot(ball.vx, ball.vy), range: ball.range ?? 0 })
       return ball
     }
   }
@@ -68,8 +68,9 @@ describe('sniper cannons', () => {
     expect(first('p2').damage).toBe(2)
     expect(first('p3').damage).toBe(1)
     expect(first('p1').speed).toBeCloseTo(first('p3').speed * 2, 5)
-    // Same lifetime at twice the speed: twice the distance.
-    expect(first('p1').life * first('p1').speed).toBeCloseTo(first('p3').life * first('p3').speed * 2, 5)
+    // Twice the range (path length, bounces included).
+    expect(first('p1').range).toBeCloseTo(first('p3').range * 2, 5)
+    expect(first('p3').range).toBeCloseTo((TUNING.shotSpeed * TUNING.shotLifetimeMs) / 1000, 5)
     expect(shotSpeedFor('sniper')).toBe(TUNING.shotSpeed * 2)
     expect(shotLifetimeFor('normal')).toBe(TUNING.shotLifetimeMs)
   })

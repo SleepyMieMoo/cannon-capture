@@ -11,7 +11,7 @@ import {
   firesAs,
   fireMsFor,
   maxShotSpeedFor,
-  shotLifetimeFor,
+  shotRangeFor,
   shotSpeedFor,
   spreadDegFor,
   turnSpeedDegFor,
@@ -566,10 +566,8 @@ export class Cannon {
     const dir = this.angle + (spread > 0 ? ((this.rng() * 2 - 1) * spread * Math.PI) / 180 : 0)
     const along = { x: this.x + Math.cos(dir) * 100, y: this.y + Math.sin(dir) * 100 }
     const ball = aimShot(this, along, TUNING.cannonRadius + 12, shotSpeedFor(this.kind), this.id)
-    if (this.kind !== 'normal') {
-      ball.maxSpeed = maxShotSpeedFor(this.kind)
-      ball.lifeMs = shotLifetimeFor(this.kind)
-    }
+    if (this.kind !== 'normal') ball.maxSpeed = maxShotSpeedFor(this.kind)
+    ball.range = shotRangeFor(this.kind)
     return ball
   }
 

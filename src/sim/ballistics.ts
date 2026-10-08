@@ -1,5 +1,9 @@
+import { TUNING } from '../config/tuning'
 import type { Rect, WallDef } from '../types'
 import { circleWall, reflect } from './geometry'
+
+/** How far a normal shot flies (px, path length including bounces): shotSpeed for shotLifetimeMs. */
+export const DEFAULT_RANGE = (TUNING.shotSpeed * TUNING.shotLifetimeMs) / 1000
 
 export interface Ball {
   x: number
@@ -12,8 +16,14 @@ export interface Ball {
   ownerId: string
   /** Fan boost cap for this shot (snipers fly faster); defaults to opts.maxSpeed. */
   maxSpeed?: number
-  /** How long this shot lives in ms; defaults to TUNING.shotLifetimeMs. */
-  lifeMs?: number
+  /**
+   * How far this shot flies in px before it fades, counted along its path
+   * (bounces cost nothing extra; fans that slow it don't shorten it).
+   * Defaults to opts.range, then DEFAULT_RANGE.
+   */
+  range?: number
+  /** Path length flown so far (px). */
+  travelled?: number
 }
 
 export interface FanField {
@@ -92,7 +102,10 @@ export function pathCrossesBarrier(path: readonly number[], b: Barrier): boolean
 export interface BallisticsOpts {
   radius: number
   maxSpeed: number
+  /** Safety cap on wall bounces (see TUNING.maxBounces); range is what normally ends a shot. */
   maxBounces: number
+  /** Range for shots that don't carry their own (px); defaults to DEFAULT_RANGE. */
+  range?: number
   bounds: Rect
   ownerGraceMs: number
 }
@@ -125,6 +138,7 @@ export function aimShot(
     bounces: 0,
     alive: true,
     ownerId,
+    travelled: 0,
   }
 }
 
@@ -164,6 +178,8 @@ export function stepBall(
   let bounced = false
   let pushed = false
   let hitId: string | null = null
+  const range = next.range ?? opts.range ?? DEFAULT_RANGE
+  let travelled = next.travelled ?? 0
 
   for (let i = 0; i < steps; i++) {
     for (const fan of fans) {
@@ -174,10 +190,18 @@ export function stepBall(
     }
     capSpeed(next, next.maxSpeed ?? opts.maxSpeed)
 
-    next.x += next.vx * h
-    next.y += next.vy * h
-    next.age += h * 1000
+    // Range is path length: the last sub-step only goes as far as the range left.
+    const move = Math.hypot(next.vx, next.vy) * h
+    const left = range - travelled
+    const k = move > left ? Math.max(0, left) / move : 1
+    next.x += next.vx * h * k
+    next.y += next.vy * h * k
+    next.age += h * 1000 * k
+    travelled += move * k
+    next.travelled = travelled
 
+    // Several walls touched in one sub-step (a corner) count as one bounce.
+    let banked = false
     for (const wall of walls) {
       const hit = circleWall(next.x, next.y, opts.radius, wall)
       if (!hit) continue
@@ -186,6 +210,9 @@ export function stepBall(
       const reflected = reflect(next.vx, next.vy, hit.nx, hit.ny)
       next.vx = reflected.vx
       next.vy = reflected.vy
+      banked = true
+    }
+    if (banked) {
       next.bounces += 1
       bounced = true
       if (next.bounces > opts.maxBounces) {
@@ -224,6 +251,12 @@ export function stepBall(
       next.alive = false
       return { ball: next, hitId: null, bounced, pushed }
     }
+
+    // Out of range (or, as a safety net, flying absurdly long, e.g. held up by fans).
+    if (travelled >= range - 1e-6 || next.age > TUNING.shotMaxFlightMs) {
+      next.alive = false
+      return { ball: next, hitId: null, bounced, pushed }
+    }
   }
 
   return { ball: next, hitId, bounced, pushed }
@@ -243,7 +276,7 @@ export function traceShot(
   fans: FanField[],
   bodies: Body[],
   opts: BallisticsOpts,
-  maxMs = 5000,
+  maxMs: number = TUNING.shotMaxFlightMs,
   near?: Broadphase,
 ): TraceResult {
   let ball = start

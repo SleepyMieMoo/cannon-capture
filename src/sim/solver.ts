@@ -1,6 +1,6 @@
 import { TUNING } from '../config/tuning'
 import { boardFor } from '../levels/board'
-import { FIRING_KINDS, laneKey, maxShotSpeedFor, shotLifetimeFor, shotSpeedFor } from '../config/kinds'
+import { FIRING_KINDS, laneKey, maxShotSpeedFor, shotRangeFor, shotSpeedFor } from '../config/kinds'
 import type { CannonKind, LevelDef } from '../types'
 import { Broadphase, aimShot, stepBall, type BallisticsOpts, type Body, type FanField } from './ballistics'
 
@@ -17,6 +17,7 @@ export function shotOpts(level: Pick<LevelDef, 'size'>): BallisticsOpts {
     radius: TUNING.shotRadius,
     maxSpeed: TUNING.shotSpeed * TUNING.shotSpeedCap,
     maxBounces: TUNING.maxBounces,
+    range: shotRangeFor('normal'),
     bounds: boardFor(level),
     ownerGraceMs: TUNING.ownerGraceMs,
   }
@@ -124,8 +125,10 @@ function traceFull(ctx: TraceCtx, fromId: string, angle: number, kind: CannonKin
     fromId,
   )
   if (kind !== 'normal') ball.maxSpeed = maxShotSpeedFor(kind)
+  ball.range = shotRangeFor(kind)
   const path = withPath ? [Math.round(ball.x), Math.round(ball.y)] : []
-  const maxMs = shotLifetimeFor(kind)
+  // Range (path length) ends the flight, as in play; the time limit is only a safety net.
+  const maxMs = TUNING.shotMaxFlightMs
   let pushed = false
   let hitId: string | null = null
   for (let elapsed = 0; elapsed < maxMs && ball.alive && hitId === null; elapsed += 16) {
