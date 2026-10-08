@@ -120,18 +120,12 @@ describe('team colours: who wears what', () => {
     }
   })
 
-  it('two players keep their picks unless they clash; then the pink seat wears the contrast (deterministically)', () => {
+  it('two players always keep their own picks, even clashing ones (name tags tell them apart)', () => {
     for (const g of TEAM_COLOURS)
-      for (const p of TEAM_COLOURS) {
-        const r = pvpColours(g, p)
-        expect(r.player).toBe(g)
-        expect(r.enemy).toBe(compatible(g, p) ? p : CONTRAST_COLOUR[g])
-        expect(compatible(r.player, r.enemy)).toBe(true)
-        expect(pvpColours(g, p)).toEqual(r)
-      }
+      for (const p of TEAM_COLOURS) expect(pvpColours(g, p)).toEqual({ player: g, enemy: p })
     expect(pvpColours(undefined, undefined)).toEqual({ player: 'gold', enemy: 'strawberry' })
     expect(pvpColours('blueberry', undefined)).toEqual({ player: 'blueberry', enemy: 'gold' })
-    expect(pvpColours(undefined, 'sky')).toEqual({ player: 'gold', enemy: 'strawberry' })
+    expect(pvpColours(undefined, 'sky')).toEqual({ player: 'gold', enemy: 'sky' })
     expect(flipColours(pvpColours('grape', 'lime'))).toEqual({ player: 'lime', enemy: 'grape' })
   })
 
@@ -161,7 +155,7 @@ describe('team colours: who wears what', () => {
 })
 
 describe('team colours: two tabs (LAN test mode)', () => {
-  it('the host keeps both picks when they go together, swaps a clashing joiner, and the joiner says its colour', () => {
+  it('the host keeps both picks, clashing or not, and the joiner says its colour', () => {
     const run = (mine: TeamColourId, theirs: TeamColourId) => {
       const out: unknown[] = []
       let handler: ((msg: unknown, from: string) => void) | null = null
@@ -174,7 +168,7 @@ describe('team colours: two tabs (LAN test mode)', () => {
       return start.colours
     }
     expect(run('blueberry', 'peach')).toEqual({ player: 'blueberry', enemy: 'peach' })
-    expect(run('blueberry', 'sky')).toEqual({ player: 'blueberry', enemy: 'gold' })
+    expect(run('blueberry', 'sky')).toEqual({ player: 'blueberry', enemy: 'sky' })
     const out: unknown[] = []
     const t2 = { send: (m: unknown) => out.push(m), onMessage: () => () => {}, close() {} } as unknown as Transport
     const cancel = joinRoom(t2, () => {}, () => {}, 'hex', 'lime')

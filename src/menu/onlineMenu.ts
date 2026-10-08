@@ -39,13 +39,14 @@ const mins = (ms: number): string => `${Math.round(ms / 60000)}-minute`
 export const RULES_LINE =
   `${mins(PVP_RULES.matchMs)} matches: take every cannon, or hold the most when time runs out. ` +
   `${PVP_RULES.pausesPerPlayer} pauses each, up to ${PVP_RULES.pauseMaxMs / 1000} s. ` +
-  `Drop out for more than ${PVP_RULES.graceMs / 1000} s and an AI plays your side. Sides swap every rematch; your cannons always wear your colour and the light rings.`
+  `Drop out for more than ${PVP_RULES.graceMs / 1000} s and an AI plays your side. Sides swap every rematch. You always wear your own colour and skin with the light rings; if your looks are too alike, names appear on the cannons.`
 
 export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
   const err = h('div.mm-err', { role: 'status' })
-  const name = h('input.mm-input', { id: 'mm-name', type: 'text', maxLength: 16, placeholder: 'Your name', value: online.name(), autocomplete: 'nickname', dataset: { id: 'name' } }) as HTMLInputElement
+  const name = h('input.mm-input', { id: 'mm-name', type: 'text', maxLength: 16, placeholder: 'Your name (optional)', value: online.name(), autocomplete: 'nickname', dataset: { id: 'name' } }) as HTMLInputElement
   const nameNow = (): string => {
-    const n = cleanName(name.value, 'Player')
+    // Empty is fine: the room calls you Player 1 or Player 2.
+    const n = cleanName(name.value, '')
     online.setName(n)
     return n
   }
@@ -84,6 +85,7 @@ export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
       h('div.mm-side', {},
         h('label.mm-h', { htmlFor: 'mm-name' }, 'Your name'),
         name,
+        h('div.mm-note', {}, 'Shown in the room, and on your cannons if your looks clash with your friend’s.'),
         h('div.mm-h', {}, 'New room'),
         create,
         h('div.mm-note', {}, 'You get a 4-letter code and a link to send to a friend.'),

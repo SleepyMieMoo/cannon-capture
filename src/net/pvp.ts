@@ -111,12 +111,12 @@ export class PvpHost {
     return this.peer
   }
 
-  /** Both players' team colours, host first (the joiner keeps theirs unless the pair clashes). */
+  /** Both players' team colours, host first (each keeps theirs; name tags show when they clash). */
   get colours(): SideColours {
     return pvpColours(this.localColour, this.peer ? peerColours.get(this.peer) : undefined)
   }
 
-  /** Both players' skins, gold first (pink gets another if they match). */
+  /** Both players' skins, gold first (each keeps theirs). */
   get skins(): SideSkins {
     return pvpSkins(this.localSkin, this.peer ? peerSkins.get(this.peer) : undefined)
   }

@@ -52,14 +52,14 @@ export function vsAiSkins(mine: SkinId): SideSkins {
 }
 
 /**
- * Two players: each keeps their own pick, except that pink gets the
- * contrasting skin when both picked the same. Deterministic, so the server
- * and every client agree.
+ * Two players: each always wears their own pick, even the same one (name
+ * tags tell them apart when their looks clash; see config/looks.ts). Only a
+ * seat that sent no skin (an older game) gets one: the default for gold, the
+ * contrast to gold's for pink. Deterministic, so the server and every client agree.
  */
 export function pvpSkins(gold: SkinId | undefined, pink: SkinId | undefined): SideSkins {
   const g = gold ?? DEFAULT_SKIN
-  const p = pink ?? CONTRAST[g]
-  return { player: g, enemy: p === g ? CONTRAST[g] : p, neutral: 'classic' }
+  return { player: g, enemy: pink ?? CONTRAST[g], neutral: 'classic' }
 }
 
 /** The same skins as seen from the other side (the second player's flipped view). */

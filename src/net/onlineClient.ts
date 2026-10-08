@@ -2,7 +2,7 @@ import { loadSkin } from '../menu/skinPref'
 import { loadColour } from '../menu/colourPref'
 import { PVP } from '../config/pvp'
 import { PVP_RULES } from '../config/pvpRules'
-import type { ClientMsg, RoomInfo, ServerMsg } from './online'
+import { cleanName, type ClientMsg, type RoomInfo, type ServerMsg } from './online'
 import type { StartMsg } from './pvp'
 import type { Transport } from './transport'
 
@@ -36,12 +36,27 @@ export function tabToken(): string {
   }
 }
 
+/** Where a default name comes from when the player hasn't typed one (null: none, the room says Player 1/2). */
+let nameSource: (() => string | null | undefined) | null = null
+
+/**
+ * Hook for Discord (Phase 2): supply a display name, e.g. the Discord user's,
+ * used whenever the player hasn't typed their own. It goes through the same
+ * cleanName as a typed one, and the server relays it like any other name.
+ */
+export function setNameSource(fn: (() => string | null | undefined) | null): void {
+  nameSource = fn
+}
+
+/** The name to join with: the one typed on the room screen (saved on this device), else the name source's, else empty. */
 export function savedName(): string {
+  let typed = ''
   try {
-    return localStorage.getItem('cc-online-name') ?? ''
+    typed = localStorage.getItem('cc-online-name') ?? ''
   } catch {
-    return ''
+    // Private mode: fine.
   }
+  return typed || cleanName(nameSource?.() ?? '', '')
 }
 
 export function saveName(name: string): void {

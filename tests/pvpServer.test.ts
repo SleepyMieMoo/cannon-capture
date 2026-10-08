@@ -423,13 +423,12 @@ describe('online room: skins', () => {
     expect(host.saved?.seats[0]?.skin).toBe('hex')
   })
 
-  it('the same pick: the pink side wears the contrasting skin, and sides swapping keeps it per side', () => {
+  it('the same pick: both keep it (nobody is reskinned), also after sides swap', () => {
     const { a, b, end } = twoPlayers('plated', 'plated')
-    expect(a.last('start').skins).toEqual({ player: 'plated', enemy: 'spiked', neutral: 'classic' })
+    expect(a.last('start').skins).toEqual({ player: 'plated', enemy: 'plated', neutral: 'classic' })
     end()
-    // Match 2: B is gold now, A pink; the pink player (A) gets the other skin this time.
     expect(b.last('start').side).toBe('player')
-    expect(a.last('start').skins).toEqual({ player: 'plated', enemy: 'spiked', neutral: 'classic' })
+    expect(a.last('start').skins).toEqual({ player: 'plated', enemy: 'plated', neutral: 'classic' })
     expect(b.last('start').skins).toEqual(a.last('start').skins)
   })
 
@@ -475,21 +474,36 @@ describe('online room: team colours', () => {
     expect(host.saved?.seats[0]?.colour).toBe('blueberry')
   })
 
-  it('a clashing pair: the pink seat wears the best contrast to gold’s; colours follow their players when sides swap', () => {
+  it('a clashing pair: both keep their own (nobody is recoloured); colours follow their players when sides swap', () => {
     const { a, b, end } = twoPlayers('sky', 'blueberry')
-    expect(a.last('start').colours).toEqual({ player: 'sky', enemy: 'strawberry' })
+    expect(a.last('start').colours).toEqual({ player: 'sky', enemy: 'blueberry' })
     end()
-    // Match 2: B is the gold seat and keeps blueberry; A (pink seat now) clashes with it and wears gold.
     expect(b.last('start').side).toBe('player')
-    expect(b.last('start').colours).toEqual({ player: 'blueberry', enemy: 'gold' })
+    expect(b.last('start').colours).toEqual({ player: 'blueberry', enemy: 'sky' })
     expect(a.last('start').colours).toEqual(b.last('start').colours)
   })
 
-  it('the same pick, older clients (no colour) and junk fall back to colours that go together', () => {
-    expect(twoPlayers('grape', 'grape').a.last('start').colours).toEqual({ player: 'grape', enemy: 'gold' })
+  it('the same pick is kept; older clients (no colour) and junk get colours that go together', () => {
+    expect(twoPlayers('grape', 'grape').a.last('start').colours).toEqual({ player: 'grape', enemy: 'grape' })
     expect(twoPlayers(undefined, 'rainbow').a.last('start').colours).toEqual({ player: 'gold', enemy: 'strawberry' })
     expect(parseClientMsg({ t: 'hello', token: TOKEN_A, name: 'x', colour: 'rainbow' })).toEqual({ t: 'hello', token: TOKEN_A, name: 'x' })
     expect(parseClientMsg({ t: 'hello', token: TOKEN_A, name: 'x', colour: 'lime' })).toEqual({ t: 'hello', token: TOKEN_A, name: 'x', colour: 'lime' })
+  })
+})
+
+describe('online room: names for the name tags', () => {
+  it('no name: the room says Player 1 / Player 2; names (and changes) reach both players and watchers', () => {
+    const s = setup()
+    const a = new FakeConn(s.host, s.room)
+    a.say({ t: 'hello', token: TOKEN_A, name: '' })
+    const b = new FakeConn(s.host, s.room)
+    b.say({ t: 'hello', token: TOKEN_B, name: '  ' })
+    const w = new FakeConn(s.host, s.room)
+    w.say({ t: 'hello', token: 'token-wwwwwwww', name: 'W' })
+    a.say({ t: 'start' })
+    for (const c of [a, b, w]) expect(c.last('room').seats.map((x: { name: string } | null) => x?.name)).toEqual(['Player 1', 'Player 2'])
+    b.say({ t: 'name', name: 'Kim<script>' })
+    for (const c of [a, b, w]) expect(c.last('room').seats[1].name).toBe('Kimscript')
   })
 })
 

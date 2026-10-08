@@ -420,10 +420,9 @@ export class RoomCore {
     const swap = PVP_RULES.swapSidesEachMatch && (no - 1) % 2 === 1
     const sides: [Side, Side] = swap ? ['enemy', 'player'] : ['player', 'enemy']
     const level = pvpLevel(pvpMap(st.map) ?? PVP_MAPS[0])
-    // Each player wears their own pick; if both picked the same, pink wears the contrasting one.
+    // Each player always wears their own skin and colour (clients show name tags when the two clash; config/looks.ts).
     const seatOn = (side: Side): 0 | 1 => (sides[0] === side ? 0 : 1)
     const skins = pvpSkins(st.seats[seatOn('player')]?.skin, st.seats[seatOn('enemy')]?.skin)
-    // Team colours: each keeps theirs unless the two clash (the compat matrix); then the pink seat wears the best contrast to gold's.
     const colours = pvpColours(st.seats[seatOn('player')]?.colour, st.seats[seatOn('enemy')]?.colour)
     let sim: BattleSim | null = null
     const log = new EventLog(() => sim?.clock ?? 0)
