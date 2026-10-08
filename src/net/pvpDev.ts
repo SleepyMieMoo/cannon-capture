@@ -1,3 +1,4 @@
+import { loadSkin } from '../menu/skinPref'
 import type Phaser from 'phaser'
 import { PVP } from '../config/pvp'
 import { theme } from '../config/theme'
@@ -137,6 +138,7 @@ export function mountPvpPanel(game: Phaser.Game): void {
         startBattle({ from: 'menu', pvp: { role: 'client', room: r, transport: t, start } })
       },
       () => (status.textContent = `Room ${r} already has two players.`),
+      loadSkin(),
     )
   }
   // Its own window (not a tab), so both can stay in sight: a browser stops drawing a tab that is out of sight.

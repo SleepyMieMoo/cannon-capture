@@ -1,3 +1,5 @@
+import { SKIN_LABEL } from '../config/skins'
+import { loadSkin } from './skinPref'
 import { PVP_RULES } from '../config/pvpRules'
 import { drawThumb } from '../editor/thumb'
 import { MAP_SIZES } from '../levels/board'
@@ -83,6 +85,7 @@ export function friendsScreen(kit: MenuKit, online: OnlineMenu): HTMLElement {
         h('div.mm-h', {}, 'New room'),
         create,
         h('div.mm-note', {}, 'You get a 4-letter code and a link to send to a friend.'),
+        h('div.mm-note', { dataset: { id: 'skin-note' } }, `Your cannons wear ${SKIN_LABEL[loadSkin()]} (change it in Settings before you join).`),
       ),
       h('div.mm-side', {},
         h('label.mm-h', { htmlFor: 'mm-code' }, 'Join a room'),

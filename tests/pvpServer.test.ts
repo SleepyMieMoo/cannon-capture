@@ -359,6 +359,59 @@ describe('online room: the match', () => {
   })
 })
 
+describe('online room: skins', () => {
+  const twoPlayers = (skinA?: string, skinB?: string, watcher = false) => {
+    const s = setup()
+    const say = (token: string, name: string, skin?: string) => {
+      const c = new FakeConn(s.host, s.room)
+      c.say({ t: 'hello', token, name, ...(skin ? { skin } : {}) })
+      return c
+    }
+    const a = say(TOKEN_A, 'A', skinA)
+    const b = say(TOKEN_B, 'B', skinB)
+    const w = watcher ? say('token-wwwwwwww', 'W') : null
+    a.say({ t: 'start' })
+    const end = () => {
+      for (const c of s.room.match!.sim.cannons) if (c.side === 'enemy') c.side = 'player'
+      s.run(100)
+      a.say({ t: 'rematch', on: true })
+      b.say({ t: 'rematch', on: true })
+    }
+    return { ...s, a, b, w, end }
+  }
+
+  it('each player wears their pick; everyone (watchers too) gets the same skins, gold first', () => {
+    const { a, b, w, host } = twoPlayers('hex', 'plated', true)
+    for (const c of [a, b, w!]) expect(c.last('start').skins).toEqual({ player: 'hex', enemy: 'plated', neutral: 'classic' })
+    expect(w!.last('start').spectate).toBe(true)
+    expect(host.saved?.seats[0]?.skin).toBe('hex')
+  })
+
+  it('the same pick: the pink side wears the contrasting skin, and sides swapping keeps it per side', () => {
+    const { a, b, end } = twoPlayers('plated', 'plated')
+    expect(a.last('start').skins).toEqual({ player: 'plated', enemy: 'spiked', neutral: 'classic' })
+    end()
+    // Match 2: B is gold now, A pink; the pink player (A) gets the other skin this time.
+    expect(b.last('start').side).toBe('player')
+    expect(a.last('start').skins).toEqual({ player: 'plated', enemy: 'spiked', neutral: 'classic' })
+    expect(b.last('start').skins).toEqual(a.last('start').skins)
+  })
+
+  it('different picks follow their players when sides swap', () => {
+    const { a, b, end } = twoPlayers('hex', 'classic')
+    expect(a.last('start').skins).toMatchObject({ player: 'hex', enemy: 'classic' })
+    end()
+    expect(b.last('start').skins).toMatchObject({ player: 'classic', enemy: 'hex' })
+  })
+
+  it('older clients (no skin) and junk skins fall back to defaults that still differ', () => {
+    const { a } = twoPlayers(undefined, 'rainbow')
+    expect(a.last('start').skins).toEqual({ player: 'plated', enemy: 'spiked', neutral: 'classic' })
+    expect(parseClientMsg({ t: 'hello', token: TOKEN_A, name: 'x', skin: 'rainbow' })).toEqual({ t: 'hello', token: TOKEN_A, name: 'x' })
+    expect(parseClientMsg({ t: 'hello', token: TOKEN_A, name: 'x', skin: 'hex' })).toEqual({ t: 'hello', token: TOKEN_A, name: 'x', skin: 'hex' })
+  })
+})
+
 describe('online protocol helpers', () => {
   it('room codes, names and message shapes', () => {
     for (let i = 0; i < 50; i++) expect(isRoomCode(randomCode())).toBe(true)

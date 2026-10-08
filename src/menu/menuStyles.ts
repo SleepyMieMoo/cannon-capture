@@ -41,7 +41,7 @@ export function injectMenuStyles(): void {
 .mm-btn svg { width: 1.25em; height: 1.25em; flex: none; }
 .mm-btn:hover { background: ${rgba(theme.grid, 0.97)}; border-color: ${gold}; }
 .mm-btn:active { transform: translateY(1px); }
-.mm-btn:focus-visible, .mm-seg:focus-visible, .mm-card:focus-visible, .mm-range:focus-visible, .mm-switch:focus-visible { outline: 3px solid ${gold}; outline-offset: 2px; }
+.mm-btn:focus-visible, .mm-seg:focus-visible, .mm-skin:focus-visible, .mm-card:focus-visible, .mm-range:focus-visible, .mm-switch:focus-visible { outline: 3px solid ${gold}; outline-offset: 2px; }
 .mm-btn.big { min-height: clamp(50px, 9vmin, 70px); font-size: clamp(16px, 2.9vmin, 23px); }
 .mm-btn.primary { background: ${gold}; color: ${theme.ink}; border-color: ${gold}; }
 .mm-btn.primary:hover { background: ${cssHex(theme.playerHot)}; }
@@ -83,6 +83,16 @@ export function injectMenuStyles(): void {
 .mm-seg { font: inherit; font-weight: bold; color: ${theme.text}; background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 10px; min-height: 40px; cursor: pointer; }
 .mm-seg:hover { border-color: ${gold}; }
 .mm-seg[aria-pressed="true"] { background: ${gold}; color: ${theme.ink}; border-color: ${gold}; }
+.mm-skins { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; }
+.mm-skin { font: inherit; font-weight: bold; font-size: 12px; color: ${theme.text}; background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.boardEdge)}; border-radius: 10px; padding: 4px 2px 5px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.mm-skin:hover { border-color: ${gold}; }
+.mm-skin[aria-pressed="true"] { border-color: ${gold}; box-shadow: inset 0 0 0 1px ${gold}; background: ${rgba(theme.grid, 0.6)}; }
+.mm-skin .pv { display: block; width: 100%; max-width: 64px; aspect-ratio: 1; }
+.mm-skin .pv svg { width: 100%; height: 100%; display: block; }
+.mm-skin .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.mm-skin[aria-pressed="true"] .n { color: ${gold}; }
+.mm-skins.small .mm-skin { font-size: 11px; padding: 2px 1px 3px; }
+.mm-skins.small .mm-skin .pv { max-width: 40px; }
 .mm-blurb { min-height: 3.2em; color: ${theme.textMuted}; line-height: 1.4; }
 .mm-pick { background: ${rgba(theme.panel, 0.7)}; border-radius: 12px; padding: 10px 12px; border: 1px solid ${cssHex(theme.boardEdge)}; }
 .mm-pick .n { font-weight: bold; font-size: 1.1em; }

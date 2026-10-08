@@ -1,4 +1,5 @@
-import { cssHex, lerpColor, theme } from '../config/theme'
+import { cssHex, lerpColor, shade, theme } from '../config/theme'
+import { SKIN_SHAPE, type SkinId } from '../config/skins'
 
 /** Small inline SVGs for the menu (static strings, crisp at any DPI). */
 
@@ -50,6 +51,44 @@ const key = (x: number, y: number, t: string, w = 0): string => {
 const pointer = (x: number, y: number): string =>
   `<path d="M${x} ${y}l0 16 4.5-4 3 7 3-1.4-3-6.6 6-.4z" fill="#fff" stroke="${board}" stroke-width="1.4"/>`
 
+const pts = (list: readonly { x: number; y: number }[], x: number, y: number, k: number): string =>
+  list.map((p) => `${(x + p.x * k).toFixed(1)},${(y + p.y * k).toFixed(1)}`).join(' ')
+
+/** A cannon body in a skin, the same shapes as on the board (radius 26 scaled by `k`). */
+export function skinBody(skin: SkinId, x: number, y: number, color: number, k = 1): string {
+  const c = cssHex(color)
+  const dark = '#000'
+  if (skin === 'plated') {
+    const { half, corner, rivet, rivetInset } = SKIN_SHAPE.plated
+    const s = half * k
+    const q = (half - rivetInset) * k
+    const rv = cssHex(shade(color, 0.45))
+    return `<rect x="${x - s}" y="${y - s}" width="${2 * s}" height="${2 * s}" rx="${corner * k}" fill="${c}" stroke="${dark}" stroke-opacity=".3" stroke-width="${3 * k}"/><rect x="${x - s + 4 * k}" y="${y - s + 4 * k}" width="${s * 0.95}" height="${s * 0.55}" rx="${4 * k}" fill="#fff" fill-opacity=".2"/>${[
+      [-q, -q],
+      [q, -q],
+      [-q, q],
+      [q, q],
+    ]
+      .map(([dx, dy]) => `<circle cx="${x + dx}" cy="${y + dy}" r="${rivet * k}" fill="${rv}"/>`)
+      .join('')}`
+  }
+  if (skin === 'spiked')
+    return `<polygon points="${pts(SKIN_SHAPE.spiked, x, y, k)}" fill="${c}" stroke="${dark}" stroke-opacity=".3" stroke-width="${2.5 * k}" stroke-linejoin="round"/><circle cx="${x - 5 * k}" cy="${y - 6 * k}" r="${26 * 0.36 * k}" fill="#fff" fill-opacity=".2"/>`
+  if (skin === 'hex')
+    return `<polygon points="${pts(SKIN_SHAPE.hex, x, y, k)}" fill="${cssHex(shade(color, 0.66))}" stroke="${dark}" stroke-opacity=".35" stroke-width="${3 * k}" stroke-linejoin="round"/><polygon points="${pts(SKIN_SHAPE.hexInner, x, y, k)}" fill="${c}" stroke="${dark}" stroke-opacity=".22" stroke-width="${1.5 * k}"/><circle cx="${x - 5 * k}" cy="${y - 6 * k}" r="${26 * 0.3 * k}" fill="#fff" fill-opacity=".2"/>`
+  return `<circle cx="${x}" cy="${y}" r="${26 * k}" fill="${c}" stroke="${dark}" stroke-opacity=".28" stroke-width="${3 * k}"/><circle cx="${x - 6 * k}" cy="${y - 7 * k}" r="${26 * 0.42 * k}" fill="#fff" fill-opacity=".2"/>`
+}
+
+/** The skin picker's preview: a cannon in that skin with its barrel and ring, gold (yours) or pink. */
+export function skinPreview(skin: SkinId, side: 'player' | 'enemy' = 'player'): string {
+  const color = side === 'player' ? theme.player : theme.enemy
+  const ring = side === 'player' ? ringYou : ringEnemy
+  const k = 0.62
+  const r = 26 * k
+  const ringR = 31 * k
+  return `<svg viewBox="0 0 64 64" aria-hidden="true"><line x1="32" y1="32" x2="${32 + r + 12}" y2="${32 - (r + 12) * 0.55}" stroke="${cssHex(color)}" stroke-opacity=".8" stroke-width="7" stroke-linecap="round"/>${skinBody(skin, 32, 32, color, k)}<circle cx="32" cy="32" r="${ringR}" fill="none" stroke="${ringEdge}" stroke-width="4"/><circle cx="32" cy="32" r="${ringR}" fill="none" stroke="${ring}" stroke-width="2.2"/></svg>`
+}
+
 /** How to play, one picture per tip (a wide tip spans the whole row, picture beside the text). */
 export const HOWTO: { title: string; text: string; art: string; wide?: boolean }[] = [
   {
@@ -68,7 +107,7 @@ export const HOWTO: { title: string; text: string; art: string; wide?: boolean }
   },
   {
     title: 'Swap type',
-    text: 'Hover a cannon (long-press on touch) for its menu: Normal, Sniper, Machine gun or Shield. T steps the selected one.',
+    text: 'Hover a cannon (long-press on touch) for its menu: Normal, Sniper, Machine gun or Shield. The barrel shows the type; the body’s shape is just its owner’s skin (pick yours in Settings).',
     art: svg(
       `${['Normal', 'Sniper', 'MG', 'Shield']
         .map((t, i) => `<rect x="${18 + i * 52}" y="12" width="48" height="22" rx="7" fill="${i === 1 ? gold : board}" stroke="${i === 1 ? gold : edge}" stroke-width="1.5"/>${label(42 + i * 52, 27, t, i === 1 ? cssHex(theme.hud) : ink, 10)}`)

@@ -1,3 +1,5 @@
+import { vsAiSkins } from '../config/skins'
+import { loadSkin, onSkinChange } from '../menu/skinPref'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
 import { sideColor, theme } from '../config/theme'
@@ -44,6 +46,10 @@ export class TitleBgScene extends Phaser.Scene {
     this.fx = this.add.graphics().setDepth(3)
     this.sim = new BattleSim(level, this, {}, 'progressive')
     this.sim.addAi('player', 'normal')
+    // The demo shows your skin on gold (and the AI's pick on pink), like a round you'd play.
+    this.sim.setSkins(vsAiSkins(loadSkin()))
+    const offSkin = onSkinChange((skin) => this.sim.setSkins(vsAiSkins(skin)))
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, offSkin)
     // Dimmed: the menu sits on top.
     this.add.graphics().setDepth(50).fillStyle(theme.bg, 0.2).fillRect(-200, -200, GAME_WIDTH + 400, GAME_HEIGHT + 400)
     this.cameras.main.fadeIn(700, 20, 14, 12)
