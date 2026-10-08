@@ -98,4 +98,5 @@ export const KEYS: [string, string][] = [
   ['N', 'mute'],
   ['R', 'restart'],
   ['Esc', 'menu / back'],
+  ['F3', 'performance'],
 ]

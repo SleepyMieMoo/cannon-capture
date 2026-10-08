@@ -29,6 +29,7 @@ import type { LevelDef, Point, Rect, Side } from '../types'
 import { drawStar, makeButton } from '../ui/button'
 import { SwapMenu, type AutoState } from '../ui/swapMenu'
 import { SettingsPanel } from '../ui/settingsPanel'
+import { perf } from '../perf/PerfOverlay'
 import { layoutScale } from '../render/resolution'
 import { KINDS, firesAs, fmtNum, kindLabel, nextKind } from '../config/kinds'
 
@@ -107,6 +108,8 @@ export class BattleScene extends Phaser.Scene {
   private restarting = false
   /** The in-battle menu (HUD "Menu" or Esc); the round is paused while it is open. */
   private battleMenu!: BattleMenu
+  /** Look-ahead time already counted by the performance overlay (null while it is hidden). */
+  private lookBase: number | null = null
   private readonly menuHold = new PauseHold(() => this.sim)
   private hint!: Phaser.GameObjects.Text
   private pauseLink!: Phaser.GameObjects.Text
@@ -311,6 +314,16 @@ export class BattleScene extends Phaser.Scene {
     else if (this.wc.canZoomOut) this.showBanner('Big map: scroll or pinch to zoom out, drag empty space or use WASD to pan.')
     this.bindInput()
     this.refreshHud()
+    this.lookBase = null
+    perf.battle = {
+      level: this.level,
+      cannons: () => this.sim.cannons.length,
+      shots: () => this.sim.shots.length,
+      sounds: () => this.sfx.voices,
+    }
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (perf.battle?.level === this.level) perf.battle = null
+    })
     if (DEBUG.enabled) (window as unknown as { __cc?: unknown }).__cc = { scene: this, sim: this.sim, sfx: this.sfx }
   }
 
@@ -319,11 +332,17 @@ export class BattleScene extends Phaser.Scene {
     for (const fan of this.fans) fan.draw(time)
 
     this.wc.update(dt)
+    // Performance overlay: time the simulation only while it is shown.
+    const timing = perf.active
+    this.sim.timeAi = timing
+    const t0 = timing ? performance.now() : 0
     this.sim.pumpLanes(5)
     for (let i = 0; i < DEBUG.speed && !this.sim.ended && !this.sim.paused; i++) {
       this.bot?.update(dt)
       this.sim.step(dt)
     }
+    if (timing) this.recordPerf(performance.now() - t0)
+    else this.lookBase = null
     if (this.selected && this.selected.side !== 'player') this.selected = null
     if (this.sim.ended && !this.shownEnd) this.finish()
 
@@ -343,6 +362,7 @@ export class BattleScene extends Phaser.Scene {
       volume: this.sfx.settings.volume,
       muted: this.sfx.settings.muted,
       audio: this.sfx.available,
+      perf: perf.shown,
     })
     for (const cannon of this.cannons) {
       cannon.hovered = cannon === this.hover
@@ -351,6 +371,15 @@ export class BattleScene extends Phaser.Scene {
       cannon.draw(time)
     }
     this.refreshHud()
+  }
+
+  private recordPerf(simMs: number): void {
+    let look = 0
+    for (const ai of this.sim.ais) look += ai.lookahead.pumpMs
+    const lookMs = this.lookBase === null ? 0 : Math.max(0, look - this.lookBase)
+    this.lookBase = look
+    perf.recordBattle(simMs, this.sim.aiMs, lookMs)
+    this.sim.aiMs = 0
   }
 
   private finish(): void {
@@ -517,6 +546,7 @@ export class BattleScene extends Phaser.Scene {
         this.pressOnUi = true
         if (hit === 'auto') this.toggleGlobalAuto()
         else if (hit === 'mute') this.sfx.toggleMute()
+        else if (hit === 'perf') perf.toggle()
         else if (hit === 'volume') {
           this.volumeDrag = true
           this.sfx.setVolume(this.settings.volumeAt(lp.x))
@@ -627,7 +657,7 @@ export class BattleScene extends Phaser.Scene {
     }
     if (this.settings.open && this.settings.contains(this.pointerLayout.x, this.pointerLayout.y)) {
       const hit = this.settings.hitAt(this.pointerLayout.x, this.pointerLayout.y)
-      this.input.setDefaultCursor(hit === 'auto' || hit === 'close' || hit === 'mute' || hit === 'volume' ? 'pointer' : 'default')
+      this.input.setDefaultCursor(hit === 'auto' || hit === 'close' || hit === 'mute' || hit === 'volume' || hit === 'perf' ? 'pointer' : 'default')
       this.hover = null
       this.pointer = null
       return

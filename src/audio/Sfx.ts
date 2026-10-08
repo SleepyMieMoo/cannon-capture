@@ -69,6 +69,11 @@ export class Sfx {
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.stopAll())
   }
 
+  /** Pops playing right now (performance overlay). */
+  get voices(): number {
+    return this.playing.size
+  }
+
   get available(): boolean {
     const sm = this.scene.sound
     return !(sm instanceof Phaser.Sound.NoAudioSoundManager) && this.scene.cache.audio.exists(SFX.key)

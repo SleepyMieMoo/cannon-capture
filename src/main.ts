@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { theme } from './config/theme'
 import { DEBUG } from './debug'
+import { perf } from './perf/PerfOverlay'
 import { discord } from './platform/runtime'
 import { canvasSize, renderScale, watchRenderScale } from './render/resolution'
 import { BattleScene } from './scenes/BattleScene'
@@ -54,3 +55,6 @@ const game = new Phaser.Game({
 })
 
 watchRenderScale(game, parent)
+// Performance overlay (Settings, F3 or backtick, or ?perf): costs nothing until shown.
+perf.attach(game)
+if (DEBUG.enabled) (window as unknown as { __perf: typeof perf }).__perf = perf
