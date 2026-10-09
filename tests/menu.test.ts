@@ -119,9 +119,10 @@ describe('Play vs AI', () => {
     expect(campaignBattle.level.hint).toBeTruthy()
   })
 
-  it('tags the built-in maps verified beatable on Impossible (all but Warp Works)', () => {
-    expect(vsAiMaps([]).filter((m) => beatableOnImpossible(m.id)).map((m) => m.name)).toEqual(['Crossfire', 'Last Stand', 'Glass Garden', 'Void Gate'])
-    expect(beatableOnImpossible('ex-warp-works')).toBe(false)
+  it('tags the built-in maps verified beatable on Impossible (all five Play vs AI maps)', () => {
+    expect(vsAiMaps([]).filter((m) => beatableOnImpossible(m.id)).map((m) => m.name)).toEqual(['Crossfire', 'Last Stand', 'Glass Garden', 'Void Gate', 'Warp Works'])
+    expect(VS_AI_BUILT_IN.every((l) => beatableOnImpossible(l.id))).toBe(true)
+    expect(beatableOnImpossible('sniper-duel')).toBe(false)
   })
 
   it('falls back to Crossfire when the remembered map is gone or retired', () => {
