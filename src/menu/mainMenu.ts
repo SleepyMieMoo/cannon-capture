@@ -9,6 +9,8 @@ import { loadColour, saveColour } from './colourPref'
 import { BRAND } from '../config/brand'
 import { MAP_SIZES } from '../levels/board'
 import { beatableOnImpossible } from '../levels'
+import { badgeCount, hasBadge, loadBadges, type Badges } from './badges'
+import { badgeName } from '../ui/resultView'
 import { drawThumb } from '../editor/thumb'
 import { listMaps } from '../editor/maps'
 import { loadProgress } from '../progress'
@@ -71,6 +73,18 @@ const icon = (svg: string): HTMLSpanElement => h('span', { innerHTML: svg, style
 /** The tag on built-in maps the dev has beaten on Impossible by hand (src/data/mapInfo.json). */
 export const VERIFIED_TIP = 'Beatable on Impossible: verified by hand by the dev. Hard, but fair.'
 const SHIELD_CHECK = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M8 1.2 13.4 3v4.4c0 3.3-2.3 6-5.4 7.4C4.9 13.4 2.6 10.7 2.6 7.4V3Z" fill="currentColor" opacity=".22" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m5.3 8.1 1.9 1.9 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+
+/** A map card's four win badges, one per bot: its tiny face, lit once you've beaten it there. */
+function badgeRow(badges: Badges, mapId: string): HTMLElement {
+  const got = AI_LEVELS.filter((d) => hasBadge(badges, mapId, d))
+  const row = h('div.mm-badges', { role: 'img', 'aria-label': got.length ? `Badges: beaten ${got.map((d) => DIFFICULTY[d].label).join(', ')}` : 'Badges: none yet' })
+  for (const d of AI_LEVELS) {
+    const name = badgeName(BOTS[d].name, DIFFICULTY[d].label)
+    const on = got.includes(d)
+    row.append(h(`span.mm-badge${on ? '.on' : ''}`, { title: on ? name : `${name}: not yet`, dataset: { badge: d }, innerHTML: botAvatarSvg(d, sideColor('enemy'), 16) }))
+  }
+  return row
+}
 
 function summary(level: LevelDef): string {
   const n = (side: string): number => level.cannons.filter((c) => c.side === side).length
@@ -308,6 +322,7 @@ export class MainMenu {
 
   private play(): HTMLElement {
     const choices = vsAiMaps(listMaps())
+    const badges = loadBadges()
     let map = pickMap(choices, this.prefs.mapId)
     let diff: AiLevel = this.prefs.difficulty
     const save = (): void => {
@@ -345,6 +360,7 @@ export class MainMenu {
         thumb,
         h('div.n', {}, c.name),
         h('div.m', {}, h('span', {}, MAP_SIZES[c.level.size ?? 'small'].label), h('span', {}, c.group === 'My maps' ? 'Yours' : '')),
+        badgeRow(badges, c.id),
       )
       if (c.id === map.id) {
         el.classList.add('on')
@@ -789,6 +805,7 @@ export class MainMenu {
             control: [nameIn, saved],
           }),
           diffRow,
+          this.badgeTotalRow(),
           resetRow,
         ),
         h('div', {},
@@ -799,6 +816,19 @@ export class MainMenu {
       ),
       this.versionFoot(),
     ])
+  }
+
+  /** Profile: "7/20" win badges over the maps Play vs AI lists now (built-in and yours). */
+  private badgeTotalRow(): HTMLElement {
+    const ids = vsAiMaps(listMaps()).map((c) => c.id)
+    const n = badgeCount(loadBadges(), ids)
+    return settingRow({
+      id: 'badges',
+      label: 'Win badges',
+      help: 'One badge per bot on each Play vs AI map (yours too): beat Dumpling, Pip, Rivet and Vex there to light them up on the map card. Reset all preferences clears them.',
+      layout: 'wide',
+      control: [h('span.mm-badgetotal', { dataset: { id: 'badge-total' } }, h('b', {}, String(n)), ` / ${ids.length * AI_LEVELS.length}`)],
+    })
   }
 
   private credits(): HTMLElement {

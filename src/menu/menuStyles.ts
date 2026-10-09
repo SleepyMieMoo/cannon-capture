@@ -196,6 +196,10 @@ export function injectMenuStyles(): void {
 .mm-card.on { border-color: ${gold}; box-shadow: inset 0 0 0 1px ${gold}; background: ${rgba(theme.grid, 0.6)}; }
 .mm-card canvas { width: 100% !important; height: auto !important; border-radius: 7px; display: block; }
 .mm-thumb { position: relative; }
+.mm-badges { display: flex; gap: 3px; align-items: center; }
+.mm-badge { flex: none; width: 16px; height: 16px; border-radius: 50%; filter: grayscale(1) brightness(.75); opacity: .35; }
+.mm-badge.on { filter: none; opacity: 1; box-shadow: 0 0 0 1.5px ${gold}; }
+.mm-badge svg { display: block; }
 .mm-verified {
   position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px 1px 4px;
   border-radius: 999px; font-size: 10px; line-height: 16px; font-weight: bold; color: ${gold};

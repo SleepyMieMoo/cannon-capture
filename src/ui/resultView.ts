@@ -52,6 +52,13 @@ export interface ResultBot {
   level: AiLevel
   name: string
   line: string
+  /** First win against this bot on this map: the badge's name ("Beat Vex (Impossible)"), shown in a "New badge!" chip. */
+  newBadge?: string
+}
+
+/** The win badge's name: "Beat Vex (Impossible)" (the map cards' tips say the same). */
+export function badgeName(name: string, levelLabel: string): string {
+  return `Beat ${name} (${levelLabel})`
 }
 
 export interface ResultView {

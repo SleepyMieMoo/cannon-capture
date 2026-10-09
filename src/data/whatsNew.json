@@ -4,6 +4,10 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.6.1: badges to earn", "text": "A tidier Play vs AI list, a tag on maps the dev has beaten on Impossible, and win badges for every bot on every map." },
+        { "kind": "new", "title": "Win badges", "text": "Beat Dumpling, Pip, Rivet or Vex on a map and their little face lights up on that map's card. The first time, the result panel shows a New badge! chip. Profile counts them all; Reset all preferences clears them." },
+        { "kind": "new", "title": "Beatable on Impossible", "text": "Crossfire, Last Stand, Glass Garden and Void Gate carry a small shield tag: the dev has beaten each of them on Impossible by hand. Hard, but fair." },
+        { "kind": "new", "title": "A tidier map list", "text": "Play vs AI now offers Crossfire, Last Stand, Glass Garden, Void Gate and Warp Works. Skirmish (the same board as Crossfire), Tug of War, Walls Up and Sniper Duel step aside; the campaign still has them, and Sniper Duel may come back reworked." },
         { "kind": "new", "title": "Version 0.6.0: meet the bots", "text": "Every AI level is now a character with a face and something to say when the round ends, and the result panel shows who you played, the map and the match time." },
         { "kind": "new", "title": "Meet the bots", "text": "Easy is Dumpling, a friendly blob. Normal is Pip, a cheerful robot. Hard is Rivet, a bolted-down competitor. Impossible is Vex, smug when it wins and a sore loser when it doesn't. They wear the AI team's colour and comment in a speech bubble." },
         { "kind": "new", "title": "Brag-worthy results", "text": "The result panel now shows who you played (the AI's level, or your online opponent), the map and the match time, laid out for a screenshot. Puzzles and levels show the map and time." },

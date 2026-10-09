@@ -1,4 +1,5 @@
 import { fxLabel } from '../render/vfx/fxPrefs'
+import { badgeCount, loadBadges } from '../menu/badges'
 import Phaser from 'phaser'
 import { perf } from '../perf/PerfOverlay'
 import { applyAudioSettings, preloadSfx, previewPop } from '../audio/Sfx'
@@ -193,6 +194,7 @@ export class TitleScene extends Phaser.Scene {
               tabbed: { music: music.settings.keepHidden, pauseVsAi: loadTabPrefs().pauseVsAi },
               motion: { pref: loadMotionPref(), reduced: !motionOK() },
               effects: fxLabel(),
+              badges: badgeCount(loadBadges()),
             }),
           )
         },

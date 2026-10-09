@@ -1,4 +1,5 @@
 import { DEFAULT_SKIN, flipSkins, vsAiSkins, type SideSkins } from '../config/skins'
+import { earnBadge } from '../menu/badges'
 import { loadSkin } from '../menu/skinPref'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
@@ -48,7 +49,7 @@ import { makeButton } from '../ui/button'
 import { BOTS, botLine, botMoment } from '../ui/bots'
 import { ResultPanel } from '../ui/resultPanel'
 import { motionOK } from '../ui/motion'
-import { offlineResult, onlineResult, type ResultAction, type ResultView } from '../ui/resultView'
+import { badgeName, offlineResult, onlineResult, type ResultAction, type ResultView } from '../ui/resultView'
 import { SwapMenu, type AutoState } from '../ui/swapMenu'
 import { SettingsPanel } from '../ui/settingsPanel'
 import { perf } from '../perf/PerfOverlay'
@@ -224,6 +225,8 @@ export class BattleScene extends Phaser.Scene {
   private endAnimated = false
   /** What the bot said about this round (kept for rebuilds). */
   private endLine: string | null = null
+  /** This round's win earned a new badge (vs the AI): its name, for the result panel. */
+  private endBadge: string | null = null
   /** Stars for a campaign win, worked out once when the round ends. */
   private endStars = 0
   /** Makes sure the result panel is up whenever the round is over (see resultGate.ts). */
@@ -417,6 +420,7 @@ export class BattleScene extends Phaser.Scene {
     this.endRoot = null
     this.endAnimated = false
     this.endLine = null
+    this.endBadge = null
     this.endStars = 0
     this.tabPrefs = loadTabPrefs()
     this.catchUp.clear()
@@ -865,6 +869,9 @@ export class BattleScene extends Phaser.Scene {
         this.endStars = starsFor(this.level, { seconds: Math.round(this.sim.clock / 1000), aimsUsed: this.sim.aimsUsed })
         recordWin(this.level.id, this.endStars)
       }
+      // A win against the AI earns that bot's badge on this map (saved once, like progress).
+      const bot = result === 'win' ? this.botLevel() : null
+      if (bot && earnBadge(this.level.id, bot)) this.endBadge = badgeName(BOTS[bot].name, DIFFICULTY[bot].label)
     }
     this.resultGate.check(result, this.restarting)
   }
@@ -2173,7 +2180,7 @@ export class BattleScene extends Phaser.Scene {
       stars,
       backLabel: this.backLabel(false),
       brag: { opponent: bot ? `${BOTS[bot].name} · ${DIFFICULTY[bot].label}` : null, map: this.level.name, ms: this.sim.clock },
-      ...(bot ? { bot: { level: bot, name: BOTS[bot].name, line: this.botSays(bot, result) } } : {}),
+      ...(bot ? { bot: { level: bot, name: BOTS[bot].name, line: this.botSays(bot, result), ...(this.endBadge ? { newBadge: this.endBadge } : {}) } } : {}),
     })
   }
 

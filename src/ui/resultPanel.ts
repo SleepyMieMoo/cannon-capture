@@ -54,7 +54,8 @@ export class ResultPanel {
       stars,
       view.detail ? h('p.rp-detail', {}, view.detail) : null,
       view.bot ? botRow(view.bot, opts.botColour ?? opts.stroke) : null,
-      view.brag?.length ? bragRow(view.brag) : null,
+      view.bot?.newBadge ? badgeChip(view.bot, opts.botColour ?? opts.stroke) : null,
+      view.brag?.length ? bragRow(view.brag, !!view.bot) : null,
       view.extra ? h(`p.rp-extra${view.extra.gold ? '.gold' : ''}`, { 'aria-live': 'polite' }, view.extra.text) : null,
       buttons,
       view.keys ? h(`p.rp-keys${view.keysOnly ? '.keys' : ''}`, {}, view.keys) : null,
@@ -107,9 +108,22 @@ function botRow(bot: ResultBot, colour: number): HTMLElement {
   )
 }
 
+/** First win against this bot on this map: a small celebratory chip. */
+function badgeChip(bot: ResultBot, colour: number): HTMLElement {
+  const face = h('span.rp-badge-face')
+  face.innerHTML = botAvatarSvg(bot.level, colour, 22)
+  const label = bot.newBadge ?? ''
+  return h('div.rp-badge', { role: 'status', title: `You earned the ${label} badge on this map.` }, face, h('b', {}, 'New badge!'), h('span', {}, label))
+}
+
 /** The brag row: small labelled facts side by side (wrapping on narrow screens). */
-function bragRow(stats: BragStat[]): HTMLElement {
-  return h('dl.rp-brag', {}, ...stats.map((s) => h('div.rp-stat', { dataset: { key: s.key } }, h('dt', {}, s.label), h('dd', {}, s.value))))
+function bragRow(stats: BragStat[], bot: boolean): HTMLElement {
+  // With the bot's face beside it, phones drop its name from "Rivet · Hard" (the caption shows it).
+  const value = (s: BragStat): (string | HTMLElement)[] => {
+    const cut = bot && s.key === 'opponent' ? s.value.indexOf(' · ') : -1
+    return cut > 0 ? [h('span.rp-opp', {}, s.value.slice(0, cut + 3)), s.value.slice(cut + 3)] : [s.value]
+  }
+  return h('dl.rp-brag', {}, ...stats.map((s) => h('div.rp-stat', { dataset: { key: s.key } }, h('dt', {}, s.label), h('dd', {}, ...value(s)))))
 }
 
 /** Colours the confetti is cut from (the gold, its lighter shade, cream and caramel). */
@@ -187,6 +201,14 @@ function injectResultStyles(): void {
   content: ''; position: absolute; left: -7px; top: 50%; margin-top: -7px;
   border: 7px solid transparent; border-left-width: 0; border-right-color: ${theme.text};
 }
+.rp-badge {
+  display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; width: fit-content; max-width: 100%;
+  margin: clamp(8px, 2vmin, 12px) auto 0; padding: 4px 12px 4px 5px; border-radius: 999px;
+  background: ${rgba(theme.player, 0.14)}; border: 1.5px solid ${gold}; font-size: clamp(13px, 2.2vmin, 15px); line-height: 1.25;
+}
+.rp-badge-face svg { display: block; }
+.rp-badge b { color: ${gold}; }
+.rp-badge span:last-child { overflow-wrap: anywhere; }
 .rp-brag {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: clamp(10px, 2.4vmin, 16px) 0 0; padding: 0;
 }
@@ -214,6 +236,33 @@ function injectResultStyles(): void {
   .rp-stat { padding: 4px 9px 5px; }
   .rp-stat dt { font-size: 10px; }
   .rp-stat dd { font-size: 14px; }
+}
+/* Phones: Against shows only the level (the bot's name is under its face), so the facts fit one row. */
+@container (max-width: 400px) {
+  .rp-opp { display: none; }
+  .rp-brag { gap: 4px; }
+  .rp-stat { padding: 3px 6px 4px; }
+  .rp-stat dd { font-size: 13px; }
+  .rp-badge { font-size: 12px; gap: 4px; padding: 2px 9px 2px 3px; }
+}
+/* Short frames (landscape phones, small embeds): everything a notch tighter so the buttons stay on screen. */
+@media (max-height: 460px) {
+  .rp-panel { padding: 10px 12px 8px; }
+  .rp-title { font-size: 20px; }
+  .rp-detail { margin-top: 2px; font-size: 13px; }
+  .rp-stars svg { width: 26px; }
+  .rp-bot { margin-top: 6px; gap: 8px; }
+  .rp-face { width: 36px; height: 36px; }
+  .rp-who figcaption { display: none; }
+  .rp-bubble { padding: 5px 10px; font-size: 13px; }
+  .rp-badge { margin-top: 6px; font-size: 12px; padding: 2px 9px 2px 3px; }
+  .rp-brag { margin-top: 6px; }
+  .rp-stat { padding: 2px 8px 3px; }
+  .rp-stat dt { font-size: 9px; }
+  .rp-stat dd { font-size: 13px; }
+  .rp-btns { margin-top: 8px; }
+  .rp-btns .mm-btn { min-height: 40px; padding: 5px 12px; }
+  .rp-keys { display: none; }
 }
 @container (max-width: 240px) { .rp-btns { grid-auto-flow: row; grid-auto-columns: 1fr; } }
 .rp-btns .mm-btn { width: 100%; min-width: 0; min-height: 48px; padding: 8px 14px; font-size: clamp(15px, 2.5vmin, 17px); line-height: 1.2; }
