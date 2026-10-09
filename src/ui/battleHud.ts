@@ -329,17 +329,25 @@ export class BattleHud {
       const rows = this.twoRows ? [this.rowA, this.rowB] : [this.rowA]
       return rows.some((row) => rowOverflows(row))
     }
+    // On two rows the buttons have their own row: only the first row decides about the names.
+    const namesOver = (): boolean => (this.twoRows ? rowOverflows(this.rowA) : over())
     // A title cut down to "Ski…" says nothing: drop it instead.
     const titleTooSmall = (): boolean => this.titleEl.scrollWidth > this.titleEl.clientWidth + 1 && this.titleEl.clientWidth < 110
     // The opponent goes first (the end screen names them too), then the map name.
     const vsTooSmall = (): boolean => this.vsEl.scrollWidth > this.vsEl.clientWidth + 1 && this.vsEl.clientWidth < 90
-    if (this.vsEl.textContent && (over() || vsTooSmall())) this.vsEl.style.display = 'none'
-    if (over() || titleTooSmall()) this.titleEl.style.display = 'none'
-    for (const id of foldOrder(this.defs)) {
-      if (!over()) break
-      if (this.off.has(id)) continue
+    if (this.vsEl.textContent && (namesOver() || vsTooSmall())) this.vsEl.style.display = 'none'
+    const foldOne = (id: HudButtonId): void => {
       this.btn.get(id)!.style.display = 'none'
       this.folded.add(id)
+    }
+    // The map name is worth more than the least used button (Restart, still in the Menu).
+    const cheap = (id: HudButtonId): boolean => (this.defs.find((d) => d.id === id)?.keep ?? Infinity) <= 1
+    if (!this.twoRows) for (const id of foldOrder(this.defs).filter(cheap)) if (!this.off.has(id) && (over() || titleTooSmall())) foldOne(id)
+    if (namesOver() || titleTooSmall()) this.titleEl.style.display = 'none'
+    for (const id of foldOrder(this.defs)) {
+      if (!over()) break
+      if (this.off.has(id) || this.folded.has(id)) continue
+      foldOne(id)
     }
   }
 

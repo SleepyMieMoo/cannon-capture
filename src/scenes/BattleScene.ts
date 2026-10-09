@@ -564,7 +564,7 @@ export class BattleScene extends Phaser.Scene {
     this.children.list.forEach((obj) => this.world(obj))
     WORLD_VIEW.y = VIEW_TOP
     WORLD_VIEW.h = GAME_HEIGHT - VIEW_TOP
-    this.wc = new WorldCamera(this, this.board, WORLD_VIEW, undefined, 1)
+    this.wc = new WorldCamera(this, this.board, { ...WORLD_VIEW }, undefined, 1)
     if (this.startView && this.wc.canZoomOut) {
       // Playtest from the editor: same zoom and centre (play never zooms past near).
       this.wc.zoom = Math.min(1, this.startView.zoom)
