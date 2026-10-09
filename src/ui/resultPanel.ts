@@ -1,7 +1,8 @@
 import { cssHex, theme } from '../config/theme'
 import { injectMenuStyles } from '../menu/menuStyles'
 import { h } from './dom'
-import type { BragStat, ResultAction, ResultView } from './resultView'
+import { botAvatarSvg } from './bots'
+import type { BragStat, ResultAction, ResultBot, ResultView } from './resultView'
 
 const rgba = (c: number, a: number): string => `rgba(${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255}, ${a})`
 
@@ -11,6 +12,8 @@ export interface ResultPanelOpts {
   /** Screen px the battle HUD takes at the top: the panel centres in the space below it. */
   topInset: () => number
   onAction: (action: ResultAction) => void
+  /** The bot's team colour (its face is tinted with it). */
+  botColour?: number
   /** Play the entrance (the first time this round; a rebuild for rematch votes just appears). */
   animate?: boolean
 }
@@ -50,6 +53,7 @@ export class ResultPanel {
       title,
       stars,
       view.detail ? h('p.rp-detail', {}, view.detail) : null,
+      view.bot ? botRow(view.bot, opts.botColour ?? opts.stroke) : null,
       view.brag?.length ? bragRow(view.brag) : null,
       view.extra ? h(`p.rp-extra${view.extra.gold ? '.gold' : ''}`, { 'aria-live': 'polite' }, view.extra.text) : null,
       buttons,
@@ -91,6 +95,16 @@ export class ResultPanel {
     window.removeEventListener('resize', this.onResize)
     this.el.remove()
   }
+}
+
+/** The bot: its face, its name, and a speech bubble with its say on the round. */
+function botRow(bot: ResultBot, colour: number): HTMLElement {
+  const face = h('div.rp-face', { title: bot.name })
+  face.innerHTML = botAvatarSvg(bot.level, colour)
+  return h('div.rp-bot', { dataset: { bot: bot.level } },
+    h('figure.rp-who', {}, face, h('figcaption', {}, bot.name)),
+    h('p.rp-bubble', {}, bot.line),
+  )
 }
 
 /** The brag row: small labelled facts side by side (wrapping on narrow screens). */
@@ -159,6 +173,20 @@ function injectResultStyles(): void {
 .rp-stars path { fill: ${cssHex(theme.grid)}; stroke: ${cssHex(theme.boardEdge)}; stroke-width: 1.2; stroke-linejoin: round; }
 .rp-stars svg.on path { fill: ${gold}; stroke: ${cssHex(theme.playerHot)}; }
 .rp-detail { margin: clamp(6px, 1.6vmin, 12px) 0 0; font-size: clamp(14px, 2.4vmin, 16px); line-height: 1.35; color: ${theme.textMuted}; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rp-bot { display: flex; align-items: center; justify-content: center; gap: 12px; margin: clamp(10px, 2.4vmin, 16px) auto 0; max-width: 460px; text-align: left; }
+.rp-who { margin: 0; flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.rp-face { width: clamp(48px, 9vmin, 64px); height: clamp(48px, 9vmin, 64px); }
+.rp-face svg { width: 100%; height: 100%; display: block; }
+.rp-who figcaption { font-size: 12px; font-weight: bold; line-height: 1.1; color: ${theme.textMuted}; }
+.rp-bubble {
+  position: relative; margin: 0; flex: 0 1 auto; min-width: 0; padding: 9px 13px; border-radius: 14px;
+  background: ${theme.text}; color: ${cssHex(theme.panel)};
+  font-size: clamp(14px, 2.4vmin, 16px); line-height: 1.3; font-weight: bold; overflow-wrap: anywhere;
+}
+.rp-bubble::before {
+  content: ''; position: absolute; left: -7px; top: 50%; margin-top: -7px;
+  border: 7px solid transparent; border-left-width: 0; border-right-color: ${theme.text};
+}
 .rp-brag {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: clamp(10px, 2.4vmin, 16px) 0 0; padding: 0;
 }
@@ -176,8 +204,18 @@ function injectResultStyles(): void {
   display: grid; gap: 10px; margin: clamp(14px, 3.4vmin, 24px) auto 0;
   grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr); width: max-content; max-width: 100%;
 }
-/* Narrow: stacked, full width. */
-@container (max-width: 400px) { .rp-btns { grid-auto-flow: row; grid-auto-columns: 1fr; width: 100%; } }
+/* Narrow: two equal columns across the full width, stacked only when truly tiny. Bot row and stats tighten up. */
+@container (max-width: 400px) {
+  .rp-btns { grid-auto-columns: minmax(0, 1fr); width: 100%; gap: 8px; }
+  .rp-bot { gap: 9px; }
+  .rp-face { width: 44px; height: 44px; }
+  .rp-bubble { padding: 7px 10px; font-size: 14px; }
+  .rp-brag { gap: 5px; }
+  .rp-stat { padding: 4px 9px 5px; }
+  .rp-stat dt { font-size: 10px; }
+  .rp-stat dd { font-size: 14px; }
+}
+@container (max-width: 240px) { .rp-btns { grid-auto-flow: row; grid-auto-columns: 1fr; } }
 .rp-btns .mm-btn { width: 100%; min-width: 0; min-height: 48px; padding: 8px 14px; font-size: clamp(15px, 2.5vmin, 17px); line-height: 1.2; }
 .rp-btns .mm-btn span { min-width: 0; overflow-wrap: anywhere; text-wrap: balance; }
 .rp-btns .mm-btn:disabled { opacity: .45; }

@@ -45,6 +45,7 @@ import { clipToGlass, clipToPillars, clipToWalls } from '../sim/geometry'
 import { starsFor } from '../sim/stars'
 import type { AiLevel, LevelDef, Point, Rect, WallDef } from '../types'
 import { makeButton } from '../ui/button'
+import { BOTS, botLine, botMoment } from '../ui/bots'
 import { ResultPanel } from '../ui/resultPanel'
 import { motionOK } from '../ui/motion'
 import { offlineResult, onlineResult, type ResultAction, type ResultView } from '../ui/resultView'
@@ -221,6 +222,8 @@ export class BattleScene extends Phaser.Scene {
   private endRoot: ResultPanel | null = null
   /** This round's result panel has played its entrance (rebuilds just appear). */
   private endAnimated = false
+  /** What the bot said about this round (kept for rebuilds). */
+  private endLine: string | null = null
   /** Stars for a campaign win, worked out once when the round ends. */
   private endStars = 0
   /** Makes sure the result panel is up whenever the round is over (see resultGate.ts). */
@@ -413,6 +416,7 @@ export class BattleScene extends Phaser.Scene {
     this.serverSide = 'player'
     this.endRoot = null
     this.endAnimated = false
+    this.endLine = null
     this.endStars = 0
     this.tabPrefs = loadTabPrefs()
     this.catchUp.clear()
@@ -876,6 +880,7 @@ export class BattleScene extends Phaser.Scene {
     const stroke = view.tone === 'draw' ? theme.neutral : sideColor(view.tone === 'win' ? 'player' : 'enemy')
     this.endRoot = new ResultPanel(view, {
       stroke,
+      botColour: sideColor('enemy'),
       animate: !this.endAnimated,
       topInset: () => this.hud?.el.getBoundingClientRect().bottom ?? 0,
       onAction: (action) => this.onResultAction(action),
@@ -2151,6 +2156,7 @@ export class BattleScene extends Phaser.Scene {
         stars,
       }
     }
+    const bot = this.botLevel()
     return offlineResult({
       result: result === 'win' ? 'win' : 'lose',
       campaign,
@@ -2166,8 +2172,15 @@ export class BattleScene extends Phaser.Scene {
       par: this.level.par,
       stars,
       backLabel: this.backLabel(false),
-      brag: { opponent: this.pvp ? null : this.botLevel() ? `${DIFFICULTY[this.botLevel()!].label} AI` : null, map: this.level.name, ms: this.sim.clock },
+      brag: { opponent: bot ? `${BOTS[bot].name} · ${DIFFICULTY[bot].label}` : null, map: this.level.name, ms: this.sim.clock },
+      ...(bot ? { bot: { level: bot, name: BOTS[bot].name, line: this.botSays(bot, result) } } : {}),
     })
+  }
+
+  /** The bot's line for this round: picked once, so a rebuilt panel says the same thing. */
+  private botSays(bot: AiLevel, result: Outcome): string {
+    this.endLine ??= botLine(bot, botMoment(result === 'win' ? 'win' : 'lose', this.surrendered))
+    return this.endLine
   }
 
   /** The AI playing the other side (vs AI, campaign levels), if there is one. */

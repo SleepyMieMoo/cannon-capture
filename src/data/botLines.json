@@ -1,0 +1,117 @@
+{
+  "_help": "What each bot says on the result panel. youWin: you beat it; youLose: it beat you; youSurrender: you gave up. Keep each line short (70 characters at most) and friendly. 6 to 8 lines per list.",
+  "easy": {
+    "youWin": [
+      "Great game! You're really good at this!",
+      "Wow, nice shots! Can you teach me that bank shot?",
+      "You won fair and square. Well played!",
+      "That was so much fun! Same time tomorrow?",
+      "I tried my best, and you were better. Yay you!",
+      "Good game! My cannons are still a bit dizzy.",
+      "Hooray for you! I'll practise my aiming."
+    ],
+    "youLose": [
+      "Oh! I won? That was lucky. Good game!",
+      "Good game! You almost had me, honestly.",
+      "Phew, that was close! Want to go again?",
+      "I won! But you made it really fun.",
+      "Thanks for the game! You'll get me next time.",
+      "Did I win? Oh my. Good game, friend!",
+      "That was a nice match. Rematch?"
+    ],
+    "youSurrender": [
+      "Aw, it's okay! Want to try again?",
+      "No worries! Every game is practice.",
+      "That's alright. Take a breather and come back!",
+      "Good effort! You'll get it next round.",
+      "It happens! I'll be here when you're ready.",
+      "Okay! Thanks for playing with me."
+    ]
+  },
+  "normal": {
+    "youWin": [
+      "Ha! Nice one. You got me there!",
+      "Okay, okay, you win this round. Rematch?",
+      "Good game! I'll be polishing my cannons.",
+      "You beat me! I'm telling my toaster.",
+      "Well played! That last capture was slick.",
+      "Fine, you're good. I'm onto your tricks now!",
+      "Nice! Best two out of three?"
+    ],
+    "youLose": [
+      "Gotcha! Good game though.",
+      "Pip pip hooray! That one's mine.",
+      "Ha, I win! Want to try another map?",
+      "Close one! My cannons say thanks for playing.",
+      "Victory dance! Okay, done. Good game!",
+      "I'll take that win. Rematch?",
+      "Not bad! But not quite fast enough."
+    ],
+    "youSurrender": [
+      "Leaving so soon? Next time, then!",
+      "White flag spotted! Good game anyway.",
+      "Fair enough. Come back for round two!",
+      "I'll count that one. Rematch later?",
+      "Taking a break? My cannons will wait.",
+      "Surrender accepted! Shake hands?"
+    ]
+  },
+  "hard": {
+    "youWin": [
+      "Hmph. Well played. I won't make it easy next time.",
+      "You earned that one. Don't get used to it.",
+      "Not bad at all. I'm recalculating.",
+      "Good game. Next round, I'm not holding back.",
+      "Respect. That was sharp shooting.",
+      "You found a gap. I'll close it.",
+      "Fine. You win this one. Rematch, now."
+    ],
+    "youLose": [
+      "Good game. Train harder and try again.",
+      "Every angle covered. That's how it's done.",
+      "You put up a fight. Not enough, though.",
+      "Win secured. Want another shot?",
+      "Close, but I read your plan.",
+      "Clean sweep. Come back when you're ready.",
+      "That's the board. Mine, this time."
+    ],
+    "youSurrender": [
+      "Giving up? I respect the call. Rematch soon.",
+      "Smart retreat. The board will still be here.",
+      "Surrender noted. Come back stronger.",
+      "Not today, then. I'll be waiting.",
+      "You saw it coming. Good instincts.",
+      "Fine by me. Next round, finish it."
+    ]
+  },
+  "impossible": {
+    "youWin": [
+      "That didn't count. My shots were lagging.",
+      "Pure luck. I was clearly about to win.",
+      "I let you win. Out of pity. Obviously.",
+      "Rematch. Now. That one was a glitch.",
+      "The sun was in my eyes. Indoors. Somehow.",
+      "You didn't deserve that. Not even a little.",
+      "My cannons were warming up. Try that again!",
+      "Hmph! I demand a recount of every cannon."
+    ],
+    "youLose": [
+      "As expected. Bow to Vex!",
+      "Was that your best? Adorable.",
+      "Too easy. Did you even try?",
+      "Another victory for me. How boring.",
+      "I'd say good game, but it wasn't. For you.",
+      "Mwahaha! Every cannon is mine!",
+      "Perfect aim, perfect plan, perfect me.",
+      "You should try Easy. Just a thought."
+    ],
+    "youSurrender": [
+      "Ha! Running away already?",
+      "A wise choice. You were doomed anyway.",
+      "I accept your surrender. And your shame.",
+      "Smart. Nobody beats Vex. Nobody!",
+      "Giving up? Bold of you to even start.",
+      "Mwahaha! Another one flees!"
+    ]
+  }
+}

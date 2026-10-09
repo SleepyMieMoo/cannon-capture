@@ -234,6 +234,11 @@ export function injectMenuStyles(): void {
 .mm-skins.colours.small .mm-skin .n { display: none; }
 .mm-vs i { display: inline-block; width: .8em; height: .8em; border-radius: 50%; vertical-align: -1px; margin: 0 4px 0 0; box-shadow: 0 0 0 1px ${cssHex(theme.dim)}; }
 .mm-blurb { min-height: 3.2em; color: ${theme.textMuted}; line-height: 1.4; }
+.mm-bot { display: flex; gap: 10px; align-items: flex-start; }
+.mm-bot > div { min-width: 0; }
+.mm-bot b { display: block; color: ${theme.text}; }
+.mm-botface { flex: none; width: 44px; height: 44px; }
+.mm-botface svg { display: block; }
 .mm-pick { background: ${rgba(theme.panel, 0.7)}; border-radius: 12px; padding: 10px 12px; border: 1px solid ${cssHex(theme.boardEdge)}; }
 .mm-pick .n { font-weight: bold; font-size: 1.1em; }
 .mm-bar { flex: none; display: flex; gap: 12px; align-items: stretch; padding: clamp(8px, 1.6vmin, 14px) clamp(10px, 1.8vmin, 18px); border-top: 2px solid ${cssHex(theme.boardEdge)}; }
