@@ -108,7 +108,7 @@ html .rp.enter .rp-title { animation: cc-rise .26s var(--cc-out) .08s both; }
 html .rp.enter .rp-stars svg { animation: cc-star .42s var(--cc-back) both; }
 ${stagger('html .rp.enter .rp-stars svg', 180, 110, 3)}
 @keyframes cc-star { from { opacity: 0; scale: .4; rotate: -25deg; } 70% { opacity: 1; scale: 1.1; } to { scale: 1; rotate: 0deg; } }
-html .rp.enter :is(.rp-detail, .rp-extra) { animation: cc-rise .24s var(--cc-out) .12s both; }
+html .rp.enter :is(.rp-detail, .rp-extra, .rp-brag) { animation: cc-rise .24s var(--cc-out) .12s both; }
 html .rp.enter .rp-btns > * { animation: cc-rise .26s var(--cc-back) both; }
 html .rp.enter .rp-btns > :nth-child(1) { animation-delay: .16s; }
 html .rp.enter .rp-btns > :nth-child(2) { animation-delay: .21s; }

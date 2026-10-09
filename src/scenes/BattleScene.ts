@@ -2,7 +2,7 @@ import { DEFAULT_SKIN, flipSkins, vsAiSkins, type SideSkins } from '../config/sk
 import { loadSkin } from '../menu/skinPref'
 import Phaser from 'phaser'
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/layout'
-import type { MapView } from '../editor/maps'
+import { DIFFICULTY, type MapView } from '../editor/maps'
 import { applyTeamColours, cssHex, sideColor, theme } from '../config/theme'
 import { DEFAULT_COLOUR, flipColours, readColours, TEAM_COLOUR, vsAiColours, type SideColours } from '../config/teamColours'
 import { loadColour } from '../menu/colourPref'
@@ -43,7 +43,7 @@ import { BattleSim, type Outcome } from '../sim/BattleSim'
 import { MirrorBot, makeBot, type Bot } from '../sim/bots'
 import { clipToGlass, clipToPillars, clipToWalls } from '../sim/geometry'
 import { starsFor } from '../sim/stars'
-import type { LevelDef, Point, Rect, WallDef } from '../types'
+import type { AiLevel, LevelDef, Point, Rect, WallDef } from '../types'
 import { makeButton } from '../ui/button'
 import { ResultPanel } from '../ui/resultPanel'
 import { motionOK } from '../ui/motion'
@@ -2134,7 +2134,8 @@ export class BattleScene extends Phaser.Scene {
             otherHere: !!(info && seat !== null && info.seats[1 - seat]),
           }
     if (DEBUG.enabled) (window as unknown as { __ccResult?: unknown }).__ccResult = { online: true, result, headline, detail, seconds: Math.round(this.sim.clock / 1000) }
-    return onlineResult({ result, headline, detail, player })
+    const opponent = info ? (seat === null ? `${nameOnSide(info, 0)} vs ${nameOnSide(info, 1)}` : info.seats[1 - seat]?.name || 'Player ' + (2 - seat)) : null
+    return onlineResult({ result, headline, detail, player, brag: { opponent, map: this.level.name, ms: this.sim.clock } })
   }
 
   private offlineView(result: Outcome): ResultView {
@@ -2165,7 +2166,15 @@ export class BattleScene extends Phaser.Scene {
       par: this.level.par,
       stars,
       backLabel: this.backLabel(false),
+      brag: { opponent: this.pvp ? null : this.botLevel() ? `${DIFFICULTY[this.botLevel()!].label} AI` : null, map: this.level.name, ms: this.sim.clock },
     })
+  }
+
+  /** The AI playing the other side (vs AI, campaign levels), if there is one. */
+  private botLevel(): AiLevel | null {
+    if (this.pvp || this.online) return null
+    if (!this.level.cannons.some((c) => c.side === 'enemy')) return null
+    return this.sim.ais.find((a) => a.side === 'enemy')?.difficulty ?? null
   }
 
   /**

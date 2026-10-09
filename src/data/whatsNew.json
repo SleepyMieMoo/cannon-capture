@@ -4,6 +4,7 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Brag-worthy results", "text": "The result panel now shows who you played (the AI's level, or your online opponent), the map and the match time, laid out for a screenshot. Puzzles and levels show the map and time." },
         { "kind": "new", "title": "Version 0.5.2: a softer glow", "text": "Neutral cannons and every obstacle now glow softly, brick walls show their health, and portals lose their confusing outside chevrons." },
         { "kind": "new", "title": "Obstacles glow softly", "text": "Walls, rocks, void walls, glass, brick walls, fans and portals have a soft aura at about half a tower's strength: stone for walls and rocks, violet for void, pale cyan for glass, terracotta for bricks, green for fans and each portal's own colour." },
         { "kind": "new", "title": "Neutral cannons glow too", "text": "Unclaimed cannons now have an aura like owned ones, in a warm milk-chocolate beige, so they stand out as targets. It cross-fades into the new owner's colour when one is captured." },
