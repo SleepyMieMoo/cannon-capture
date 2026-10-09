@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { BRAND } from '../src/config/brand'
-import { CAMPAIGN, SKIRMISH, findLevel, isRetired, VS_AI_BUILT_IN } from '../src/levels'
+import { CAMPAIGN, SKIRMISH, beatableOnImpossible, findLevel, isRetired, VS_AI_BUILT_IN } from '../src/levels'
 
 const DEMO_IDS = (): string[] => VS_AI_BUILT_IN.map((l) => l.id)
 import { DEFAULT_PREFS, DIFFICULTY, loadMenuPrefs, nextPuzzle, pickMap, puzzleChoices, saveMenuPrefs, vsAiMaps } from '../src/menu/menuModel'
@@ -117,6 +117,11 @@ describe('Play vs AI', () => {
     }
     // The campaign level itself is untouched.
     expect(campaignBattle.level.hint).toBeTruthy()
+  })
+
+  it('tags the built-in maps verified beatable on Impossible (all but Warp Works)', () => {
+    expect(vsAiMaps([]).filter((m) => beatableOnImpossible(m.id)).map((m) => m.name)).toEqual(['Crossfire', 'Last Stand', 'Glass Garden', 'Void Gate'])
+    expect(beatableOnImpossible('ex-warp-works')).toBe(false)
   })
 
   it('falls back to Crossfire when the remembered map is gone or retired', () => {

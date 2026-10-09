@@ -188,12 +188,21 @@ export function injectMenuStyles(): void {
 .mm-play { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: clamp(10px, 2vmin, 20px); }
 .mm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(120px, 20vmin, 168px), 1fr)); gap: 8px; }
 .mm-card {
+  container-type: inline-size;
   font: inherit; color: ${theme.text}; text-align: left; cursor: pointer; padding: 6px; border-radius: 12px;
   background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.boardEdge)}; display: flex; flex-direction: column; gap: 4px; min-width: 0;
 }
 .mm-card:hover { border-color: ${gold}; }
 .mm-card.on { border-color: ${gold}; box-shadow: inset 0 0 0 1px ${gold}; background: ${rgba(theme.grid, 0.6)}; }
 .mm-card canvas { width: 100% !important; height: auto !important; border-radius: 7px; display: block; }
+.mm-thumb { position: relative; }
+.mm-verified {
+  position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px 1px 4px;
+  border-radius: 999px; font-size: 10px; line-height: 16px; font-weight: bold; color: ${gold};
+  background: ${rgba(theme.panel, 0.88)}; border: 1px solid ${rgba(theme.player, 0.55)};
+}
+.mm-verified svg { flex: none; display: block; }
+@container (max-width: 130px) { .mm-verified span { display: none; } .mm-verified { padding: 2px; } }
 .mm-card .n { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mm-card .m { color: ${theme.textMuted}; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; justify-content: space-between; gap: 6px; }
 .mm-card .st { color: ${gold}; letter-spacing: 1px; }
