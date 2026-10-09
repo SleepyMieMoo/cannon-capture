@@ -4,6 +4,7 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Clearer shields", "text": "A shield's barrier is drawn at its full blocking width with a dark edge, a faint chevron shows which way it faces (brighter when you hover or select it), and it has its own small health bar. The bar under the cannon is bigger and notched per hit." },
         { "kind": "new", "title": "Rocks show their true edge", "text": "A rock now fills exactly the oval that shots bounce off, with a dark outline on that edge and all its stone, cracks and moss inside it. No more shots seeming to hit thin air or slip into a bump." },
         { "kind": "new", "title": "Version 0.5.0: bricks, portals and oval rocks", "text": "Three more ways to play the angles: oval rock pillars, brick walls you can shoot down, and portals that send shots across the board. The AI knows them all. Try them on the new Warp Works map, or build your own in the editor." },
         { "kind": "new", "title": "Portals", "text": "A shot that falls into a portal comes out of its twin (same colour and mark) at the same speed, turned by the difference in their facings. No free range: the distance carries on. Aim lines show the way out. Editor: key 9 places a pair, Q/E turns a mouth." },

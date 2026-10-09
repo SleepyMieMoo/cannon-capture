@@ -2023,7 +2023,7 @@ export class BattleScene extends Phaser.Scene {
     if (!this.selected.fires) {
       if (this.hover === this.selected) return `Click ${name} again to deselect.`
       if (this.hover && this.hover.side === 'player' && !this.hover.damaged) return `Click to select ${this.hover.name} instead.`
-      return `${name} is a shield: click where its barrier should face (enemy shots stop on it; yours pass through).`
+      return `${name} is a shield: click where its barrier should face (the chevron points that way; enemy shots stop on it, yours pass through).`
     }
     if (this.hover && this.hover !== this.selected) {
       if (this.hover.side === 'player' && this.hover.damaged) return `${name} → heal ${this.hover.name} (it goes back to its old aim once ${this.hover.name} is whole).`
