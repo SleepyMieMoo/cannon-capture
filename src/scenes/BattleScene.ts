@@ -1,4 +1,5 @@
 import { DEFAULT_SKIN, flipSkins, vsAiSkins, type SideSkins } from '../config/skins'
+import { DIM, moveToward, spotlightSet } from '../render/targetDim'
 import { earnBadge } from '../menu/badges'
 import { loadSkin } from '../menu/skinPref'
 import Phaser from 'phaser'
@@ -171,6 +172,11 @@ export class BattleScene extends Phaser.Scene {
   /** Last pointer position on the board, for the aim preview (null off-board or on touch). */
   private pointer: Point | null = null
   private fx!: Phaser.GameObjects.Graphics
+  /** Target mode: the dim over the board, and the aim lines drawn above it. */
+  private dimFx!: Phaser.GameObjects.Graphics
+  private fxTop!: Phaser.GameObjects.Graphics
+  /** How dim the board is now (0..1), easing toward 1 while a cannon is selected. */
+  private dimLevel = 0
   private selected: Cannon | null = null
   private hover: Cannon | null = null
   private shownEnd = false
@@ -401,6 +407,9 @@ export class BattleScene extends Phaser.Scene {
     bindSceneResolution(this, { camera: this.uiCam })
     this.drawBoard()
     this.fx = this.add.graphics().setDepth(3)
+    this.dimFx = this.add.graphics().setDepth(DIM.depth)
+    this.fxTop = this.add.graphics().setDepth(DIM.depth + 0.2)
+    this.dimLevel = 0
     this.level.walls.forEach((rect) => this.walls.push(new Wall(this, rect)))
     this.level.pillars?.forEach((def) => this.pillars.push(new Pillar(this, def)))
     this.level.glass?.forEach((def) => this.glass.push(new Glass(this, def)))
@@ -726,7 +735,7 @@ export class BattleScene extends Phaser.Scene {
     this.flushHeals(dt)
     for (const ping of this.pings) ping.life -= dt / 420
     this.pings = this.pings.filter((ping) => ping.life > 0)
-    this.drawFx(time)
+    this.drawFx(time, dt)
     this.updateVfx(delta, time)
     this.drawPaused(time)
     this.updateSwapMenu(dt, time)
@@ -2345,9 +2354,37 @@ export class BattleScene extends Phaser.Scene {
     if (this.slowWatch.push(delta)) noteSlowDevice()
   }
 
-  private drawFx(time: number): void {
-    const g = this.fx
-    g.clear()
+  /**
+   * Target mode: while one of your cannons is selected, the board dims except
+   * that cannon, its current target, any cannon aiming at it, and the cannon
+   * you are pointing at (the one you'd aim at). Null when nothing is selected.
+   */
+  private spotlight(): Set<Cannon> | null {
+    return this.ended ? null : spotlightSet(this.selected, this.cannons, this.hover)
+  }
+
+  /** The dim over the board (eases in and out; at once under Reduce motion). */
+  private drawDim(lit: Set<Cannon> | null, dt: number): void {
+    const want = lit ? 1 : 0
+    this.dimLevel = motionOK() ? moveToward(this.dimLevel, want, dt / DIM.fadeMs) : want
+    for (const c of this.cannons) c.spotlit = !!lit?.has(c)
+    const d = this.dimFx
+    d.clear()
+    if (this.dimLevel <= 0) return
+    const b = this.board
+    d.fillStyle(theme.bg, DIM.alpha * this.dimLevel)
+    d.fillRect(b.x - DIM.margin, b.y - DIM.margin, b.w + DIM.margin * 2, b.h + DIM.margin * 2)
+  }
+
+  private drawFx(time: number, dt = 16): void {
+    const g0 = this.fx
+    g0.clear()
+    const top = this.fxTop
+    top.clear()
+    const lit = this.spotlight()
+    this.drawDim(lit, dt)
+    // Target mode: the selected cannon's lines (and those aiming at it) go above the dim.
+    let g = g0
     // Broken walls are gone: aim lines go through where they stood.
     const walls = this.sim.intactWalls
 
@@ -2357,6 +2394,7 @@ export class BattleScene extends Phaser.Scene {
       if (!cannon.fires) continue
       const aim = cannon.aim()
       if (!aim) continue
+      g = lit && (cannon === this.selected || (lit.has(cannon) && cannon.target === this.selected)) ? top : g0
       const mine = cannon.side === 'player'
       const color = sideColor(cannon.side)
       const alpha = mine ? (cannon.selected ? 0.85 : 0.4) : 0.34
@@ -2370,7 +2408,8 @@ export class BattleScene extends Phaser.Scene {
       }
     }
 
-    // Live preview from the selected cannon to wherever the pointer is.
+    // Live preview from the selected cannon to wherever the pointer is (above the dim).
+    g = lit ? top : g0
     const sel = this.selected
     if (sel && !this.ended && !firesAs(this.sim.queuedKind(sel) ?? sel.kind)) {
       // A shield: a ghost of the barrier, turned toward the pointer.
@@ -2402,6 +2441,7 @@ export class BattleScene extends Phaser.Scene {
       }
     }
 
+    g = g0
     if (this.sim.paused) this.drawQueued(g, time, walls)
     else for (const label of this.queuedLabels.values()) label.setVisible(false)
 

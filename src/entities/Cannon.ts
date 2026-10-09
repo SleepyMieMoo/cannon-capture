@@ -118,6 +118,8 @@ export class Cannon {
   /** Tower type. Kept when the cannon is captured. */
   kind: CannonKind
   /** Aim at another cannon (re-aims automatically once it becomes ours). */
+  /** Target mode: lit above the dim (the selected cannon's target, or one aiming at it). */
+  spotlit = false
   target: Cannon | null = null
   /** Or aim at a free point on the board. */
   aimPoint: Point | null = null
@@ -729,7 +731,8 @@ export class Cannon {
     const danger = fx?.wobble && this.captureAttacker && this.captureAttacker !== this.side ? this.captureProgress / TUNING.captureThreshold : 0
     this.body.setRotation(danger > 0.6 ? Math.sin(time / 85) * 0.05 * ((danger - 0.6) / 0.4) : 0)
     this.root.setScale(this.pop)
-    this.root.setDepth(this.selected ? 6 : 5)
+    // Target mode: the selected cannon and its spotlit partners sit above the dim (BattleScene, depth 5.5).
+    this.root.setDepth(this.selected ? 6.1 : this.spotlit ? 6 : 5)
   }
 
   /** Sniper marking on the body: a reticle, plus one pip per point of damage. */
