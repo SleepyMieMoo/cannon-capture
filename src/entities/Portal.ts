@@ -11,9 +11,9 @@ import type { PortalEnd } from '../types'
  * (ring, diamond or triangle) so linked mouths read as a pair. The disc is
  * exactly the mouth: a shot touching it falls in.
  *
- * The exit cue: a soft beam inside the well, a brighter lip on the rim and a
- * faint double chevron just outside, all pointing the way shots come *out*
- * of this mouth (see exitAngle). Shoot straight into one mouth's beam and
+ * The exit cue, all inside the disc: a soft beam in the well and a softly
+ * brighter stretch of rim, on the side shots come *out* of this mouth (see
+ * exitAngle). Colour (and glyph) is the main cue for which mouths link. Shoot straight into one mouth's beam and
  * the shot leaves its twin along the twin's beam; come in at an angle and it
  * leaves at that same angle to the beam.
  */
@@ -85,24 +85,15 @@ export class Portal {
     g.lineStyle(1, lerpColor(col, 0xffffff, 0.6), 0.7)
     g.strokeCircle(x, y, r - 4)
     // A brighter lip on the rim where shots come out.
-    g.lineStyle(3, lerpColor(col, 0xffffff, 0.55), 1)
+    // (soft, and fading at its ends, so it reads as light rather than an arrow).
+    g.lineStyle(3, lerpColor(col, 0xffffff, 0.4), 0.45)
     g.beginPath()
     g.arc(x, y, r - 1.5, out - spread, out + spread, false)
     g.strokePath()
-    // And a faint double chevron just outside it: UI, not part of the mouth.
-    const ca = Math.cos(out)
-    const sa = Math.sin(out)
-    const chevron = (d: number, alpha: number) => {
-      const w = 6
-      g.lineStyle(2, col, alpha)
-      g.beginPath()
-      g.moveTo(x + ca * d - sa * w, y + sa * d + ca * w)
-      g.lineTo(x + ca * (d + 4.5), y + sa * (d + 4.5))
-      g.lineTo(x + ca * d + sa * w, y + sa * d - ca * w)
-      g.strokePath()
-    }
-    chevron(r + 4, 0.6)
-    chevron(r + 9, 0.32)
+    g.lineStyle(3, lerpColor(col, 0xffffff, 0.4), 0.4)
+    g.beginPath()
+    g.arc(x, y, r - 1.5, out - spread * 0.5, out + spread * 0.5, false)
+    g.strokePath()
     this.swirl.setPosition(x, y).setScale(((r - 2) * 2) / PORTAL_W).setTint(col)
     // The pair's glyph.
     const gl = this.glyph

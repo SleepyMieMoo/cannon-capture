@@ -1534,9 +1534,9 @@ export class EditorScene extends Phaser.Scene {
       const pair = ref.index >> 1
       const e = this.portalEnd(ref.index)
       return [
-        h('span.cc-field', {}, dot(portalColour(pair)), h('b', { title: 'A shot touching either disc falls in and comes out of the other at the same speed. The beam and chevrons show where shots come out: straight into one beam means straight out along the other; at an angle, out at the same angle. Its range carries over.' }, `Portal ${pair + 1} · ${ref.index & 1 ? 'B' : 'A'}`)),
+        h('span.cc-field', {}, dot(portalColour(pair)), h('b', { title: 'A shot touching either disc falls in and comes out of the other at the same speed. The soft beam inside each disc shows the side shots come out of: straight into one beam means straight out along the other; at an angle, out at the same angle. Its range carries over.' }, `Portal ${pair + 1} · ${ref.index & 1 ? 'B' : 'A'}`)),
         h('span.cc-field', {},
-          h('label', { title: 'The way shots come out of this mouth (its beam and chevrons)' }, 'Out'),
+          h('label', { title: 'The way shots come out of this mouth (its soft beam)' }, 'Out'),
           h('button.cc-btn.xs', { title: 'Q', onclick: () => this.rotateSelected(-1) }, '⟲'),
           h('span.cc-val', { style: 'min-width:34px;text-align:center' }, `${deg(normAngle(exitAngle(ref.index & 1 ? 'b' : 'a', e.angle), Math.PI * 2))}°`),
           h('button.cc-btn.xs', { title: 'E', onclick: () => this.rotateSelected(1) }, '⟳'),
