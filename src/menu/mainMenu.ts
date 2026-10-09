@@ -3,7 +3,8 @@ import type { FxQuality } from '../render/vfx/fxQuality'
 import { CONTRAST, SKINS, SKIN_LABEL, type SkinId } from '../config/skins'
 import { loadSkin, saveSkin } from './skinPref'
 import { CONTRAST_COLOUR, TEAM_COLOUR, TEAM_COLOURS, vsAiColours, type TeamColourId } from '../config/teamColours'
-import { applyTeamColours, cssHex } from '../config/theme'
+import { applyTeamColours, cssHex, sideColor } from '../config/theme'
+import { BOTS, botAvatarSvg } from '../ui/bots'
 import { loadColour, saveColour } from './colourPref'
 import { BRAND } from '../config/brand'
 import { MAP_SIZES } from '../levels/board'
@@ -310,7 +311,18 @@ export class MainMenu {
     }
     const pickName = h('div.n', {}, map.name)
     const pickInfo = h('div.mm-note', {}, summary(map.level))
-    const blurb = h('div.mm-blurb', {}, DIFFICULTY[diff].blurb)
+    // The bot you'll face: its face and name beside what the level means.
+    const botFace = h('div.mm-botface')
+    const botName = h('b', {})
+    const botText = h('span', {})
+    const showBot = (d: AiLevel): void => {
+      botFace.innerHTML = botAvatarSvg(d, sideColor('enemy'), 44)
+      botName.textContent = BOTS[d].name
+      botFace.title = `${BOTS[d].name}: ${BOTS[d].vibe}`
+      botText.textContent = DIFFICULTY[d].blurb
+    }
+    showBot(diff)
+    const blurb = h('div.mm-blurb.mm-bot', {}, botFace, h('div', {}, botName, botText))
     const cards: HTMLButtonElement[] = []
     const start = (): void => {
       save()
@@ -353,7 +365,7 @@ export class MainMenu {
       b.addEventListener('click', () => {
         diff = d
         for (const s of segs) s.setAttribute('aria-pressed', String(s === b))
-        blurb.textContent = DIFFICULTY[d].blurb
+        showBot(d)
         save()
       })
       return b

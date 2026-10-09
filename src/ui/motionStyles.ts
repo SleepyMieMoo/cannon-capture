@@ -113,6 +113,10 @@ html .rp.enter .rp-btns > * { animation: cc-rise .26s var(--cc-back) both; }
 html .rp.enter .rp-btns > :nth-child(1) { animation-delay: .16s; }
 html .rp.enter .rp-btns > :nth-child(2) { animation-delay: .21s; }
 html .rp.enter .rp-keys { animation: cc-fade .3s ease-out .28s both; }
+/* The bot pops up and says its piece: the bubble grows out from its face. */
+html .rp.enter .rp-who { animation: cc-rise .26s var(--cc-back) .1s both; }
+html .rp.enter .rp-bubble { animation: cc-bubble .34s var(--cc-back) .2s both; transform-origin: 0 50%; }
+@keyframes cc-bubble { from { opacity: 0; scale: .55; } 70% { opacity: 1; scale: 1.05; } to { scale: 1; } }
 /* A loss: the panel drops in a little heavy, and the headline sags then rights itself. */
 html .rp.enter .rp-panel[data-tone="lose"] { animation: cc-droop .5s var(--cc-out) both; }
 html .rp.enter .rp-panel[data-tone="lose"] .rp-title { animation: cc-sag .7s ease-in-out .12s both; }

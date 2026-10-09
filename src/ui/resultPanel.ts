@@ -1,7 +1,8 @@
 import { cssHex, theme } from '../config/theme'
 import { injectMenuStyles } from '../menu/menuStyles'
 import { h } from './dom'
-import type { BragStat, ResultAction, ResultView } from './resultView'
+import { botAvatarSvg } from './bots'
+import type { BragStat, ResultAction, ResultBot, ResultView } from './resultView'
 
 const rgba = (c: number, a: number): string => `rgba(${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255}, ${a})`
 
@@ -11,6 +12,8 @@ export interface ResultPanelOpts {
   /** Screen px the battle HUD takes at the top: the panel centres in the space below it. */
   topInset: () => number
   onAction: (action: ResultAction) => void
+  /** The bot's team colour (its face is tinted with it). */
+  botColour?: number
   /** Play the entrance (the first time this round; a rebuild for rematch votes just appears). */
   animate?: boolean
 }
@@ -50,6 +53,7 @@ export class ResultPanel {
       title,
       stars,
       view.detail ? h('p.rp-detail', {}, view.detail) : null,
+      view.bot ? botRow(view.bot, opts.botColour ?? opts.stroke) : null,
       view.brag?.length ? bragRow(view.brag) : null,
       view.extra ? h(`p.rp-extra${view.extra.gold ? '.gold' : ''}`, { 'aria-live': 'polite' }, view.extra.text) : null,
       buttons,
@@ -91,6 +95,16 @@ export class ResultPanel {
     window.removeEventListener('resize', this.onResize)
     this.el.remove()
   }
+}
+
+/** The bot: its face, its name, and a speech bubble with its say on the round. */
+function botRow(bot: ResultBot, colour: number): HTMLElement {
+  const face = h('div.rp-face', { title: bot.name })
+  face.innerHTML = botAvatarSvg(bot.level, colour)
+  return h('div.rp-bot', { dataset: { bot: bot.level } },
+    h('figure.rp-who', {}, face, h('figcaption', {}, bot.name)),
+    h('p.rp-bubble', {}, bot.line),
+  )
 }
 
 /** The brag row: small labelled facts side by side (wrapping on narrow screens). */
@@ -159,6 +173,20 @@ function injectResultStyles(): void {
 .rp-stars path { fill: ${cssHex(theme.grid)}; stroke: ${cssHex(theme.boardEdge)}; stroke-width: 1.2; stroke-linejoin: round; }
 .rp-stars svg.on path { fill: ${gold}; stroke: ${cssHex(theme.playerHot)}; }
 .rp-detail { margin: clamp(6px, 1.6vmin, 12px) 0 0; font-size: clamp(14px, 2.4vmin, 16px); line-height: 1.35; color: ${theme.textMuted}; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rp-bot { display: flex; align-items: center; justify-content: center; gap: 12px; margin: clamp(10px, 2.4vmin, 16px) auto 0; max-width: 460px; text-align: left; }
+.rp-who { margin: 0; flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.rp-face { width: clamp(48px, 9vmin, 64px); height: clamp(48px, 9vmin, 64px); }
+.rp-face svg { width: 100%; height: 100%; display: block; }
+.rp-who figcaption { font-size: 12px; font-weight: bold; line-height: 1.1; color: ${theme.textMuted}; }
+.rp-bubble {
+  position: relative; margin: 0; flex: 0 1 auto; min-width: 0; padding: 9px 13px; border-radius: 14px;
+  background: ${theme.text}; color: ${cssHex(theme.panel)};
+  font-size: clamp(14px, 2.4vmin, 16px); line-height: 1.3; font-weight: bold; overflow-wrap: anywhere;
+}
+.rp-bubble::before {
+  content: ''; position: absolute; left: -7px; top: 50%; margin-top: -7px;
+  border: 7px solid transparent; border-left-width: 0; border-right-color: ${theme.text};
+}
 .rp-brag {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: clamp(10px, 2.4vmin, 16px) 0 0; padding: 0;
 }

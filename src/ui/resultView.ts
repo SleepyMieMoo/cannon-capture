@@ -1,3 +1,5 @@
+import type { AiLevel } from '../types'
+
 /**
  * What the result panel says and offers, worked out without any DOM or Phaser
  * so every variant (vs the AI, surrendered, puzzles, campaign levels, online
@@ -45,6 +47,13 @@ export function bragFor(i: BragInput): BragStat[] {
   return out
 }
 
+/** The AI you played, and what it says about the round. */
+export interface ResultBot {
+  level: AiLevel
+  name: string
+  line: string
+}
+
 export interface ResultView {
   /** Colours the panel's border: gold for a win, pink for a loss, grey for a draw. */
   tone: 'win' | 'lose' | 'draw'
@@ -54,6 +63,8 @@ export interface ResultView {
   detail: string
   /** Online players: the rematch line (gold once the other player wants one). */
   extra?: { text: string; gold: boolean }
+  /** The AI character's say on the outcome (vs an AI only). */
+  bot?: ResultBot
   /** Who, where and how long: a neat row worth a screenshot (none: left out). */
   brag?: BragStat[]
   /** Always one or two, the primary first. */
@@ -85,6 +96,8 @@ export interface OfflineResultInput {
   backLabel: string
   /** The brag row's facts (left out: no row). */
   brag?: BragInput
+  /** The AI character and its line (left out: no AI on the other side). */
+  bot?: ResultBot
 }
 
 export function offlineResult(i: OfflineResultInput): ResultView {
@@ -131,6 +144,7 @@ export function offlineResult(i: OfflineResultInput): ResultView {
     stars: win && i.campaign ? i.stars : null,
     detail,
     ...(i.brag ? { brag: bragFor(i.brag) } : {}),
+    ...(i.bot ? { bot: i.bot } : {}),
     buttons,
     keys: win && i.hasNext ? 'N for next  ·  R to replay' : 'R to restart',
     keysOnly: true,
