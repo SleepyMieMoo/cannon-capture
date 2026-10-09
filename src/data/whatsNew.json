@@ -4,6 +4,8 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.5.1: easier to read", "text": "Rocks, shields and portals now show exactly what they do: rocks are drawn as their true bouncing edge, shields show where they face and how much they can take, and a portal's whole disc is its mouth." },
+        { "kind": "new", "title": "Portal discs and exit beams", "text": "A shot that touches any part of a portal's disc now falls in. The old rim arrow is gone: a faint beam and chevrons show where shots come out. Shoot straight into one beam and the shot leaves the twin along its beam; at an angle, it leaves at that angle." },
         { "kind": "new", "title": "Clearer shields", "text": "A shield's barrier is drawn at its full blocking width with a dark edge, a faint chevron shows which way it faces (brighter when you hover or select it), and it has its own small health bar. The bar under the cannon is bigger and notched per hit." },
         { "kind": "new", "title": "Rocks show their true edge", "text": "A rock now fills exactly the oval that shots bounce off, with a dark outline on that edge and all its stone, cracks and moss inside it. No more shots seeming to hit thin air or slip into a bump." },
         { "kind": "new", "title": "Version 0.5.0: bricks, portals and oval rocks", "text": "Three more ways to play the angles: oval rock pillars, brick walls you can shoot down, and portals that send shots across the board. The AI knows them all. Try them on the new Warp Works map, or build your own in the editor." },

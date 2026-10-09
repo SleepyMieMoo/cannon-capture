@@ -38,6 +38,7 @@ import { Pillar } from '../entities/Pillar'
 import { Wall } from '../entities/Wall'
 import { BRICK, GLASS, PILLAR_OVALS, PILLAR_SIZES, PORTAL, ROCK, VOID_COLOURS, portalColour } from '../config/obstacles'
 import { Portal } from '../entities/Portal'
+import { exitAngle } from '../sim/portals'
 /** How far apart a new portal pair's mouths are placed (px). */
 const PORTAL_PAIR_GAP = 220
 import { pillarReach } from '../sim/geometry'
@@ -309,8 +310,8 @@ export class EditorScene extends Phaser.Scene {
       return view
     })
     this.portalViews = (this.level.portals ?? []).flatMap((pair, i) =>
-      [pair.a, pair.b].map((end) => {
-        const view = new Portal(this, end, i)
+      [pair.a, pair.b].map((end, j) => {
+        const view = new Portal(this, end, i, j ? 'b' : 'a')
         view.parts.forEach((o) => this.world(o))
         return view
       }),
@@ -1533,15 +1534,15 @@ export class EditorScene extends Phaser.Scene {
       const pair = ref.index >> 1
       const e = this.portalEnd(ref.index)
       return [
-        h('span.cc-field', {}, dot(portalColour(pair)), h('b', { title: 'A shot that falls into one mouth comes out of the other at the same speed, turned by the difference between the two facings (the notch on the rim). Its range carries over.' }, `Portal ${pair + 1} · ${ref.index & 1 ? 'B' : 'A'}`)),
+        h('span.cc-field', {}, dot(portalColour(pair)), h('b', { title: 'A shot touching either disc falls in and comes out of the other at the same speed. The beam and chevrons show where shots come out: straight into one beam means straight out along the other; at an angle, out at the same angle. Its range carries over.' }, `Portal ${pair + 1} · ${ref.index & 1 ? 'B' : 'A'}`)),
         h('span.cc-field', {},
-          h('label', {}, 'Faces'),
+          h('label', { title: 'The way shots come out of this mouth (its beam and chevrons)' }, 'Out'),
           h('button.cc-btn.xs', { title: 'Q', onclick: () => this.rotateSelected(-1) }, '⟲'),
-          h('span.cc-val', { style: 'min-width:34px;text-align:center' }, `${deg(normAngle(e.angle, Math.PI * 2))}°`),
+          h('span.cc-val', { style: 'min-width:34px;text-align:center' }, `${deg(normAngle(exitAngle(ref.index & 1 ? 'b' : 'a', e.angle), Math.PI * 2))}°`),
           h('button.cc-btn.xs', { title: 'E', onclick: () => this.rotateSelected(1) }, '⟳'),
         ),
         h('button.cc-btn.xs', { title: 'Select the linked mouth', onclick: () => this.select({ kind: 'portal', index: ref.index ^ 1 }) }, ref.index & 1 ? 'Other: A' : 'Other: B'),
-        h('span.cc-note', {}, 'Same facing: shots fly on the same way.'),
+        h('span.cc-note', {}, 'Shots come out along the beam.'),
         h('button.cc-btn.xs.danger', { title: 'Delete this pair (Del)', onclick: () => this.deleteItem(ref) }, 'Delete pair'),
       ]
     }

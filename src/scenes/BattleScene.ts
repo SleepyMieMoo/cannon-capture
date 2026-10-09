@@ -22,7 +22,7 @@ import { Sfx, preloadSfx } from '../audio/Sfx'
 import { Cannon, haloR, setRingScale } from '../entities/Cannon'
 import { Fan } from '../entities/Fan'
 import { Glass } from '../entities/Glass'
-import { BRICK, PORTAL, VOID_COLOURS, portalColour } from '../config/obstacles'
+import { BRICK, PORTAL, VOID_COLOURS, portalColour, portalReach } from '../config/obstacles'
 import { Portal } from '../entities/Portal'
 import { mouthOnSegment, portalExit, portalMouths, type PortalMouth } from '../sim/portals'
 import { Pillar } from '../entities/Pillar'
@@ -396,7 +396,7 @@ export class BattleScene extends Phaser.Scene {
     this.level.pillars?.forEach((def) => this.pillars.push(new Pillar(this, def)))
     this.level.glass?.forEach((def) => this.glass.push(new Glass(this, def)))
     this.mouths = portalMouths(this.level.portals)
-    this.mouths.forEach((m) => this.portals.push(new Portal(this, m, m.pair)))
+    this.mouths.forEach((m, i) => this.portals.push(new Portal(this, m, m.pair, i % 2 ? 'b' : 'a')))
     this.level.fans.forEach((def) => this.fans.push(new Fan(this, def)))
 
     this.sfx = new Sfx(this, () => ({ rect: this.wc.visibleRect(), zoom: this.wc.zoom }))
@@ -2374,22 +2374,24 @@ export class BattleScene extends Phaser.Scene {
    */
   private aimThroughPortal(g: Phaser.GameObjects.Graphics, x: number, y: number, end: Point, walls: WallDef[], startInset: number, color: number, alpha: number): boolean {
     if (!this.mouths.length) return false
-    const hit = mouthOnSegment(this.mouths, x, y, end.x, end.y)
+    const hit = mouthOnSegment(this.mouths, x, y, end.x, end.y, portalReach(TUNING.shotRadius))
     if (!hit) return false
     const from = this.mouths[hit.k]
     const to = this.mouths[from.to]
     const len = Math.hypot(end.x - x, end.y - y) || 1
     const out = portalExit(from, to, hit.x, hit.y, (end.x - x) / len, (end.y - y) / len)
     const rest = Math.max(140, len * (1 - hit.t))
-    const sx = out.x + out.vx * PORTAL.radius
-    const sy = out.y + out.vy * PORTAL.radius
+    // It comes out where it would touch the exit's disc, on the side it is heading for.
+    const sx = out.x
+    const sy = out.y
     const stop = this.clipAim(sx, sy, sx + out.vx * rest, sy + out.vy * rest, walls)
     dash(g, x, y, hit.x, hit.y, startInset, 2, color, alpha)
     dash(g, sx, sy, stop.x, stop.y, 0, 4, color, alpha * 0.85)
     // Ring both mouths in the pair's colour so the link reads.
-    g.lineStyle(2, portalColour(from.pair), Math.min(1, alpha + 0.2))
-    g.strokeCircle(from.x, from.y, PORTAL.radius + 4)
-    g.strokeCircle(to.x, to.y, PORTAL.radius + 4)
+    // (on the rim itself: the disc is the mouth, nothing bigger).
+    g.lineStyle(2.5, portalColour(from.pair), Math.min(1, alpha + 0.2))
+    g.strokeCircle(from.x, from.y, PORTAL.radius - 1.5)
+    g.strokeCircle(to.x, to.y, PORTAL.radius - 1.5)
     return true
   }
 

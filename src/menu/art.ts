@@ -109,9 +109,22 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
   const voidRim = cssHex(VOID_COLOURS.rim)
   const voidSpark = cssHex(VOID_COLOURS.spark)
   const teal = cssHex(PORTAL.colours[0])
-  // A portal mouth: dark well, rim and swirl in the pair's colour, a ring glyph and a facing notch (pointing right).
-  const portal = (x: number, y: number, col: string): string =>
-    `<circle cx="${x}" cy="${y}" r="21" fill="${col}" fill-opacity=".14"/><circle cx="${x}" cy="${y}" r="16" fill="#07090c" stroke="${col}" stroke-width="3"/><path d="M${x - 9} ${y - 3}q6-9 13-2M${x + 9} ${y + 3}q-6 9-13 2M${x - 3} ${y + 9}q-9-6-2-13" stroke="${col}" stroke-opacity=".75" stroke-width="2" fill="none"/><circle cx="${x}" cy="${y}" r="3.5" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.5"/><path d="M${x + 17} ${y - 4}l6 4-6 4z" fill="${col}"/>`
+  // A portal mouth: the disc is the whole mouth (dark well, rim and swirl in the pair's colour, a ring glyph),
+  // with a soft beam, a bright lip and faint chevrons showing the way shots come out (`out`, radians).
+  const portal = (x: number, y: number, col: string, out: number): string => {
+    const r = 16
+    const at = (a: number, d: number) => `${(x + Math.cos(a) * d).toFixed(1)} ${(y + Math.sin(a) * d).toFixed(1)}`
+    const sp = 0.62
+    const beam = `<path d="M${x} ${y}L${at(out - sp, r - 2)}A${r - 2} ${r - 2} 0 0 1 ${at(out + sp, r - 2)}z" fill="${col}" fill-opacity=".28"/>`
+    const lip = `<path d="M${at(out - sp, r - 1.5)}A${r - 1.5} ${r - 1.5} 0 0 1 ${at(out + sp, r - 1.5)}" stroke="#fff" stroke-opacity=".55" stroke-width="3" fill="none"/>`
+    const chev = (d: number, o: number) => {
+      const c = Math.cos(out)
+      const sn = Math.sin(out)
+      const p = (u: number, v: number) => `${(x + c * u - sn * v).toFixed(1)} ${(y + sn * u + c * v).toFixed(1)}`
+      return `<path d="M${p(d, -4)}L${p(d + 3.5, 0)}L${p(d, 4)}" stroke="${col}" stroke-opacity="${o}" stroke-width="1.8" fill="none"/>`
+    }
+    return `<circle cx="${x}" cy="${y}" r="${r - 1.5}" fill="#07090c" stroke="${col}" stroke-width="3"/>${beam}<path d="M${x - 9} ${y - 3}q6-9 13-2M${x + 9} ${y + 3}q-6 9-13 2M${x - 3} ${y + 9}q-9-6-2-13" stroke="${col}" stroke-opacity=".6" stroke-width="2" fill="none"/>${lip}<circle cx="${x}" cy="${y}" r="3.5" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.5"/>${chev(r + 3, 0.6)}${chev(r + 7, 0.3)}`
+  }
   const brick = cssHex(BRICK.base)
   const brickDark = cssHex(BRICK.dark)
   const brickLight = cssHex(BRICK.light)
@@ -209,9 +222,9 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
   },
   {
     title: 'Portals',
-    text: 'A shot that falls into a portal comes out of its twin (same colour and mark) at the same speed. The notch on each rim shows its facing: same facing, the shot flies on the same way; otherwise it turns by the difference. No free range: the distance carries on.',
+    text: 'A shot that touches a portal’s disc falls in and comes out of its twin (same colour and mark) at the same speed. The faint beam and chevrons show where shots come out: straight into one beam, straight out along the other. No free range: the distance carries on.',
     art: svg(
-      `${cannon(30, 62, gold, -0.12, 12)}<line x1="50" y1="60" x2="80" y2="56" stroke="${gold}" stroke-width="2.5" stroke-dasharray="6 5"/>${portal(96, 54, teal)}<rect x="128" y="14" width="12" height="74" rx="3" fill="${edge}"/>${portal(170, 26, teal)}<line x1="188" y1="24" x2="222" y2="20" stroke="${gold}" stroke-width="2.5" stroke-dasharray="6 5"/><path d="M110 70q30 14 56-30" stroke="${teal}" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="3 4" fill="none"/>${label(120, 98, 'in one, out the other', muted, 9)}`,
+      `${cannon(30, 62, gold, -0.12, 12)}<line x1="50" y1="60" x2="80" y2="56" stroke="${gold}" stroke-width="2.5" stroke-dasharray="6 5"/>${portal(96, 54, teal, Math.PI)}<rect x="128" y="14" width="12" height="74" rx="3" fill="${edge}"/>${portal(170, 26, teal, 0)}<line x1="188" y1="24" x2="222" y2="20" stroke="${gold}" stroke-width="2.5" stroke-dasharray="6 5"/><path d="M110 70q30 14 56-30" stroke="${teal}" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="3 4" fill="none"/>${label(120, 98, 'in one, out the other', muted, 9)}`,
     ),
   },
   {

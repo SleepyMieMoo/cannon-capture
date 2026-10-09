@@ -1,7 +1,7 @@
 import { TUNING } from '../config/tuning'
 import type { GlassDef, PillarDef, Rect, WallDef } from '../types'
 import { circleGlass, circlePillar, circleWall, pillarReach, reflect } from './geometry'
-import { PORTAL } from '../config/obstacles'
+import { PORTAL, portalReach } from '../config/obstacles'
 import { mouthAt, portalExit, type PortalMouth } from './portals'
 
 /** What a shot can bounce off (or be swallowed by). */
@@ -275,11 +275,12 @@ export function stepBall(
       const out = next.portalOut
       if (out !== undefined && out >= 0) {
         const m = portals[out]
-        const clear = PORTAL.radius + opts.radius
+        // Out once it no longer touches the exit's disc.
+        const clear = portalReach(opts.radius)
         if (!m || (next.x - m.x) ** 2 + (next.y - m.y) ** 2 > clear * clear) next.portalOut = -1
       }
       if (!next.portalCd) {
-        const k = mouthAt(portals, next.x, next.y, next.portalOut ?? -1)
+        const k = mouthAt(portals, next.x, next.y, portalReach(opts.radius), next.portalOut ?? -1)
         if (k >= 0) {
           const from = portals[k]
           const to = portals[from.to]
