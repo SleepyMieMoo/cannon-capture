@@ -24,6 +24,7 @@ export const ICONS = {
   music: ic('<path d="M9 18V5.5l10-2V16"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor"/><circle cx="16.5" cy="16" r="2.5" fill="currentColor"/>'),
   pause: ic('<rect x="6.5" y="5" width="3.6" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="13.9" y="5" width="3.6" height="14" rx="1" fill="currentColor" stroke="none"/>'),
   prev: ic('<path d="M18 5.5v13L9 12z" fill="currentColor" stroke="none"/><path d="M6.5 5.5v13"/>'),
+  repeat: ic('<path d="M5 11V9.5A2.5 2.5 0 0 1 7.5 7H18"/><path d="m15.5 4.5 2.5 2.5-2.5 2.5"/><path d="M19 13v1.5a2.5 2.5 0 0 1-2.5 2.5H6"/><path d="m8.5 19.5-2.5-2.5 2.5-2.5"/><path d="M11.2 10.6 12.4 10v4" stroke-width="1.6"/>'),
   next: ic('<path d="M6 5.5v13l9-6.5z" fill="currentColor" stroke="none"/><path d="M17.5 5.5v13"/>'),
   star: ic('<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>'),
   starOn: ic('<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill="currentColor"/>'),

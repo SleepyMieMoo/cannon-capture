@@ -8,7 +8,7 @@ import { groupHead, settingRow } from './settingRow'
 const icon = (svg: string): HTMLSpanElement => h('span.ic', { innerHTML: svg })
 
 /** The line under the controls: what the player is waiting for, if anything. */
-export function statusText(status: MusicStatus): string {
+export function statusText(status: MusicStatus, repeat = false): string {
   switch (status) {
     case 'no-audio':
       return 'This browser can’t play music.'
@@ -21,7 +21,7 @@ export function statusText(status: MusicStatus): string {
     case 'off':
       return 'Paused.'
     default:
-      return 'Playing on a loop, from the menu into every battle.'
+      return repeat ? 'Repeating this song, from the menu into every battle.' : 'Playing every song in turn, from the menu into every battle.'
   }
 }
 
@@ -46,6 +46,7 @@ export function jukeboxPanel(player: MusicPlayer, opts: { compact?: boolean } = 
   const playBtn = ctrl('jb-play', 'Play', ICONS.play, () => player.toggle(), '.main')
   playBtn.dataset.autofocus = ''
   const next = ctrl('jb-next', 'Next song', ICONS.next, () => player.next())
+  const repeat = ctrl('jb-repeat', 'Repeat this song', ICONS.repeat, () => player.setRepeat(!player.settings.repeat), '.rep')
   const status = h('div.jb-status', { role: 'status', 'aria-live': 'polite' })
 
   const rows = TRACKS.map((t, i) => {
@@ -72,9 +73,9 @@ export function jukeboxPanel(player: MusicPlayer, opts: { compact?: boolean } = 
       h('div.jb-disc', {}, icon(ICONS.music), eq),
       h('div.jb-meta', {}, h('div.jb-label', {}, 'Now playing'), title, artist),
     ),
-    h('div.jb-ctrl', {}, prev, playBtn, next),
+    h('div.jb-ctrl', {}, prev, playBtn, next, repeat),
     status,
-    groupHead('Songs', 'Click a song to play it now. The star picks the song the game starts with.'),
+    groupHead('Songs', 'Click a song to play it now; when it ends, the next one follows (unless Repeat is on). The star picks the song the game starts with.'),
     h('div.jb-list', {}, ...rows.map((r) => r.row)),
     settingRow({ id: 'jb-volume', label: 'Music volume', for: 'jb-volume', help: 'Music has its own volume; sound effects keep theirs (Settings, or N in a battle).', control: [range, val] }),
   )
@@ -91,7 +92,11 @@ export function jukeboxPanel(player: MusicPlayer, opts: { compact?: boolean } = 
     playBtn.title = on ? 'Pause' : 'Play'
     playBtn.setAttribute('aria-label', on ? 'Pause music' : 'Play music')
     playBtn.setAttribute('aria-pressed', String(on))
-    status.textContent = statusText(st)
+    const rep = player.settings.repeat
+    repeat.setAttribute('aria-pressed', String(rep))
+    repeat.title = rep ? 'Repeat is on: this song keeps playing. Click to play every song in turn.' : 'Repeat is off: every song plays in turn. Click to keep this song repeating.'
+    repeat.setAttribute('aria-label', 'Repeat this song')
+    status.textContent = statusText(st, rep)
     status.dataset.status = st
     for (const r of rows) {
       const cur = r.t.id === player.current

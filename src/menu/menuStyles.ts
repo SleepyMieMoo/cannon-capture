@@ -86,6 +86,9 @@ export function injectMenuStyles(): void {
 .jb-btn.main { width: 58px; height: 58px; background: ${gold}; border-color: ${gold}; color: ${theme.ink}; }
 .jb-btn.main .ic { width: 24px; height: 24px; }
 .jb-btn:hover { border-color: ${gold}; background: ${rgba(theme.grid, 0.97)}; }
+.jb-btn.rep { width: 38px; height: 38px; margin-left: 4px; color: ${theme.textMuted}; }
+.jb-btn.rep .ic { width: 18px; height: 18px; }
+.jb-btn.rep[aria-pressed="true"] { color: ${gold}; border-color: ${gold}; box-shadow: inset 0 0 0 1px ${gold}; }
 .jb-btn.main:hover { background: ${cssHex(theme.playerHot)}; }
 .jb-btn:active { transform: translateY(1px); }
 .jb-btn:focus-visible, .jb-track:focus-visible, .jb-def:focus-visible { outline: 3px solid ${gold}; outline-offset: 2px; }

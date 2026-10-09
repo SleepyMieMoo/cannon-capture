@@ -16,6 +16,8 @@ export interface MusicSettings {
   keepHidden: boolean
   /** Settings → Music: small UI pulses on the music's beat (default on). */
   pulse: boolean
+  /** Jukebox → Repeat: keep the current song going round. Off (default): each song plays once and the next one follows. */
+  repeat: boolean
 }
 
 export const MUSIC_KEY = 'cannon-capture:music:v1'
@@ -23,7 +25,7 @@ export const MUSIC_KEY = 'cannon-capture:music:v1'
 /** About half as loud as the sound effects' default, so music sits under the pops. */
 export const MUSIC_DEFAULT_VOLUME = Math.round(SFX.defaultVolume * 0.5 * 100) / 100
 
-export const MUSIC_DEFAULTS: Readonly<MusicSettings> = { volume: MUSIC_DEFAULT_VOLUME, on: true, track: DEFAULT_TRACK, keepHidden: true, pulse: true }
+export const MUSIC_DEFAULTS: Readonly<MusicSettings> = { volume: MUSIC_DEFAULT_VOLUME, on: true, track: DEFAULT_TRACK, keepHidden: true, pulse: true, repeat: false }
 
 type Store = Pick<Storage, 'getItem' | 'setItem'>
 
@@ -48,6 +50,7 @@ export function loadMusicSettings(store: Store | null = deviceStore()): MusicSet
       track: isTrackId(p?.track) ? p.track : MUSIC_DEFAULTS.track,
       keepHidden: typeof p?.keepHidden === 'boolean' ? p.keepHidden : MUSIC_DEFAULTS.keepHidden,
       pulse: typeof p?.pulse === 'boolean' ? p.pulse : MUSIC_DEFAULTS.pulse,
+      repeat: typeof p?.repeat === 'boolean' ? p.repeat : MUSIC_DEFAULTS.repeat,
     }
   } catch {
     return { ...MUSIC_DEFAULTS }
@@ -56,7 +59,7 @@ export function loadMusicSettings(store: Store | null = deviceStore()): MusicSet
 
 export function saveMusicSettings(s: MusicSettings, store: Store | null = deviceStore()): void {
   try {
-    store?.setItem(MUSIC_KEY, JSON.stringify({ volume: s.volume, on: s.on, track: s.track, keepHidden: s.keepHidden, pulse: s.pulse }))
+    store?.setItem(MUSIC_KEY, JSON.stringify({ volume: s.volume, on: s.on, track: s.track, keepHidden: s.keepHidden, pulse: s.pulse, repeat: s.repeat }))
   } catch {
     // Storage blocked: the setting just won't stick.
   }
