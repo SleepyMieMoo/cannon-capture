@@ -62,7 +62,7 @@ export class TitleBgScene extends Phaser.Scene {
     this.walls = level.walls.map((rect) => new Wall(this, rect))
     for (const p of level.pillars ?? []) new Pillar(this, p)
     this.glass = (level.glass ?? []).map((g) => new Glass(this, g))
-    this.portals = portalMouths(level.portals).map((m) => new Portal(this, m, m.pair))
+    this.portals = portalMouths(level.portals).map((m, i) => new Portal(this, m, m.pair, i % 2 ? 'b' : 'a'))
     this.fans = level.fans.map((def) => new Fan(this, def))
     this.fx = this.add.graphics().setDepth(3)
     this.vfx = null

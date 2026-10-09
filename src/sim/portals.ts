@@ -55,9 +55,12 @@ export function portalExit(from: PortalMouth, to: PortalMouth, x: number, y: num
   return { x: to.x + ox, y: to.y + oy, vx: nvx, vy: nvy }
 }
 
-/** The mouth a shot at (x, y) falls into, or -1. `skip`: the mouth it is leaving. */
-export function mouthAt(mouths: readonly PortalMouth[], x: number, y: number, skip = -1): number {
-  const r2 = PORTAL.trigger * PORTAL.trigger
+/**
+ * The mouth a shot at (x, y) falls into, or -1: any whose disc it touches
+ * (`reach`, see portalReach). `skip`: the mouth it is leaving.
+ */
+export function mouthAt(mouths: readonly PortalMouth[], x: number, y: number, reach: number, skip = -1): number {
+  const r2 = reach * reach
   for (let i = 0; i < mouths.length; i++) {
     if (i === skip) continue
     const dx = x - mouths[i].x
@@ -69,15 +72,15 @@ export function mouthAt(mouths: readonly PortalMouth[], x: number, y: number, sk
 
 /**
  * The first mouth a straight path from (x1, y1) to (x2, y2) falls into, and
- * where (aim previews): `t` is the share of the way along. Mouths the start
- * already sits in are skipped.
+ * where (aim previews): `t` is the share of the way along. `reach`: see
+ * portalReach. Mouths the start already sits in are skipped.
  */
-export function mouthOnSegment(mouths: readonly PortalMouth[], x1: number, y1: number, x2: number, y2: number): { k: number; t: number; x: number; y: number } | null {
+export function mouthOnSegment(mouths: readonly PortalMouth[], x1: number, y1: number, x2: number, y2: number, reach: number): { k: number; t: number; x: number; y: number } | null {
   const dx = x2 - x1
   const dy = y2 - y1
   const a = dx * dx + dy * dy
   if (a < 1e-9) return null
-  const r2 = PORTAL.trigger * PORTAL.trigger
+  const r2 = reach * reach
   let best: { k: number; t: number; x: number; y: number } | null = null
   mouths.forEach((m, k) => {
     const fx = x1 - m.x
@@ -92,4 +95,13 @@ export function mouthOnSegment(mouths: readonly PortalMouth[], x1: number, y1: n
     best = { k, t, x: x1 + dx * t, y: y1 + dy * t }
   })
   return best
+}
+
+/**
+ * The way shots come out of a mouth when they went straight into its twin's
+ * cue. The physics turns a shot by (b angle − a angle), so mouth 'b' sends
+ * shots out along its angle and mouth 'a' along the opposite.
+ */
+export function exitAngle(which: 'a' | 'b', angle: number): number {
+  return which === 'a' ? angle + Math.PI : angle
 }

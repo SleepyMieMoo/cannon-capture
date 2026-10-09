@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { PORTAL } from '../src/config/obstacles'
+import { PORTAL, portalReach } from '../src/config/obstacles'
+import { TUNING } from '../src/config/tuning'
 import { shotRangeFor, shotSpeedFor } from '../src/config/kinds'
 import { BattleSim } from '../src/sim/BattleSim'
 import { aimShot, stepBall, type Ball, type BallisticsOpts } from '../src/sim/ballistics'
 import { SIM_STEP_MS } from '../src/sim/fixedStep'
-import { portalExit, portalMouths } from '../src/sim/portals'
+import { exitAngle, mouthAt, mouthOnSegment, portalExit, portalMouths } from '../src/sim/portals'
 import { lanesOf, levelLanes, shotOpts } from '../src/sim/solver'
 import { EventLog, encodeSnap, replayEvent } from '../src/net/snapshot'
 import { AiController } from '../src/ai/AiController'
@@ -13,6 +14,8 @@ import type { LevelDef, PortalDef } from '../src/types'
 import { WARP_WORKS } from '../src/levels/examples'
 
 const FRAME = 1000 / 60
+/** A shot falls in once it touches the disc. */
+const REACH = portalReach(TUNING.shotRadius)
 const optsWith = (portals: PortalDef[]): BallisticsOpts => ({ ...shotOpts({ size: 'huge', portals }), bounds: { x: -1e5, y: -1e5, w: 2e5, h: 2e5 } })
 
 function shot(x: number, y: number, angle: number): Ball {
@@ -71,13 +74,43 @@ describe('portal transform', () => {
     const { hops, ball } = fly(shot(0, 0, 0), optsWith([pair(0, Math.PI / 2)]))
     expect(hops.length).toBe(1)
     expect(hops[0].pair).toBe(0)
-    expect(Math.hypot(hops[0].x1 - 300, hops[0].y1)).toBeLessThanOrEqual(PORTAL.trigger + 1e-6)
-    expect(Math.hypot(hops[0].x2, hops[0].y2 - 600)).toBeLessThanOrEqual(PORTAL.trigger + 1e-6)
+    expect(Math.hypot(hops[0].x1 - 300, hops[0].y1)).toBeLessThanOrEqual(REACH + 1e-6)
+    expect(Math.hypot(hops[0].x2, hops[0].y2 - 600)).toBeLessThanOrEqual(REACH + 1e-6)
     // Turned a quarter: now heading down (+y).
     expect(hops[0].vx).toBeCloseTo(0, 3)
     expect(hops[0].vy).toBeGreaterThan(0)
     expect(ball.x).toBeCloseTo(0, 0)
     expect(ball.y).toBeGreaterThan(600)
+  })
+
+  it('the whole drawn disc is the mouth: touching it is enough', () => {
+    // Flying past the mouth at (300, 0): an edge graze still falls in, a near miss does not.
+    const graze = PORTAL.radius + TUNING.shotRadius - 1
+    const miss = PORTAL.radius + TUNING.shotRadius + 1
+    expect(fly(shot(0, graze, 0), optsWith([pair(0, 0)])).hops.length).toBe(1)
+    expect(fly(shot(0, miss, 0), optsWith([pair(0, 0)])).hops.length).toBe(0)
+    const mouths = portalMouths([pair(0, 0)])
+    expect(mouthAt(mouths, 300, graze, REACH)).toBe(0)
+    expect(mouthAt(mouths, 300, miss, REACH)).toBe(-1)
+    // Aim previews use the same disc.
+    const hit = mouthOnSegment(mouths, 0, graze, 600, graze, REACH)
+    expect(hit?.k).toBe(0)
+    expect(Math.hypot(hit!.x - 300, hit!.y)).toBeCloseTo(REACH, 6)
+    expect(mouthOnSegment(mouths, 0, miss, 600, miss, REACH)).toBeNull()
+  })
+
+  it("the exit cue: straight into one mouth's beam, straight out along the other's", () => {
+    for (const [aa, bb] of [[0, 0], [0.4, -1.2], [Math.PI, 2]]) {
+      const [a, b] = portalMouths([{ a: { x: 0, y: 0, angle: aa }, b: { x: 500, y: 0, angle: bb } }])
+      // Into A against its beam: comes out of B along B's beam.
+      const inA = exitAngle('a', aa) + Math.PI
+      const outB = portalExit(a, b, a.x, a.y, Math.cos(inA), Math.sin(inA))
+      expect(Math.cos(Math.atan2(outB.vy, outB.vx) - exitAngle('b', bb))).toBeCloseTo(1, 6)
+      // And the other way round.
+      const inB = exitAngle('b', bb) + Math.PI
+      const outA = portalExit(b, a, b.x, b.y, Math.cos(inB), Math.sin(inB))
+      expect(Math.cos(Math.atan2(outA.vy, outA.vx) - exitAngle('a', aa))).toBeCloseTo(1, 6)
+    }
   })
 
   it('distance carries over: the jump is free, but no range is gained', () => {
@@ -138,13 +171,15 @@ describe('portals in a round', () => {
     ;(sim as unknown as { aiOff: boolean }).aiOff = true
     for (let t = 0; t < 8000; t += FRAME) sim.step(FRAME)
     expect(ports).toBeGreaterThan(2)
-    expect(sim.byId('n1')!.captureProgress).toBeGreaterThan(0)
+    // Hit through the portal (or already taken).
+    const n1 = sim.byId('n1')!
+    expect(n1.side === 'player' || n1.captureProgress > 0).toBe(true)
     const snap = encodeSnap(sim, 1, 'player', log.rows)
     const seen: number[] = []
     for (const row of snap.ev) replayEvent(row, sim, { portal: (x1, _y1, x2, _y2, pair) => seen.push(pair, Math.round(x1), Math.round(x2)) }, false)
     expect(seen.slice(0, 3)).toEqual([0, expect.any(Number), expect.any(Number)])
-    expect(Math.abs(seen[1] - 400)).toBeLessThanOrEqual(PORTAL.trigger)
-    expect(Math.abs(seen[2] - 760)).toBeLessThanOrEqual(PORTAL.trigger)
+    expect(Math.abs(seen[1] - 400)).toBeLessThanOrEqual(REACH)
+    expect(Math.abs(seen[2] - 760)).toBeLessThanOrEqual(REACH)
   })
 
   it('lanes know portals; Easy never plans through them, Hard does', () => {

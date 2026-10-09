@@ -6,8 +6,8 @@
  * - Glass: an icy pane (clearly not a team colour) with a bright solid rim;
  *   shots pass one way and bounce off the other.
  * - Portal: a swirling ring in its pair's colour (teal, lime or sky: never a
- *   team colour), with the pair's glyph in the middle and a notch showing
- *   the way it faces.
+ *   team colour), with the pair's glyph in the middle; the whole disc is the
+ *   mouth, and a faint beam and chevrons show the way shots come out.
  * - Breakable wall: old clay bricks (warmer and lighter than a plain wall)
  *   that crack as they take hits and crumble for good.
  */
@@ -56,19 +56,23 @@ export function crackStage(health: number): 0 | 1 | 2 | 3 {
   return 0
 }
 /**
- * Portals: a shot whose centre comes within `trigger` px of a mouth's centre
- * falls in; it can't use another portal for `cooldownMs` and must leave the
- * exit mouth first (no ping-pong). Pairs are told apart by colour and glyph.
+ * Portals: the whole drawn disc (`radius`) is the mouth. A shot that touches
+ * it falls in (its centre within radius + the shot's radius, see portalReach);
+ * it can't use another portal for `cooldownMs` and must leave the exit mouth
+ * first (no ping-pong). Pairs are told apart by colour and glyph.
  */
 export const PORTAL = {
   radius: 22,
-  trigger: 13,
   cooldownMs: 250,
   maxPairs: 3,
   colours: [0x3fd6c4, 0x9be05a, 0x6fb3ff],
   glyphs: ['ring', 'diamond', 'triangle'],
 } as const
 export type PortalGlyph = (typeof PORTAL.glyphs)[number]
+/** How close a shot's centre must come to a mouth's centre to fall in: touching the disc. */
+export function portalReach(shotRadius: number): number {
+  return PORTAL.radius + shotRadius
+}
 export function portalColour(pair: number): number {
   return PORTAL.colours[pair % PORTAL.colours.length]
 }
