@@ -770,7 +770,6 @@ export class Cannon {
 
   /** Shield marking on the body: a little crest, plus the barrier's health bar under the cannon. */
   private drawShieldBadge(g: Phaser.GameObjects.Graphics, color: number): void {
-    const r = TUNING.cannonRadius
     const ink = shade(color, 0.35)
     g.fillStyle(ink, 0.85)
     g.beginPath()
@@ -784,19 +783,16 @@ export class Cannon {
     g.fillStyle(color, 0.9)
     g.fillRect(-1.5, -6, 3, 11)
     if (this.side === 'neutral') return
-    // Health bar: the barrier's hp in the team colour, or a pale refill while it is down.
+    // Health bar under the cannon: the barrier's hp in the team colour (one notch per hp), or a
+    // pale refill while it is down. Dark-edged like the rings, and it grows with them when zoomed out.
     const s = TUNING.shield
-    const w = 36
-    const y = Math.max(r + 13, trackR() + 4)
-    g.fillStyle(0x000000, 0.4)
-    g.fillRoundedRect(-w / 2 - 1, y - 1, w + 2, 6, 3)
-    if (this.shieldDown > 0) {
-      g.fillStyle(0xfff4d2, 0.45)
-      g.fillRoundedRect(-w / 2, y, w * (1 - this.shieldDown / s.downMs), 4, 2)
-    } else if (this.shieldHp > 0) {
-      g.fillStyle(this.shieldFlash > 0 ? lerpColor(sideColor(this.side), 0xffffff, this.shieldFlash * 0.6) : sideColor(this.side), 1)
-      g.fillRoundedRect(-w / 2, y, w * (this.shieldHp / s.hp), 4, 2)
-    }
+    const k = RING.width / 5
+    const w = 46 * k
+    const h = 6 * k
+    const y = trackR() + 5 * k
+    const team = this.shieldFlash > 0 ? lerpColor(sideColor(this.side), 0xffffff, this.shieldFlash * 0.6) : sideColor(this.side)
+    const fill = this.shieldDown > 0 ? 1 - this.shieldDown / s.downMs : this.shieldHp / s.hp
+    hpBar(g, -w / 2, y, w, h, fill, this.shieldDown > 0 ? 0xfff4d2 : team, this.shieldDown > 0 ? 0.6 : 1, this.shieldDown > 0 ? 0 : s.hp)
   }
 
   /**
@@ -840,21 +836,63 @@ export class Cannon {
         )
       }
     }
-    if (this.side === 'neutral') return dashed(2, team, 0.35)
+    if (this.side === 'neutral') return dashed(3, team, 0.35)
+    const t = s.thickness
+    // Which way it faces: a faint chevron just outside the middle of the arc, in the team colour,
+    // like the aim line: stronger while you hover or select the cannon.
+    const k = RING.width / 5
+    const cue = this.selected ? 0.8 : this.hovered ? 0.65 : 0.3
+    const cx = R + t / 2 + 8 * k
+    g.lineStyle(2.5 * k, theme.ringEdge, cue * 0.6)
+    g.beginPath()
+    g.moveTo(cx, -6 * k)
+    g.lineTo(cx + 6 * k, 0)
+    g.lineTo(cx, 6 * k)
+    g.strokePath()
+    g.lineStyle(1.6 * k, team, cue)
+    g.strokePath()
     if (this.swapLeft > 0) {
-      const k = this.swapTotal > 0 ? 1 - this.swapLeft / this.swapTotal : 0
-      return arc(2 + 3 * k, team, 0.15 + 0.35 * k)
+      const p = this.swapTotal > 0 ? 1 - this.swapLeft / this.swapTotal : 0
+      return arc(t * (0.35 + 0.65 * p), team, 0.2 + 0.35 * p)
     }
     if (this.shieldDown > 0) {
-      dashed(2, team, 0.28)
-      arc(2, 0xfff4d2, 0.5, -half, -half + 2 * half * (1 - this.shieldDown / s.downMs))
+      // Down: a dashed band where it will stand, refilling from one end.
+      const back = 1 - this.shieldDown / s.downMs
+      arc(t + 2, theme.ringEdge, 0.35)
+      dashed(t - 2, team, 0.3)
+      arc(t - 4, 0xfff4d2, 0.55, -half, -half + 2 * half * back)
+      this.barrierBar(g, R + t / 2 + 3.5, half, back, 0xfff4d2, 0.6, 0)
       return
     }
+    // Up: the full band it blocks shots with, dark-edged so it reads on any board. It looks
+    // solid at any hp; the small bar along it shows how much it has left.
     const f = Math.max(0, Math.min(1, this.shieldHp / s.hp))
     const c = this.shieldFlash > 0 ? lerpColor(team, 0xffffff, this.shieldFlash * 0.7) : team
-    arc(4 + 7 * f, 0x000000, 0.18 + 0.12 * f)
-    arc(3 + 6 * f, c, 0.4 + 0.5 * f)
-    arc(1.5, 0xffffff, 0.25 + 0.45 * f, -half * 0.85, half * 0.85)
+    arc(t + 3, theme.ringEdge, 0.7)
+    arc(t, c, 0.55 + 0.4 * f)
+    arc(1.5, 0xffffff, 0.3 + 0.4 * f, -half * 0.85, half * 0.85)
+    this.barrierBar(g, R + t / 2 + 3.5, half, f, c, 1, s.hp)
+  }
+
+  /** The barrier's own tiny hp bar: a thin curved bar along the outside of its middle. */
+  private barrierBar(g: Phaser.GameObjects.Graphics, radius: number, half: number, fill: number, color: number, alpha: number, notches: number): void {
+    const span = half * 0.55
+    g.lineStyle(4.5, theme.ringEdge, 0.85)
+    g.beginPath()
+    g.arc(0, 0, radius, -span, span, false)
+    g.strokePath()
+    const f = Math.max(0, Math.min(1, fill))
+    if (f > 0) {
+      g.lineStyle(2.5, color, alpha)
+      g.beginPath()
+      g.arc(0, 0, radius, -span, -span + 2 * span * f, false)
+      g.strokePath()
+    }
+    g.lineStyle(1, theme.ringEdge, 0.9)
+    for (let i = 1; i < notches; i++) {
+      const a = -span + (2 * span * i) / notches
+      g.lineBetween(Math.cos(a) * (radius - 2), Math.sin(a) * (radius - 2), Math.cos(a) * (radius + 2), Math.sin(a) * (radius + 2))
+    }
   }
 
   /** Machine gun marking on the body: three short ammo-belt bars. */
@@ -867,4 +905,19 @@ export class Cannon {
   private facing(): number {
     return this.shownAngle
   }
+}
+
+/** A small health bar (dark edge, fill from the left, a notch per point when `notches` > 1). */
+function hpBar(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill: number, color: number, alpha: number, notches: number): void {
+  const f = Math.max(0, Math.min(1, fill))
+  g.fillStyle(theme.ringEdge, 0.9)
+  g.fillRoundedRect(x - 1.5, y - 1.5, w + 3, h + 3, (h + 3) / 2)
+  g.fillStyle(0x000000, 0.35)
+  g.fillRoundedRect(x, y, w, h, h / 2)
+  if (f > 0) {
+    g.fillStyle(color, alpha)
+    g.fillRoundedRect(x, y, Math.max(h, w * f), h, h / 2)
+  }
+  g.fillStyle(theme.ringEdge, 0.9)
+  for (let i = 1; i < notches; i++) g.fillRect(x + (w * i) / notches - 0.6, y, 1.2, h)
 }
