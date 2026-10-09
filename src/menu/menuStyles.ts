@@ -134,6 +134,20 @@ export function injectMenuStyles(): void {
 .mm-btn:disabled:hover { background: ${rgba(theme.board, 0.94)}; border-color: ${cssHex(theme.boardEdge)}; }
 .mm-soon { font: inherit; font-size: clamp(11px, 1.7vmin, 13px); color: ${theme.textMuted}; background: transparent; border: 1.5px dashed ${cssHex(theme.boardEdge)}; border-radius: 999px; padding: 5px 14px; display: inline-flex; gap: 8px; align-items: center; opacity: .8; cursor: default; }
 .mm-soon b { color: ${theme.text}; }
+.mm-footrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; }
+.mm-coffee {
+  display: inline-flex; align-items: center; gap: 6px; font: inherit; font-weight: bold; font-size: clamp(11px, 1.6vmin, 13px);
+  color: ${gold}; background: ${rgba(theme.board, 0.9)}; border: 1.5px solid ${rgba(theme.player, 0.55)}; border-radius: 999px;
+  padding: 5px 12px; min-height: 30px; text-decoration: none; white-space: nowrap; cursor: pointer; transition: background .12s, border-color .12s, color .12s;
+}
+.mm-coffee:hover { background: ${rgba(theme.grid, 0.97)}; border-color: ${gold}; color: ${theme.text}; }
+.mm-coffee:focus-visible { outline: 3px solid ${gold}; outline-offset: 2px; }
+.mm-credits a.mm-coffee, .mm-cred a.mm-coffee { color: ${gold}; text-decoration: none; }
+.mm-coffee.home.corner { display: none; }
+@media (min-width: 760px) and (min-height: 560px) {
+  .mm-coffee.home.inline { display: none; }
+  .mm-coffee.home.corner { display: inline-flex; position: absolute; z-index: 2; right: max(12px, var(--discord-safe-area-inset-right, env(safe-area-inset-right))); bottom: max(12px, var(--discord-safe-area-inset-bottom, env(safe-area-inset-bottom))); }
+}
 .mm-foot { color: ${theme.textMuted}; font-size: clamp(10px, 1.5vmin, 12px); opacity: .75; text-align: center; }
 .mm-ver { font: inherit; font-size: clamp(10px, 1.5vmin, 12px); color: ${theme.textMuted}; background: transparent; border: 0; border-radius: 8px; padding: 4px 10px; min-height: 30px; cursor: pointer; font-variant-numeric: tabular-nums; }
 .mm-ver span { opacity: .8; }

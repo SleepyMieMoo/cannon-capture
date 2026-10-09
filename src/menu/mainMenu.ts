@@ -62,6 +62,14 @@ export interface MenuActions {
 
 const link = (href: string, text: string): HTMLAnchorElement => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text)
 
+/**
+ * The Buy Me a Coffee link, styled as a small gold-edged chip. A plain link:
+ * a new tab on the web; inside Discord the link interceptor (platform/discord)
+ * sends it through the SDK's openExternalLink. Only on menu pages, never in a match.
+ */
+const coffeeLink = (id: string, cls = ''): HTMLAnchorElement =>
+  h(`a.mm-coffee${cls}`, { href: LINKS.coffee, target: '_blank', rel: 'noopener noreferrer', title: 'Support SleepyMie on Buy Me a Coffee (opens in a new tab)', dataset: { id } }, 'Buy me a coffee ☕')
+
 /** The big Profile preview: your cannon (skin + colour), or the AI's contrast to it. */
 function mePreview(ai: boolean, skin: SkinId): string {
   const colour = loadColour()
@@ -276,7 +284,9 @@ export class MainMenu {
         this.button('credits', 'Credits', go('credits'), { icon: ICONS.credits, cls: 'third' }),
       ),
       soon,
-      h('div.mm-foot', {}, this.versionButton()),
+      // Support: beside the version on small screens (no extra height), the bottom-right corner on roomy ones (CSS shows one of the two).
+      h('div.mm-footrow', {}, h('div.mm-foot', {}, this.versionButton()), coffeeLink('coffee-inline', '.home.inline')),
+      coffeeLink('coffee', '.home.corner'),
       // The corners: Jukebox top left, Profile top right (after the grid, so Tab starts at Play).
       this.jukeboxCorner(),
       h('button.mm-corner.right', { type: 'button', title: 'Profile: your name, looks and difficulty', 'aria-label': 'Profile', dataset: { id: 'profile' }, onclick: go('profile') },
@@ -836,6 +846,7 @@ export class MainMenu {
     return this.screenFrame('Credits', 'Who and what made this game', [
       h('dl.mm-cred', {},
         row('Game', 'by ', h('b', {}, 'SleepyMie'), ' · ', link(LINKS.sleepyMie, 'sleepymiemoo.github.io')),
+        row('Support SleepyMie', 'Enjoying the game? ', coffeeLink('credits-coffee')),
         row('Colours', 'Inspired by ', link(LINKS.choconeko, 'ChocoNeko’s Dark Choco theme')),
         row('Music', ...TRACKS.flatMap((t, i) => [i ? h('br') : '', link(t.page, `“${t.title}”`)]), h('br'), 'by ', link(MUSIC_ARTIST.page, MUSIC_ARTIST.name), ' on Pixabay, under the ', link(LINKS.pixabayLicense, 'Pixabay Content License'), '. Trimmed at both ends so they loop; please get the originals from Pixabay.'),
         row('Pop sound', link(LINKS.pop, '“Pop Cartoon”'), ' by ', link(LINKS.creatorsHome, 'CreatorsHome'), ' on Pixabay, under the ', link(LINKS.pixabayLicense, 'Pixabay Content License'), '. Trimmed for the game; please get the original from Pixabay.'),
