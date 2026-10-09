@@ -17,7 +17,13 @@ const DEPTH = { aura: 1.6, trail: 2.9, smoke: 6.4, glow: 6.5, sweep: 4 }
 const CAPACITY = 360
 const R = TUNING.cannonRadius
 /** Aura size (diameter, px) and strength. */
-const AURA = { size: R * 2 * 2.5, alpha: 0.5, breathe: 0.1, neutral: 0.12, flipMs: 520 }
+const AURA = { size: R * 2 * 2.5, alpha: 0.5, breathe: 0.1, neutral: 0.5, flipMs: 520 }
+/**
+ * Neutral cannons' aura: a warm beige-grey (Dark Choco's milk-chocolate), the
+ * same treatment and strength as an owned tower's, so unclaimed
+ * cannons read as objectives without looking like anyone's colour.
+ */
+export const NEUTRAL_AURA = 0xc4ab8c
 const WARM = 0xfff4d2
 const SMOKE = 0x8c7b6b
 const VOID_PUFF = VOID_COLOURS.puff
@@ -459,7 +465,7 @@ export class Vfx {
   }
 
   private auraColour(side: Side): number {
-    return side === 'neutral' ? theme.neutral : sideColor(side)
+    return side === 'neutral' ? NEUTRAL_AURA : sideColor(side)
   }
 
   private updateAuras(dtMs: number, time: number, cannons: readonly Cannon[]): void {
@@ -484,7 +490,7 @@ export class Vfx {
         swell = Math.sin(Math.PI * t)
       }
       const neutral = c.side === 'neutral'
-      const show = cfg.aura && (!neutral || cfg.quality === 'high' || swell > 0) && this.onScreen(c.x, c.y, AURA.size)
+      const show = cfg.aura && this.onScreen(c.x, c.y, AURA.size)
       if (!show) {
         if (a.glow?.visible) a.glow.setVisible(false)
         if (a.halo?.visible) a.halo.setVisible(false)
@@ -495,16 +501,16 @@ export class Vfx {
         this.register(a.glow)
       }
       const breathe = cfg.auraMotion ? Math.sin(time / 1300 + a.phase) : 0
-      const base = neutral && swell === 0 ? AURA.neutral : AURA.alpha + AURA.breathe * breathe
+      const base = (neutral ? AURA.neutral : AURA.alpha) + AURA.breathe * breathe
       const grow = 1 + (cfg.auraMotion ? 0.04 * breathe + 0.45 * swell : 0)
       a.glow.setVisible(true).setPosition(c.x, c.y).setTint(a.colour).setAlpha(Math.min(1, base + 0.35 * swell)).setScale((AURA.size * grow) / FX_TEX_W[TEX.glow])
-      const halo = cfg.quality === 'high' && cfg.auraMotion && !neutral
+      const halo = cfg.quality === 'high' && cfg.auraMotion
       if (halo) {
         if (!a.halo) {
           a.halo = this.scene.add.image(c.x, c.y, HALO_TEX).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.aura)
           this.register(a.halo)
         }
-        a.halo.setVisible(true).setPosition(c.x, c.y).setTint(a.colour).setAlpha(0.3 + 0.07 * breathe + 0.3 * swell)
+        a.halo.setVisible(true).setPosition(c.x, c.y).setTint(a.colour).setAlpha((neutral ? 0.22 : 0.3) + 0.07 * breathe + 0.3 * swell)
           .setRotation(time / 4200 + a.phase).setScale((AURA.size * 1.05 * grow) / HALO_W)
       } else if (a.halo?.visible) a.halo.setVisible(false)
       // Nearly captured: it sputters sparks in the attacker's colour.
