@@ -1,7 +1,6 @@
 /** Links on the Credits page. */
 export const LINKS = {
   sleepyMie: 'https://sleepymiemoo.github.io',
-  repo: 'https://github.com/SleepyMieMoo/cannon-capture',
   choconeko: 'https://sleepymiemoo.github.io/choconeko-site/',
   pop: 'https://pixabay.com/sound-effects/film-special-effects-pop-cartoon-328167/',
   creatorsHome: 'https://pixabay.com/users/creatorshome-49707711/',

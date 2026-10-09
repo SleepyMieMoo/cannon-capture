@@ -43,7 +43,7 @@ describe("What's new", () => {
   it("lists today's verified features, newest first, in player words", () => {
     expect(WHATS_NEW.length).toBeGreaterThan(0)
     const titles = WHATS_NEW.flatMap((d) => d.entries.map((e) => e.title.toLowerCase())).join(' | ')
-    for (const topic of ['shield', 'editor', 'difficulty', 'ownership rings', 'heal guide', 'skins', 'healers re-aim', 'countdown', 'team colours', 'name tags', 'room settings', 'side glow', 'surrender', 'profile', 'credits', 'alt-tab', 'jukebox', '0.2.0', '0.2.1', 'switching away', '0.2.2', 'smoother online', 'online room runs', '0.2.3', 'tidier settings', '0.2.4', 'result buttons fit', '0.2.5', 'livelier feel', 'reduce motion', '0.2.6', 'pulse to the music', '0.3.0', 'battles that pop', 'effects quality', 'bank shots keep their range', '0.4.0', 'new obstacles', 'void walls', 'round pillars', 'one-way glass', 'glass garden', 'oval rock pillars', 'breakable walls', '0.5.0', 'portals', 'warp works', 'true edge', 'clearer shields', '0.5.1', 'portal discs', 'simpler portal cue', 'brick wall health', 'neutral cannons glow', '0.5.2', 'obstacles glow', 'brag-worthy results', '0.6.0', 'meet the bots', '0.6.1', 'win badges', 'beatable on impossible', 'tidier map list', '0.7.0', 'jukebox repeat']) {
+    for (const topic of ['shield', 'editor', 'difficulty', 'ownership rings', 'heal guide', 'skins', 'healers re-aim', 'countdown', 'team colours', 'name tags', 'room settings', 'side glow', 'surrender', 'profile', 'credits', 'alt-tab', 'jukebox', '0.2.0', '0.2.1', 'switching away', '0.2.2', 'smoother online', 'online room runs', '0.2.3', 'tidier settings', '0.2.4', 'result buttons fit', '0.2.5', 'livelier feel', 'reduce motion', '0.2.6', 'pulse to the music', '0.3.0', 'battles that pop', 'effects quality', 'bank shots keep their range', '0.4.0', 'new obstacles', 'void walls', 'round pillars', 'one-way glass', 'glass garden', 'oval rock pillars', 'breakable walls', '0.5.0', 'portals', 'warp works', 'true edge', 'clearer shields', '0.5.1', 'portal discs', 'simpler portal cue', 'brick wall health', 'neutral cannons glow', '0.5.2', 'obstacles glow', 'brag-worthy results', '0.6.0', 'meet the bots', '0.6.1', 'win badges', 'beatable on impossible', 'tidier map list', '0.7.0', 'jukebox repeat', '0.7.1']) {
       expect(titles).toContain(topic)
     }
     const dates = WHATS_NEW.map((d) => d.date)
@@ -125,10 +125,13 @@ describe('menu pages', () => {
     expect(nav.screen).toBe('credits')
   })
 
-  it('Credits links the theme, the sound and its licence, the repo and the site, and shows no email', () => {
+  it('Credits links the theme, the sound and its licence and the site, no source code, and shows no email', () => {
     expect(LINKS.choconeko).toBe('https://sleepymiemoo.github.io/choconeko-site/')
     expect(LINKS.sleepyMie).toBe('https://sleepymiemoo.github.io')
-    expect(LINKS.repo).toBe('https://github.com/SleepyMieMoo/cannon-capture')
+    // No link to the source code anywhere in the game's UI.
+    expect('repo' in LINKS).toBe(false)
+    for (const href of Object.values(LINKS)) expect(href).not.toContain('github.com')
+    expect(mainMenuSource).not.toMatch(/source code|view source|github\.com/i)
     expect(LINKS.pixabayLicense).toContain('pixabay.com/service/license')
     for (const href of Object.values(LINKS)) expect(href).toMatch(/^https:\/\//)
     // Every song is credited, with its Pixabay page.
