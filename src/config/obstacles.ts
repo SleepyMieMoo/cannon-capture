@@ -7,7 +7,7 @@
  *   shots pass one way and bounce off the other.
  * - Portal: a swirling ring in its pair's colour (teal, lime or sky: never a
  *   team colour), with the pair's glyph in the middle; the whole disc is the
- *   mouth, and a faint beam and chevrons show the way shots come out.
+ *   mouth, and a soft beam inside it shows the side shots come out of.
  * - Breakable wall: old clay bricks (warmer and lighter than a plain wall)
  *   that crack as they take hits and crumble for good.
  */
