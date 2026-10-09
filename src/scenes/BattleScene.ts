@@ -67,7 +67,7 @@ import type { OnlineRoom, OnlineStart } from '../net/onlineClient'
 import { looksClash } from '../config/looks'
 import { NameTags } from '../render/nameTags'
 import { GLOW, SideGlow, glowColours, glowEdges } from '../render/sideGlow'
-import { cannonsFromResult, clock, endTexts, nameOnSide, outcomeFromResult, tagNames, netParts, opponentLine, pauseCheck, pauseLabel, rematchLine, sideIndex } from '../net/onlineView'
+import { cannonsFromResult, clock, endTexts, nameOnSide, outcomeFromResult, tagNames, netParts, opponentLine, pauseButton, pauseCheck, pauseLabel, pauseSecondsLeft, rematchLine, sideIndex } from '../net/onlineView'
 import { CatchUp } from '../sim/catchUp'
 import { ResultGate } from './resultGate'
 import { loadTabPrefs, saveTabPrefs, type TabPrefs } from '../menu/tabPrefs'
@@ -281,6 +281,8 @@ export class BattleScene extends Phaser.Scene {
   /** Paused: a frame round the board and a label at its top (UI camera; never blocks the board). */
   private pausedFx!: Phaser.GameObjects.Graphics
   private pausedLabel!: Phaser.GameObjects.Text
+  /** Online: seconds until the pause ends by itself (the room's pause time limit). */
+  private pauseCount!: Phaser.GameObjects.Text
   /** Paused: "→ Sniper" over cannons with a queued type swap (board layer). */
   private queuedLabels = new Map<Cannon, Phaser.GameObjects.Text>()
   private banner: Phaser.GameObjects.Container | null = null
@@ -597,6 +599,20 @@ export class BattleScene extends Phaser.Scene {
           color: theme.ink,
         })
         .setOrigin(0.5)
+        .setDepth(31)
+        .setVisible(false),
+    )
+    this.pauseCount = this.ui(
+      this.add
+        .text(GAME_WIDTH / 2, HUD_H + 70, '', {
+          fontFamily: theme.font,
+          fontSize: '34px',
+          fontStyle: 'bold',
+          color: theme.text,
+          stroke: theme.ink,
+          strokeThickness: 5,
+        })
+        .setOrigin(0.5, 0)
         .setDepth(31)
         .setVisible(false),
     )
@@ -1469,6 +1485,12 @@ export class BattleScene extends Phaser.Scene {
 
   /** The top bar's Pause / Resume button (pressed look while paused). */
   private syncPauseButton(): void {
+    if (this.online && this.client) {
+      // Online: pauses left on the button, its tooltip says how many; out of pauses, it greys out.
+      const b = pauseButton(this.client.latest?.x, this.me, this.sim.paused, this.online.info)
+      this.hud?.setButton('pause', b.label, this.sim.paused, { title: b.title, disabled: b.disabled })
+      return
+    }
     this.hud?.setButton('pause', this.sim.paused ? 'Resume' : 'Pause', this.sim.paused)
   }
 
@@ -2040,6 +2062,11 @@ export class BattleScene extends Phaser.Scene {
         const label = pauseLabel(x, this.me, this.online!.info)
         if (this.pausedLabel.text !== label) this.pausedLabel.setText(label)
       }
+      this.syncPauseButton()
+      // The pause's own countdown (the room's time limit), big under the banner, for both players and watchers.
+      const secs = this.sim.paused ? pauseSecondsLeft(x) : null
+      const txt = secs === null ? '' : String(secs)
+      if (this.pauseCount.text !== txt) this.pauseCount.setText(txt)
     }
   }
 
@@ -2424,6 +2451,7 @@ export class BattleScene extends Phaser.Scene {
     g.clear()
     const on = this.sim.paused && !this.ended && !this.battleMenu?.open
     this.pausedLabel.setVisible(on)
+    this.pauseCount.setVisible(on && this.pauseCount.text !== '')
     if (!on) return
     const v = WORLD_VIEW
     g.lineStyle(3, theme.select, 0.55 + 0.25 * Math.sin(time / 300))
@@ -2431,6 +2459,7 @@ export class BattleScene extends Phaser.Scene {
     const w = this.pausedLabel.width + 28
     const top = WORLD_VIEW.y + 8
     this.pausedLabel.setY(top + 14)
+    this.pauseCount.setY(top + 34)
     g.fillStyle(theme.select, 0.95)
     g.fillRoundedRect(GAME_WIDTH / 2 - w / 2, top, w, 28, 14)
   }

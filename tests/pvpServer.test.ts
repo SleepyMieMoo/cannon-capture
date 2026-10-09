@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PVP_LIMITS, PVP_RULES } from '../src/config/pvpRules'
-import { PVP_MAPS, isRoomCode, normaliseCode, parseClientMsg, cleanName, randomCode } from '../src/net/online'
+import { DEFAULT_SETTINGS, PVP_MAPS, isRoomCode, normaliseCode, parseClientMsg, cleanName, randomCode } from '../src/net/online'
 import { mirrored } from '../src/levels/mirrored'
 import { LOOP_MS, RoomCore, type RoomState } from '../server/src/room'
 
@@ -116,11 +116,12 @@ describe('online room: lobby', () => {
 })
 
 describe('online room: the match', () => {
-  function started(mapId = PVP_MAPS[0].id) {
+  function started(mapId = PVP_MAPS[0].id, settings: Record<string, unknown> = {}) {
     const s = setup()
     const a = s.join(TOKEN_A, 'A')
     const b = s.join(TOKEN_B, 'B')
     a.say({ t: 'map', id: mapId })
+    if (Object.keys(settings).length) a.say({ t: 'settings', ...settings })
     a.say({ t: 'start' })
     // Past the 3-2-1-Go (the match clock starts at Go).
     s.run(PVP_RULES.countdownMs + LOOP_MS)
@@ -174,7 +175,7 @@ describe('online room: the match', () => {
     // Orders work; pausing doesn't (and costs nothing).
     expect(order(a, { t: 'aim', cannon: 'p1', at: { cannon: 'e1' } })).toBe(true)
     expect(order(a, { t: 'pause' })).toBe(false)
-    expect(a.snap.x!.pl).toEqual([3, 3])
+    expect(a.snap.x!.pl).toEqual([-1, -1])
     s.run(PVP_RULES.countdownMs - 1000 + 200)
     expect(a.snap.cd).toBeUndefined()
     expect(a.snap.x!.tl).toBeLessThan(PVP_RULES.matchMs)
@@ -191,8 +192,8 @@ describe('online room: the match', () => {
     expect(w.snap.cd).toBe(a.snap.cd)
   })
 
-  it('pauses: 3 each, up to 30 s, both screens pause, only the pauser resumes, and queued orders stay hidden', () => {
-    const { a, b, run, room } = started()
+  it('pauses (3 each, up to 30 s): both screens pause, only the pauser resumes, and queued orders stay hidden', () => {
+    const { a, b, run, room } = started(PVP_MAPS[0].id, { pauseCount: 3, pauseSecs: 30 })
     expect(order(a, { t: 'pause' })).toBe(true)
     expect(a.snap.paused).toBe(true)
     expect(b.snap.paused).toBe(true)
@@ -207,7 +208,7 @@ describe('online room: the match', () => {
     expect(a.snap.q[0][4]).toBe(-1) // A sees only its own aim, not B's swap
     expect(b.snap.q[0][4]).toBeGreaterThanOrEqual(0)
     // Runs out after 30 s by itself; the queued orders happen then.
-    run(PVP_RULES.pauseMaxMs + 200)
+    run(30_000 + 200)
     expect(a.snap.paused).toBe(false)
     expect(room.match!.sim.byId('e2')!.kind).toBe('sniper')
     expect(room.match!.sim.byId('p2')!.target?.id).toBe('e3')
@@ -431,14 +432,15 @@ describe('online room: host settings', () => {
   it('every new room starts with the defaults: 3 s countdown, pauses on, host on the left', () => {
     const { a, b, w, room } = room3()
     for (const c of [a, b, w]) {
-      expect(c.room_.settings).toEqual({ countdown: 3, pauses: true })
+      expect(c.room_.settings).toEqual({ countdown: 3, pauses: true, pauseCount: null, pauseLimit: true, pauseSecs: 5 })
       expect(c.room_.left).toBe(0)
     }
     a.say({ t: 'start' })
     expect(room.match!.sim.countdown).toBe(3000)
     expect(a.last('start').side).toBe('player')
     expect(a.last('start').pauses).toBeUndefined()
-    expect(room.match!.pausesLeft).toEqual([PVP_RULES.pausesPerPlayer, PVP_RULES.pausesPerPlayer])
+    expect(room.match!.pausesLeft).toEqual([-1, -1])
+    expect(room.match!.pauseMs).toBe(5000)
   })
 
   it('only the host changes them, only between matches; guest and watchers see every change', () => {
@@ -447,10 +449,10 @@ describe('online room: host settings', () => {
     expect(b.last('error').code).toBe('notallowed')
     w.say({ t: 'swap' })
     expect(w.last('error').code).toBe('notallowed')
-    expect(room.settings()).toEqual({ countdown: 3, pauses: true })
+    expect(room.settings()).toEqual(DEFAULT_SETTINGS)
     a.say({ t: 'settings', countdown: 5 })
     a.say({ t: 'settings', pauses: false })
-    for (const c of [a, b, w]) expect(c.room_.settings).toEqual({ countdown: 5, pauses: false })
+    for (const c of [a, b, w]) expect(c.room_.settings).toEqual({ ...DEFAULT_SETTINGS, countdown: 5, pauses: false })
     a.say({ t: 'settings', countdown: 4 }) // not a choice: refused as a bad message
     expect(room.settings().countdown).toBe(5)
     a.say({ t: 'start' })
@@ -528,7 +530,7 @@ describe('online room: host settings', () => {
     delete (st as Partial<RoomState>).settings
     delete (st as Partial<RoomState>).left
     const old = new RoomCore(new FakeHost(), st)
-    expect(old.settings()).toEqual({ countdown: 3, pauses: true })
+    expect(old.settings()).toEqual(DEFAULT_SETTINGS)
     expect(parseClientMsg({ t: 'settings', countdown: 0, pauses: false })).toEqual({ t: 'settings', countdown: 0, pauses: false })
     expect(parseClientMsg({ t: 'settings', pauses: 'no' })).toBeNull()
     expect(parseClientMsg({ t: 'swap' })).toEqual({ t: 'swap' })

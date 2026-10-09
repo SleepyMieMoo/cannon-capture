@@ -22,7 +22,7 @@ export type ClientMsg =
   /** Host: the map for the next match. */
   | { t: 'map'; id: string }
   /** Host, between matches: change the match settings (only the fields given). */
-  | { t: 'settings'; countdown?: CountdownChoice; pauses?: boolean }
+  | { t: 'settings'; countdown?: CountdownChoice; pauses?: boolean; pauseCount?: PauseCount; pauseLimit?: boolean; pauseSecs?: PauseSecs }
   /** Host, between matches: swap which seat plays the left side next match. */
   | { t: 'swap' }
   /** Give up the running match: the other seat wins (servers that list `surrender` in the room info). */
@@ -49,11 +49,26 @@ export type CountdownChoice = (typeof COUNTDOWN_CHOICES)[number]
  */
 export interface RoomSettings {
   countdown: CountdownChoice
-  /** Pauses allowed (PVP_RULES.pausesPerPlayer each). */
+  /** Pauses allowed at all (off: nobody can pause; the two below then don't matter). */
   pauses: boolean
+  /** Pauses each player may take per match: 1 to 10, or null for unlimited. */
+  pauseCount: PauseCount
+  /** Pauses end by themselves after pauseSecs (off: a pause lasts until its player resumes). */
+  pauseLimit: boolean
+  pauseSecs: PauseSecs
 }
 
-export const DEFAULT_SETTINGS: Readonly<RoomSettings> = { countdown: 3, pauses: true }
+/** Pauses per player: 1 to 10, or null (unlimited). */
+export type PauseCount = number | null
+export const PAUSE_COUNT_MAX = 10
+/** Pause time limit choices, in seconds. */
+export const PAUSE_SECS_CHOICES = [5, 10, 15, 30, 60] as const
+export type PauseSecs = (typeof PAUSE_SECS_CHOICES)[number]
+
+export const DEFAULT_SETTINGS: Readonly<RoomSettings> = { countdown: 3, pauses: true, pauseCount: null, pauseLimit: true, pauseSecs: 5 }
+
+export const isPauseCount = (v: unknown): v is PauseCount => v === null || (Number.isInteger(v) && (v as number) >= 1 && (v as number) <= PAUSE_COUNT_MAX)
+export const isPauseSecs = (v: unknown): v is PauseSecs => (PAUSE_SECS_CHOICES as readonly unknown[]).includes(v)
 
 export const isCountdownChoice = (v: unknown): v is CountdownChoice => (COUNTDOWN_CHOICES as readonly unknown[]).includes(v)
 
@@ -63,6 +78,9 @@ export function readSettings(v: unknown): RoomSettings {
   return {
     countdown: isCountdownChoice(s.countdown) ? s.countdown : DEFAULT_SETTINGS.countdown,
     pauses: typeof s.pauses === 'boolean' ? s.pauses : DEFAULT_SETTINGS.pauses,
+    pauseCount: isPauseCount(s.pauseCount) ? s.pauseCount : DEFAULT_SETTINGS.pauseCount,
+    pauseLimit: typeof s.pauseLimit === 'boolean' ? s.pauseLimit : DEFAULT_SETTINGS.pauseLimit,
+    pauseSecs: isPauseSecs(s.pauseSecs) ? s.pauseSecs : DEFAULT_SETTINGS.pauseSecs,
   }
 }
 
@@ -263,6 +281,18 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       if (m.pauses !== undefined) {
         if (typeof m.pauses !== 'boolean') return null
         out.pauses = m.pauses
+      }
+      if (m.pauseCount !== undefined) {
+        if (!isPauseCount(m.pauseCount)) return null
+        out.pauseCount = m.pauseCount
+      }
+      if (m.pauseLimit !== undefined) {
+        if (typeof m.pauseLimit !== 'boolean') return null
+        out.pauseLimit = m.pauseLimit
+      }
+      if (m.pauseSecs !== undefined) {
+        if (!isPauseSecs(m.pauseSecs)) return null
+        out.pauseSecs = m.pauseSecs
       }
       return out
     }

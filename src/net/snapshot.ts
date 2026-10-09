@@ -57,11 +57,13 @@ export interface Snap {
 export interface SnapExtra {
   /** Time left (ms of round time; it stops while paused). */
   tl: number
-  /** Who paused (0 gold, 1 pink, -1 nobody) and how long until it resumes by itself (ms). */
+  /** Who paused (0 gold, 1 pink, -1 nobody) and how long until it resumes by itself (ms; -1: no time limit, it lasts until resumed). */
   pz: number
   pzl: number
-  /** Pauses left per side. */
+  /** Pauses left per side (-1: unlimited). */
   pl: [number, number]
+  /** Anti-spam: ms until this side may pause again (0: free; older servers leave it out). */
+  plk?: [number, number]
   /** An AI plays this side now (its player left). */
   ai: [0 | 1, 0 | 1]
   /** This side's player is connected. */

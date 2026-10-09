@@ -376,10 +376,17 @@ export class BattleHud {
   }
 
   /** A button's label and pressed look (Pause / Resume). */
-  setButton(id: HudButtonId, label: string, pressed = false): void {
-    const el = this.btn.get(id)
+  setButton(id: HudButtonId, label: string, pressed = false, more?: { title?: string; disabled?: boolean }): void {
+    const el = this.btn.get(id) as HTMLButtonElement | undefined
     if (!el) return
     if (el.textContent !== label) el.textContent = label
+    if (more?.title !== undefined && el.title !== more.title) {
+      el.title = more.title
+      el.setAttribute('aria-label', more.title)
+    }
+    // aria-disabled, not disabled: the tooltip still shows (and a press just says why).
+    const d = more?.disabled ? 'true' : 'false'
+    if (more?.disabled !== undefined && el.getAttribute('aria-disabled') !== d) el.setAttribute('aria-disabled', d)
     const p = pressed ? 'true' : 'false'
     if (el.getAttribute('aria-pressed') !== p) el.setAttribute('aria-pressed', p)
   }
@@ -611,6 +618,8 @@ function injectHudStyles(): void {
 .bh-btn:active { transform: translateY(2px); box-shadow: 0 0 0 ${cssHex(theme.dim)}; }
 .bh-btn:focus-visible { outline: 3px solid ${gold}; outline-offset: 1px; }
 .bh-btn[aria-pressed="true"] { background: ${gold}; color: ${theme.ink}; border-color: ${gold}; }
+.bh-btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+.bh-btn[aria-disabled="true"]:hover { border-color: inherit; background: inherit; }
 .bh-btn.danger { color: ${cssHex(theme.enemy)}; }
 .bh-btn.danger:hover { border-color: ${red}; }
 .bh-btn.danger.solid { background: ${red}; border-color: ${red}; color: #fff; }
