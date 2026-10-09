@@ -54,6 +54,7 @@ export class ResultPanel {
       stars,
       view.detail ? h('p.rp-detail', {}, view.detail) : null,
       view.bot ? botRow(view.bot, opts.botColour ?? opts.stroke) : null,
+      view.bot?.newBadge ? badgeChip(view.bot, opts.botColour ?? opts.stroke) : null,
       view.brag?.length ? bragRow(view.brag) : null,
       view.extra ? h(`p.rp-extra${view.extra.gold ? '.gold' : ''}`, { 'aria-live': 'polite' }, view.extra.text) : null,
       buttons,
@@ -105,6 +106,14 @@ function botRow(bot: ResultBot, colour: number): HTMLElement {
     h('figure.rp-who', {}, face, h('figcaption', {}, bot.name)),
     h('p.rp-bubble', {}, bot.line),
   )
+}
+
+/** First win against this bot on this map: a small celebratory chip. */
+function badgeChip(bot: ResultBot, colour: number): HTMLElement {
+  const face = h('span.rp-badge-face')
+  face.innerHTML = botAvatarSvg(bot.level, colour, 22)
+  const label = bot.newBadge ?? ''
+  return h('div.rp-badge', { role: 'status', title: `You earned the ${label} badge on this map.` }, face, h('b', {}, 'New badge!'), h('span', {}, label))
 }
 
 /** The brag row: small labelled facts side by side (wrapping on narrow screens). */
@@ -187,6 +196,14 @@ function injectResultStyles(): void {
   content: ''; position: absolute; left: -7px; top: 50%; margin-top: -7px;
   border: 7px solid transparent; border-left-width: 0; border-right-color: ${theme.text};
 }
+.rp-badge {
+  display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; width: fit-content; max-width: 100%;
+  margin: clamp(8px, 2vmin, 12px) auto 0; padding: 4px 12px 4px 5px; border-radius: 999px;
+  background: ${rgba(theme.player, 0.14)}; border: 1.5px solid ${gold}; font-size: clamp(13px, 2.2vmin, 15px); line-height: 1.25;
+}
+.rp-badge-face svg { display: block; }
+.rp-badge b { color: ${gold}; }
+.rp-badge span:last-child { overflow-wrap: anywhere; }
 .rp-brag {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: clamp(10px, 2.4vmin, 16px) 0 0; padding: 0;
 }

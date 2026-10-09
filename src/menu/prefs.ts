@@ -11,11 +11,12 @@ import { clearSkin, SKIN_KEY } from './skinPref'
 import { applyMotion, MOTION_KEY } from '../ui/motion'
 import { FX_KEY } from '../render/vfx/fxQuality'
 import { forgetFxPrefs } from '../render/vfx/fxPrefs'
+import { BADGES_KEY } from './badges'
 
 /**
  * Every preference saved on this device, and what Profile → "Reset all
- * preferences" forgets. What you made or earned (maps, the editor's draft,
- * stars) is never touched by it.
+ * preferences" forgets (win badges too). Your maps, the editor's draft and
+ * level stars are never touched by it.
  */
 export const PREF_KEYS: readonly { key: string; what: string }[] = [
   { key: NAME_KEY, what: 'online name' },
@@ -28,6 +29,7 @@ export const PREF_KEYS: readonly { key: string; what: string }[] = [
   { key: PERF_KEY, what: 'performance overlay' },
   { key: MOTION_KEY, what: 'reduce motion' },
   { key: FX_KEY, what: 'effects quality' },
+  { key: BADGES_KEY, what: 'win badges' },
 ]
 
 /** Kept by the reset. */

@@ -115,6 +115,12 @@ html .rp.enter .rp-btns > :nth-child(2) { animation-delay: .21s; }
 html .rp.enter .rp-keys { animation: cc-fade .3s ease-out .28s both; }
 /* The bot pops up and says its piece: the bubble grows out from its face. */
 html .rp.enter .rp-who { animation: cc-rise .26s var(--cc-back) .1s both; }
+html .rp.enter .rp-badge { animation: cc-badge .5s var(--cc-back) .38s both; }
+@keyframes cc-badge { from { opacity: 0; scale: .4; rotate: -6deg; } 60% { opacity: 1; scale: 1.12; rotate: 2deg; } to { scale: 1; rotate: 0deg; } }
+html .rp-badge { position: relative; overflow: hidden; }
+html .rp.enter .rp-badge::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .45) 50%, transparent 65%); translate: -100% 0; animation: cc-badge-shine .9s ease-out .85s both; }
+@keyframes cc-badge-shine { to { translate: 100% 0; } }
+html.cc-calm .rp-badge::after { display: none !important; }
 html .rp.enter .rp-bubble { animation: cc-bubble .34s var(--cc-back) .2s both; transform-origin: 0 50%; }
 @keyframes cc-bubble { from { opacity: 0; scale: .55; } 70% { opacity: 1; scale: 1.05; } to { scale: 1; } }
 /* A loss: the panel drops in a little heavy, and the headline sags then rights itself. */

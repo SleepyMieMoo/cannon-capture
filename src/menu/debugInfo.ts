@@ -46,6 +46,8 @@ export interface DebugSettings {
   motion?: { pref: string; reduced: boolean }
   /** Effects quality, e.g. 'high (auto)' (left out when unknown). */
   effects?: string
+  /** Win badges earned (a count only; left out when unknown). */
+  badges?: number
 }
 
 export function settingsText(s: DebugSettings): Record<string, string> {
@@ -58,6 +60,7 @@ export function settingsText(s: DebugSettings): Record<string, string> {
     ...(s.tabbed ? { 'tabbed out': `music ${s.tabbed.music ? 'keeps playing' : 'pauses'}, vs AI ${s.tabbed.pauseVsAi ? 'pauses' : 'keeps going'}` } : {}),
     ...(s.motion ? { 'reduce motion': `${s.motion.pref} (${s.motion.reduced ? 'reduced' : 'full motion'})` } : {}),
     ...(s.effects ? { effects: s.effects } : {}),
+    ...(s.badges !== undefined ? { 'win badges': String(s.badges) } : {}),
     ...(s.music ? { music: s.music.on ? `on, ${Math.round(s.music.volume * 100)}%, ${s.music.track} (default ${s.music.default})${s.music.pulse === undefined ? '' : `, pulse ${s.music.pulse ? 'on' : 'off'}`}` : `off (default ${s.music.default})` } : {}),
   }
 }
