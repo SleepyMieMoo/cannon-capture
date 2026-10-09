@@ -1,0 +1,11 @@
+{
+  "_help": "Per built-in map, by id. retired: hidden from Play vs AI and the title demo (the data stays). impossible: verified beatable on Impossible by the dev (tag on the map card).",
+  "skirmish": { "retired": true, "note": "Same board as Crossfire." },
+  "tug-of-war": { "retired": true, "note": "Campaign intro; too small for vs AI." },
+  "walls-up": { "retired": true },
+  "sniper-duel": { "retired": true, "note": "Not beatable on Impossible yet; to be reworked." },
+  "crossfire": { "impossible": true },
+  "last-stand": { "impossible": true },
+  "ex-glass-garden": { "impossible": true },
+  "ex-void-gate": { "impossible": true }
+}

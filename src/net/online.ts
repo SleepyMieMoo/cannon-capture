@@ -125,13 +125,14 @@ export type ServerMsg =
 
 // ------------------------------------------------------------------ maps
 
-/** Fair maps only: Skirmish and boards mirrored left/right (no Huge). */
+/** Fair maps only: Crossfire (id skirmish) and boards mirrored left/right (no Huge). */
 function fair(seed: number, id: string, name: string): LevelDef {
   return { ...mirrored(seed), id, name }
 }
 
 export const PVP_MAPS: LevelDef[] = [
-  { ...SKIRMISH, kind: 'battle' as const },
+  // The old Skirmish board, shown as Crossfire (the same board): the id stays so rooms, old clients and the server agree.
+  { ...SKIRMISH, name: 'Crossfire', kind: 'battle' as const },
   fair(3, 'mirror-wind', 'Wind Gap'),
   fair(8, 'mirror-walls', 'Four Walls'),
   fair(10, 'mirror-duel', 'Narrow Duel'),

@@ -4,6 +4,7 @@ import { SKIRMISH } from './skirmish'
 import { EXAMPLE_MAPS } from './examples'
 
 export { CAMPAIGN, SKIRMISH, EXAMPLE_MAPS }
+export { MAP_INFO, isRetired, beatableOnImpossible, VS_AI_BUILT_IN, DEFAULT_VS_AI_MAP } from './mapInfo'
 
 export const ALL_LEVELS: LevelDef[] = [...CAMPAIGN, SKIRMISH]
 

@@ -14,7 +14,7 @@ import { Wall } from '../entities/Wall'
 import { Pillar } from '../entities/Pillar'
 import { Glass } from '../entities/Glass'
 import { withDifficulty } from '../editor/maps'
-import { CAMPAIGN, EXAMPLE_MAPS, SKIRMISH } from '../levels'
+import { VS_AI_BUILT_IN } from '../levels'
 import { setRingScale } from '../entities/Cannon'
 import { drawBoardSurface } from '../render/boardSurface'
 import { SideGlow, glowColours, glowEdges } from '../render/sideGlow'
@@ -26,7 +26,7 @@ import { beatPulse } from '../ui/beatPulse'
 import type { LevelDef } from '../types'
 
 /** Boards the title's background battle cycles through (both sides played by the Normal AI). */
-export const DEMO_LEVELS: LevelDef[] = [SKIRMISH, ...CAMPAIGN.filter((l) => l.kind !== 'puzzle'), ...EXAMPLE_MAPS]
+export const DEMO_LEVELS: readonly LevelDef[] = VS_AI_BUILT_IN
 /** A background battle restarts on the next board after this long, if nobody has won. */
 const DEMO_MS = 70_000
 
