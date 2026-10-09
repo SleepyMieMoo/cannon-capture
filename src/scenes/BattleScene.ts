@@ -34,6 +34,7 @@ import { bindSceneResolution } from '../render/resolution'
 import { WorldCamera } from '../render/WorldCamera'
 import { drawBoardSurface } from '../render/boardSurface'
 import { crosshair, dash, drawShots } from '../render/battleMarks'
+import { ObstacleAuras } from '../render/vfx/obstacleAuras'
 import { Vfx } from '../render/vfx/Vfx'
 import { SlowWatch } from '../render/vfx/fxQuality'
 import { currentFx, currentFxConfig, fxLabel, noteSlowDevice, onFxChange } from '../render/vfx/fxPrefs'
@@ -152,6 +153,7 @@ export class BattleScene extends Phaser.Scene {
   private pillars: Pillar[] = []
   private glass: Glass[] = []
   private portals: Portal[] = []
+  private obAuras: ObstacleAuras | null = null
   /** Portal mouths for aim previews (see sim/portals). */
   private mouths: PortalMouth[] = []
   private sparks: Spark[] = []
@@ -516,7 +518,20 @@ export class BattleScene extends Phaser.Scene {
       view: () => (this.wc ? this.wc.visibleRect() : null),
     })
     this.vfx = vfx
-    const offFx = onFxChange(() => vfx.setConfig(currentFxConfig('battle')))
+    // Soft auras under the obstacles (half a tower's).
+    const obAuras = new ObstacleAuras(this, {
+      walls: this.walls,
+      pillars: this.level.pillars ?? [],
+      glass: this.level.glass ?? [],
+      fans: this.level.fans,
+      mouths: this.mouths,
+    }, currentFxConfig('battle'), (o) => this.world(o))
+    this.obAuras = obAuras
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => obAuras.destroy())
+    const offFx = onFxChange(() => {
+      vfx.setConfig(currentFxConfig('battle'))
+      obAuras.setConfig(currentFxConfig('battle'))
+    })
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, offFx)
     // Name tags: two-player rounds only (they show while the looks clash), or forced with ?debug&tags=1.
     if (pvp || DEBUG.tags) {
@@ -2279,6 +2294,7 @@ export class BattleScene extends Phaser.Scene {
     this.lastFrameAt = now
     // Real time (up to 100 ms a frame), so effects keep their timing on a slow device.
     vfx.update(Math.min(delta, 100), time, this.cannons, this.sim.shots, this.fans)
+    this.obAuras?.update(time)
     const ended = this.sim.ended
     if (ended && !this.endFxDone) {
       this.endFxDone = true
