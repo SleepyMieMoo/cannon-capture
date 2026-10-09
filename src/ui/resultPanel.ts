@@ -204,8 +204,18 @@ function injectResultStyles(): void {
   display: grid; gap: 10px; margin: clamp(14px, 3.4vmin, 24px) auto 0;
   grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr); width: max-content; max-width: 100%;
 }
-/* Narrow: stacked, full width. */
-@container (max-width: 400px) { .rp-btns { grid-auto-flow: row; grid-auto-columns: 1fr; width: 100%; } }
+/* Narrow: two equal columns across the full width, stacked only when truly tiny. Bot row and stats tighten up. */
+@container (max-width: 400px) {
+  .rp-btns { grid-auto-columns: minmax(0, 1fr); width: 100%; gap: 8px; }
+  .rp-bot { gap: 9px; }
+  .rp-face { width: 44px; height: 44px; }
+  .rp-bubble { padding: 7px 10px; font-size: 14px; }
+  .rp-brag { gap: 5px; }
+  .rp-stat { padding: 4px 9px 5px; }
+  .rp-stat dt { font-size: 10px; }
+  .rp-stat dd { font-size: 14px; }
+}
+@container (max-width: 240px) { .rp-btns { grid-auto-flow: row; grid-auto-columns: 1fr; } }
 .rp-btns .mm-btn { width: 100%; min-width: 0; min-height: 48px; padding: 8px 14px; font-size: clamp(15px, 2.5vmin, 17px); line-height: 1.2; }
 .rp-btns .mm-btn span { min-width: 0; overflow-wrap: anywhere; text-wrap: balance; }
 .rp-btns .mm-btn:disabled { opacity: .45; }
