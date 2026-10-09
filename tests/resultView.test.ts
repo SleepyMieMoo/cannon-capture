@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { offlineResult, onlineResult, type OfflineResultInput } from '../src/ui/resultView'
+import { offlineResult, onlineResult, type OfflineResultInput, bragFor, fmtMatchTime } from '../src/ui/resultView'
 
 const base: OfflineResultInput = {
   result: 'win', campaign: false, hasNext: false, fromPuzzles: false, pvp: false, isPuzzle: false,
@@ -79,5 +79,35 @@ describe('result panel contents', () => {
       expect(v.buttons.filter((b) => b.primary).length).toBe(1)
       expect(v.buttons[0].primary).toBe(true)
     }
+  })
+})
+
+describe('brag row', () => {
+  it('match time is m:ss', () => {
+    expect(fmtMatchTime(0)).toBe('0:00')
+    expect(fmtMatchTime(9_999)).toBe('0:09')
+    expect(fmtMatchTime(65_400)).toBe('1:05')
+    expect(fmtMatchTime(3_600_000)).toBe('60:00')
+  })
+
+  it('vs AI: opponent, map and time, in that order', () => {
+    const v = offlineResult({ ...base, brag: { opponent: 'Hard AI', map: 'Warp Works', ms: 151_000 } })
+    expect(v.brag).toEqual([
+      { key: 'opponent', label: 'Against', value: 'Hard AI' },
+      { key: 'map', label: 'Map', value: 'Warp Works' },
+      { key: 'time', label: 'Time', value: '2:31' },
+    ])
+  })
+
+  it('no opponent (a puzzle, the same-browser test): just map and time', () => {
+    const v = offlineResult({ ...base, campaign: true, isPuzzle: true, brag: { opponent: null, map: 'Bank shot', ms: 12_000 } })
+    expect(v.brag!.map((s) => s.key)).toEqual(['map', 'time'])
+  })
+
+  it('online: the other player and the time; left out when not given', () => {
+    const v = onlineResult({ result: 'win', headline: 'You win', detail: '', player: null, brag: { opponent: 'Mie vs Moo', map: 'Skirmish', ms: 61_000 } })
+    expect(bragFor({ opponent: 'Moo', map: '', ms: 1000 }).map((s) => s.key)).toEqual(['opponent', 'time'])
+    expect(v.brag![0].value).toBe('Mie vs Moo')
+    expect(onlineResult({ result: 'win', headline: 'x', detail: '', player: null }).brag).toBeUndefined()
   })
 })

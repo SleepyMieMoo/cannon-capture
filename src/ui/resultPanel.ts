@@ -1,7 +1,7 @@
 import { cssHex, theme } from '../config/theme'
 import { injectMenuStyles } from '../menu/menuStyles'
 import { h } from './dom'
-import type { ResultAction, ResultView } from './resultView'
+import type { BragStat, ResultAction, ResultView } from './resultView'
 
 const rgba = (c: number, a: number): string => `rgba(${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255}, ${a})`
 
@@ -50,6 +50,7 @@ export class ResultPanel {
       title,
       stars,
       view.detail ? h('p.rp-detail', {}, view.detail) : null,
+      view.brag?.length ? bragRow(view.brag) : null,
       view.extra ? h(`p.rp-extra${view.extra.gold ? '.gold' : ''}`, { 'aria-live': 'polite' }, view.extra.text) : null,
       buttons,
       view.keys ? h(`p.rp-keys${view.keysOnly ? '.keys' : ''}`, {}, view.keys) : null,
@@ -90,6 +91,11 @@ export class ResultPanel {
     window.removeEventListener('resize', this.onResize)
     this.el.remove()
   }
+}
+
+/** The brag row: small labelled facts side by side (wrapping on narrow screens). */
+function bragRow(stats: BragStat[]): HTMLElement {
+  return h('dl.rp-brag', {}, ...stats.map((s) => h('div.rp-stat', { dataset: { key: s.key } }, h('dt', {}, s.label), h('dd', {}, s.value))))
 }
 
 /** Colours the confetti is cut from (the gold, its lighter shade, cream and caramel). */
@@ -153,6 +159,16 @@ function injectResultStyles(): void {
 .rp-stars path { fill: ${cssHex(theme.grid)}; stroke: ${cssHex(theme.boardEdge)}; stroke-width: 1.2; stroke-linejoin: round; }
 .rp-stars svg.on path { fill: ${gold}; stroke: ${cssHex(theme.playerHot)}; }
 .rp-detail { margin: clamp(6px, 1.6vmin, 12px) 0 0; font-size: clamp(14px, 2.4vmin, 16px); line-height: 1.35; color: ${theme.textMuted}; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rp-brag {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: clamp(10px, 2.4vmin, 16px) 0 0; padding: 0;
+}
+.rp-stat {
+  min-width: 0; max-width: 100%; padding: 5px 12px 6px; border-radius: 10px;
+  background: ${rgba(theme.dim, 0.5)}; border: 1px solid ${cssHex(theme.boardEdge)};
+}
+.rp-stat dt { margin: 0; font-size: 11px; line-height: 1.2; letter-spacing: .06em; text-transform: uppercase; color: ${theme.textMuted}; }
+.rp-stat dd { margin: 1px 0 0; font-size: clamp(14px, 2.4vmin, 16px); line-height: 1.25; font-weight: bold; overflow-wrap: anywhere; }
+.rp-stat[data-key="time"] dd { font-variant-numeric: tabular-nums; }
 .rp-extra { margin: 10px 0 0; font-size: clamp(13px, 2.2vmin, 15px); line-height: 1.35; font-weight: bold; overflow-wrap: anywhere; }
 .rp-extra.gold { color: ${gold}; }
 .rp-btns {

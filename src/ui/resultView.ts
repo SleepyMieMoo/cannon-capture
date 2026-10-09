@@ -14,6 +14,37 @@ export interface ResultButton {
   disabled?: boolean
 }
 
+/** One fact in the result's brag row ("Map: Warp Works"). */
+export interface BragStat {
+  key: 'opponent' | 'map' | 'time'
+  label: string
+  value: string
+}
+
+/** The match time as m:ss (whole seconds, rounded down). */
+export function fmtMatchTime(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+export interface BragInput {
+  /** Who it was against: a bot ("Hard AI"), a player's name, "A vs B" for watchers; null: nobody (a puzzle, the same-browser test). */
+  opponent: string | null
+  map: string
+  ms: number
+}
+
+/** The brag row: opponent (when there is one), map and time, in that order. */
+export function bragFor(i: BragInput): BragStat[] {
+  const out: BragStat[] = []
+  if (i.opponent) out.push({ key: 'opponent', label: 'Against', value: i.opponent })
+  if (i.map) out.push({ key: 'map', label: 'Map', value: i.map })
+  out.push({ key: 'time', label: 'Time', value: fmtMatchTime(i.ms) })
+  return out
+}
+
 export interface ResultView {
   /** Colours the panel's border: gold for a win, pink for a loss, grey for a draw. */
   tone: 'win' | 'lose' | 'draw'
@@ -23,6 +54,8 @@ export interface ResultView {
   detail: string
   /** Online players: the rematch line (gold once the other player wants one). */
   extra?: { text: string; gold: boolean }
+  /** Who, where and how long: a neat row worth a screenshot (none: left out). */
+  brag?: BragStat[]
   /** Always one or two, the primary first. */
   buttons: ResultButton[]
   /** The small line under the buttons: keyboard shortcuts, or a note for watchers. */
@@ -50,6 +83,8 @@ export interface OfflineResultInput {
   stars: number
   /** "Change map or difficulty", "Back to map", "Back to puzzles", "My maps"... */
   backLabel: string
+  /** The brag row's facts (left out: no row). */
+  brag?: BragInput
 }
 
 export function offlineResult(i: OfflineResultInput): ResultView {
@@ -95,6 +130,7 @@ export function offlineResult(i: OfflineResultInput): ResultView {
     headline,
     stars: win && i.campaign ? i.stars : null,
     detail,
+    ...(i.brag ? { brag: bragFor(i.brag) } : {}),
     buttons,
     keys: win && i.hasNext ? 'N for next  ·  R to replay' : 'R to restart',
     keysOnly: true,
@@ -107,10 +143,11 @@ export interface OnlineResultInput {
   detail: string
   /** Null: watching (no seat). */
   player: { rematchLine: string; otherWants: boolean; iWant: boolean; otherHere: boolean } | null
+  brag?: BragInput
 }
 
 export function onlineResult(i: OnlineResultInput): ResultView {
-  const base = { tone: i.result, headline: i.headline, stars: null, detail: i.detail }
+  const base = { tone: i.result, headline: i.headline, stars: null, detail: i.detail, ...(i.brag ? { brag: bragFor(i.brag) } : {}) }
   if (i.player) {
     const p = i.player
     return {
