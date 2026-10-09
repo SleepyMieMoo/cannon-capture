@@ -4,6 +4,8 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.7.7: buy me a coffee", "text": "A small way to support the game, if you'd like to." },
+        { "kind": "new", "title": "Support SleepyMie", "text": "A Buy me a coffee ☕ link now sits in a corner of the title screen and in Credits. It opens Buy Me a Coffee in a new tab. It never shows in a match, and the game loads nothing from the site." },
         { "kind": "new", "title": "Version 0.7.6: a proper link preview", "text": "Sharing the game's link now shows a picture of a real battle with the game's name." },
         { "kind": "new", "title": "Link preview", "text": "Links to the game in Discord and other apps now show a preview card: a Warp Works battle with the title, Capture every cannon., and a short line about the game." },
         { "kind": "new", "title": "Version 0.7.5: a clearer top bar", "text": "The top bar now says where you are, who you are up against and how long the match has run." },

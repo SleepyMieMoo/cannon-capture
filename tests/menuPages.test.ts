@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import rawWhatsNew from '../src/data/whatsNew.json'
 import mainMenuSource from '../src/menu/mainMenu.ts?raw'
+import battleSceneSource from '../src/scenes/BattleScene.ts?raw'
+import battleMenuSource from '../src/ui/battleMenu.ts?raw'
+import indexHtml from '../index.html?raw'
 import { LINKS } from '../src/menu/credits'
 import { debugInfo, settingsText, urlSwitches, type DebugEnv } from '../src/menu/debugInfo'
 import { KEPT_KEYS, PREF_KEYS, resetPreferences } from '../src/menu/prefs'
@@ -43,7 +46,7 @@ describe("What's new", () => {
   it("lists today's verified features, newest first, in player words", () => {
     expect(WHATS_NEW.length).toBeGreaterThan(0)
     const titles = WHATS_NEW.flatMap((d) => d.entries.map((e) => e.title.toLowerCase())).join(' | ')
-    for (const topic of ['shield', 'editor', 'difficulty', 'ownership rings', 'heal guide', 'skins', 'healers re-aim', 'countdown', 'team colours', 'name tags', 'room settings', 'side glow', 'surrender', 'profile', 'credits', 'alt-tab', 'jukebox', '0.2.0', '0.2.1', 'switching away', '0.2.2', 'smoother online', 'online room runs', '0.2.3', 'tidier settings', '0.2.4', 'result buttons fit', '0.2.5', 'livelier feel', 'reduce motion', '0.2.6', 'pulse to the music', '0.3.0', 'battles that pop', 'effects quality', 'bank shots keep their range', '0.4.0', 'new obstacles', 'void walls', 'round pillars', 'one-way glass', 'glass garden', 'oval rock pillars', 'breakable walls', '0.5.0', 'portals', 'warp works', 'true edge', 'clearer shields', '0.5.1', 'portal discs', 'simpler portal cue', 'brick wall health', 'neutral cannons glow', '0.5.2', 'obstacles glow', 'brag-worthy results', '0.6.0', 'meet the bots', '0.6.1', 'win badges', 'beatable on impossible', 'tidier map list', '0.7.0', 'jukebox repeat', '0.7.1', '0.7.2', 'settings in battle', '0.7.3', 'target mode', 'version 0.7.4: stop on command', 'stop aiming', 'version 0.7.5: a clearer top bar', 'top bar and cannon strip', 'version 0.7.6: a proper link preview', 'link preview']) {
+    for (const topic of ['shield', 'editor', 'difficulty', 'ownership rings', 'heal guide', 'skins', 'healers re-aim', 'countdown', 'team colours', 'name tags', 'room settings', 'side glow', 'surrender', 'profile', 'credits', 'alt-tab', 'jukebox', '0.2.0', '0.2.1', 'switching away', '0.2.2', 'smoother online', 'online room runs', '0.2.3', 'tidier settings', '0.2.4', 'result buttons fit', '0.2.5', 'livelier feel', 'reduce motion', '0.2.6', 'pulse to the music', '0.3.0', 'battles that pop', 'effects quality', 'bank shots keep their range', '0.4.0', 'new obstacles', 'void walls', 'round pillars', 'one-way glass', 'glass garden', 'oval rock pillars', 'breakable walls', '0.5.0', 'portals', 'warp works', 'true edge', 'clearer shields', '0.5.1', 'portal discs', 'simpler portal cue', 'brick wall health', 'neutral cannons glow', '0.5.2', 'obstacles glow', 'brag-worthy results', '0.6.0', 'meet the bots', '0.6.1', 'win badges', 'beatable on impossible', 'tidier map list', '0.7.0', 'jukebox repeat', '0.7.1', '0.7.2', 'settings in battle', '0.7.3', 'target mode', 'version 0.7.4: stop on command', 'stop aiming', 'version 0.7.5: a clearer top bar', 'top bar and cannon strip', 'version 0.7.6: a proper link preview', 'link preview', 'version 0.7.7: buy me a coffee', 'support sleepymie']) {
       expect(titles).toContain(topic)
     }
     const dates = WHATS_NEW.map((d) => d.date)
@@ -141,6 +144,17 @@ describe('menu pages', () => {
     const email = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}/
     expect(mainMenuSource).not.toMatch(email)
     expect(JSON.stringify(rawWhatsNew)).not.toMatch(email)
+  })
+
+  it('Buy me a coffee: a plain new-tab link on the home screen and in Credits, never in a match, no tracking', () => {
+    expect(LINKS.coffee).toBe('https://buymeacoffee.com/sleepymie')
+    expect(mainMenuSource).toMatch(/h\(`a\.mm-coffee\$\{cls\}`, \{ href: LINKS\.coffee, target: '_blank', rel: 'noopener noreferrer'/)
+    expect(mainMenuSource).toContain("coffeeLink('coffee', '.home.corner')")
+    expect(mainMenuSource).toContain("coffeeLink('coffee-inline', '.home.inline')")
+    expect(mainMenuSource).toContain("row('Support SleepyMie'")
+    // Battle screens never show it, and nothing loads BMC's widget script or images.
+    for (const src of [battleSceneSource, battleMenuSource]) expect(src).not.toMatch(/coffee/i)
+    for (const src of [mainMenuSource, indexHtml]) expect(src).not.toMatch(/cdnjs\.buymeacoffee|img\.buymeacoffee|buymeacoffee\.com\/widget|bmc-/i)
   })
 
   it('the home grid: Play vs AI first, rows of two, then Settings, How to play and Credits as a row of three', () => {
