@@ -55,7 +55,7 @@ export class Pillar {
         return new Phaser.Math.Vector2(Math.cos(t) * rx, Math.sin(t) * ry)
       })
     // The footprint: dark outline on the exact edge, stone inside it.
-    g.fillStyle(ROCK.edge, 1)
+    g.fillStyle(ROCK.outline, 1)
     g.fillPoints(ellipse(a, b), true)
     g.fillStyle(ROCK.base, 1)
     g.fillPoints(ellipse(ia, ib), true)
@@ -106,6 +106,20 @@ export class Pillar {
       g.lineTo(p1.x, p1.y)
       g.lineTo(p2.x, p2.y)
       g.strokePath()
+    }
+    // A thin lit lip just inside the outline, so the edge reads on a dark board.
+    // Only on the lit side, fading round, so it reads as light on stone rather than a button's rim.
+    const lip = ellipse(Math.max(1, ia - 0.6), Math.max(1, ib - 0.6))
+    for (let i = 0; i < lip.length; i++) {
+      const tt = ((i + 0.5) / lip.length) * Math.PI * 2
+      const nx = Math.cos(tt) / ia
+      const ny = Math.sin(tt) / ib
+      const lit = (nx * lx + ny * ly) / Math.max(1e-6, Math.hypot(nx, ny))
+      if (lit <= 0.05) continue
+      const p = lip[i]
+      const q = lip[(i + 1) % lip.length]
+      g.lineStyle(1.3, ROCK.light, 0.6 * lit)
+      g.lineBetween(p.x, p.y, q.x, q.y)
     }
     // Moss: leafy clumps on one side (more on smaller rocks), kept inside the outline.
     const side = rnd() * Math.PI * 2

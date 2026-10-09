@@ -126,7 +126,7 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
     }
     return out
   }
-  const rockEdge = cssHex(ROCK.edge)
+  const rockOutline = cssHex(ROCK.outline)
   const rockBase = cssHex(ROCK.base)
   const rockMid = cssHex(ROCK.mid)
   const rockCrack = cssHex(ROCK.crack)
@@ -190,7 +190,7 @@ export function howtoTips(): { title: string; text: string; art: string; wide?: 
     title: 'Rock pillars',
     text: 'Shots glance off a rock’s curve, round or oval: hit it off-centre and the shot flies off at a wide angle, while a long flat side bounces almost like a wall. The dark outline is its exact edge. Great for bank shots around a crowd.',
     art: svg(
-      `${cannon(36, 66, gold, -0.32)}<polyline points="62,58 128,40 206,72" fill="none" stroke="${sel}" stroke-width="2.5" stroke-dasharray="6 5"/><ellipse cx="129.5" cy="23" rx="27" ry="14" fill="${rockEdge}"/><ellipse cx="129.5" cy="23" rx="24" ry="11" fill="${rockBase}"/><ellipse cx="124" cy="19" rx="14" ry="6" fill="${rockMid}"/><path d="M112 23l7 3 3 5M140 15l-4 6" stroke="${rockCrack}" stroke-width="1.5" fill="none"/><ellipse cx="146" cy="27" rx="4" ry="3" fill="${moss}"/><ellipse cx="141" cy="31" rx="3.5" ry="2.6" fill="${moss}"/><ellipse cx="145" cy="26" rx="2" ry="1.5" fill="${mossLight}"/>${cannon(212, 74, grey, Math.PI + 0.4, 12)}${label(120, 92, 'bounces off the curve')}`,
+      `${cannon(36, 66, gold, -0.32)}<polyline points="62,58 128,40 206,72" fill="none" stroke="${sel}" stroke-width="2.5" stroke-dasharray="6 5"/><ellipse cx="129.5" cy="23" rx="27" ry="14" fill="${rockOutline}"/><ellipse cx="129.5" cy="23" rx="24" ry="11" fill="${rockBase}"/><ellipse cx="124" cy="19" rx="14" ry="6" fill="${rockMid}"/><path d="M112 23l7 3 3 5M140 15l-4 6" stroke="${rockCrack}" stroke-width="1.5" fill="none"/><ellipse cx="146" cy="27" rx="4" ry="3" fill="${moss}"/><ellipse cx="141" cy="31" rx="3.5" ry="2.6" fill="${moss}"/><ellipse cx="145" cy="26" rx="2" ry="1.5" fill="${mossLight}"/>${cannon(212, 74, grey, Math.PI + 0.4, 12)}${label(120, 92, 'bounces off the curve')}`,
     ),
   },
   {
