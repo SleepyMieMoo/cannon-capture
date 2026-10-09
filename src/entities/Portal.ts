@@ -80,12 +80,6 @@ export class Portal {
     // The exit beam: a soft wedge from the middle out to the rim.
     const out = exitAngle(this.which, angle)
     const spread = 0.62
-    g.fillStyle(col, 0.16)
-    g.slice(x, y, r - 2, out - spread, out + spread, false)
-    g.fillPath()
-    g.fillStyle(col, 0.14)
-    g.slice(x, y, r - 2, out - spread * 0.5, out + spread * 0.5, false)
-    g.fillPath()
     g.lineStyle(3, col, 0.95)
     g.strokeCircle(x, y, r - 1.5)
     g.lineStyle(1, lerpColor(col, 0xffffff, 0.6), 0.7)
@@ -99,7 +93,7 @@ export class Portal {
     const ca = Math.cos(out)
     const sa = Math.sin(out)
     const chevron = (d: number, alpha: number) => {
-      const w = 5
+      const w = 6
       g.lineStyle(2, col, alpha)
       g.beginPath()
       g.moveTo(x + ca * d - sa * w, y + sa * d + ca * w)
@@ -107,12 +101,19 @@ export class Portal {
       g.lineTo(x + ca * d + sa * w, y + sa * d - ca * w)
       g.strokePath()
     }
-    chevron(r + 4, 0.5)
-    chevron(r + 9, 0.25)
+    chevron(r + 4, 0.6)
+    chevron(r + 9, 0.32)
     this.swirl.setPosition(x, y).setScale(((r - 2) * 2) / PORTAL_W).setTint(col)
     // The pair's glyph.
     const gl = this.glyph
     gl.clear()
+    // The beam goes over the swirl so it reads: a soft wedge from the middle out to the rim.
+    gl.fillStyle(lerpColor(col, 0xffffff, 0.3), 0.16)
+    gl.slice(x, y, r - 3, out - spread, out + spread, false)
+    gl.fillPath()
+    gl.fillStyle(lerpColor(col, 0xffffff, 0.3), 0.14)
+    gl.slice(x, y, r - 3, out - spread * 0.45, out + spread * 0.45, false)
+    gl.fillPath()
     gl.lineStyle(2, 0xffffff, 0.85)
     const k = 5
     const shape = PORTAL.glyphs[this.pair % PORTAL.glyphs.length]

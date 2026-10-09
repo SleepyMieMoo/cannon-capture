@@ -2388,9 +2388,10 @@ export class BattleScene extends Phaser.Scene {
     dash(g, x, y, hit.x, hit.y, startInset, 2, color, alpha)
     dash(g, sx, sy, stop.x, stop.y, 0, 4, color, alpha * 0.85)
     // Ring both mouths in the pair's colour so the link reads.
-    g.lineStyle(2, portalColour(from.pair), Math.min(1, alpha + 0.2))
-    g.strokeCircle(from.x, from.y, PORTAL.radius + 4)
-    g.strokeCircle(to.x, to.y, PORTAL.radius + 4)
+    // (on the rim itself: the disc is the mouth, nothing bigger).
+    g.lineStyle(2.5, portalColour(from.pair), Math.min(1, alpha + 0.2))
+    g.strokeCircle(from.x, from.y, PORTAL.radius - 1.5)
+    g.strokeCircle(to.x, to.y, PORTAL.radius - 1.5)
     return true
   }
 

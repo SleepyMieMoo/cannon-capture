@@ -1542,7 +1542,7 @@ export class EditorScene extends Phaser.Scene {
           h('button.cc-btn.xs', { title: 'E', onclick: () => this.rotateSelected(1) }, '⟳'),
         ),
         h('button.cc-btn.xs', { title: 'Select the linked mouth', onclick: () => this.select({ kind: 'portal', index: ref.index ^ 1 }) }, ref.index & 1 ? 'Other: A' : 'Other: B'),
-        h('span.cc-note', {}, 'Shots come out along the beam: in one beam, out the other.'),
+        h('span.cc-note', {}, 'Shots come out along the beam.'),
         h('button.cc-btn.xs.danger', { title: 'Delete this pair (Del)', onclick: () => this.deleteItem(ref) }, 'Delete pair'),
       ]
     }
