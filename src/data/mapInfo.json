@@ -7,5 +7,6 @@
   "crossfire": { "impossible": true },
   "last-stand": { "impossible": true },
   "ex-glass-garden": { "impossible": true },
-  "ex-void-gate": { "impossible": true }
+  "ex-void-gate": { "impossible": true },
+  "ex-warp-works": { "impossible": true }
 }

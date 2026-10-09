@@ -5,6 +5,7 @@
       "date": "2026-10-09",
       "entries": [
         { "kind": "fix", "title": "Version 0.7.9: Long Shot can be finished", "text": "Puzzles no longer end before your last shot has had its chance." },
+        { "kind": "change", "title": "Warp Works beaten on Impossible", "text": "Warp Works now wears the gold Beatable on Impossible chip, like every other Play vs AI map." },
         { "kind": "fix", "title": "Out of aims waits for your last shot", "text": "A puzzle now only ends out of aims once your last orders have had their shots land and the board has gone quiet. Long Shot's slow sniper finish works again. Aiming a cannon at what it already aims at no longer spends an aim." },
         { "kind": "fix", "title": "Version 0.7.8: aiming fixed online", "text": "Online matches no longer stop taking your aims partway through." },
         { "kind": "fix", "title": "Aim cannons under fire", "text": "Online, a cannon of yours that had been hit could no longer be aimed on your screen, so aiming seemed to stop working as a match went on. Hit cannons take aims again, and a long match of quick clicking can no longer get you disconnected." },
