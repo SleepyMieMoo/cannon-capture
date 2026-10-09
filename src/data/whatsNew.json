@@ -4,6 +4,7 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Neutral cannons glow too", "text": "Unclaimed cannons now have an aura like owned ones, in a warm milk-chocolate beige, so they stand out as targets. It cross-fades into the new owner's colour when one is captured." },
         { "kind": "new", "title": "Brick wall health bars", "text": "Brick walls show a small health bar beside them, in the same style as a shield's: a notch per hit, or per few hits on tough walls (the 24-hit middle of Warp Works has a notch every 3). It sits above a lying wall, left of a standing one." },
         { "kind": "new", "title": "Simpler portal cue", "text": "The chevrons outside portals are gone (they pointed to nowhere). A soft beam inside each disc still shows the side shots come out of, and the colour and mark tell you which portals link." },
         { "kind": "new", "title": "Version 0.5.1: easier to read", "text": "Rocks, shields and portals now show exactly what they do: rocks are drawn as their true bouncing edge, shields show where they face and how much they can take, and a portal's whole disc is its mouth." },
