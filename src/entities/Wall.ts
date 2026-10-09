@@ -3,7 +3,12 @@ import { theme } from '../config/theme'
 import { VOID_TEX, VOID_W, bakeFxTextures } from '../render/vfx/fxTextures'
 import { BRICK, VOID_COLOURS, crackStage } from '../config/obstacles'
 import { seededRandom } from '../sim/random'
+import { drawHpBar } from '../render/hpBar'
+import { lerpColor } from '../config/theme'
 import type { WallDef } from '../types'
+
+/** A brick wall's hp bar: light terracotta, warm and clearly not a team colour. */
+const BAR_COLOUR = lerpColor(BRICK.light, 0xffffff, 0.25)
 
 /**
  * A wall block. Rotated walls (`angle`, radians) turn about their centre.
@@ -16,6 +21,9 @@ export class Wall {
   rect: WallDef
   readonly gfx: Phaser.GameObjects.Graphics
   private swirl: Phaser.GameObjects.TileSprite | null = null
+  /** Breakable walls: the hp bar beside the wall (its own graphics, redrawn when the hp changes). */
+  private bar: Phaser.GameObjects.Graphics | null = null
+  private barHp = -1
   /** Breakable walls: the crack stage drawn (0 whole … 3 broken). */
   private stage = 0
 
@@ -28,7 +36,10 @@ export class Wall {
 
   /** Every display object (register them all with the world camera). */
   get parts(): Phaser.GameObjects.GameObject[] {
-    return this.swirl ? [this.gfx, this.swirl] : [this.gfx]
+    const out: Phaser.GameObjects.GameObject[] = [this.gfx]
+    if (this.swirl) out.push(this.swirl)
+    if (this.bar) out.push(this.bar)
+    return out
   }
 
   get isVoid(): boolean {
@@ -46,6 +57,7 @@ export class Wall {
   /** Breakable walls: show `health` (1 whole … 0 broken). Redraws only when the crack stage changes. */
   setHealth(health: number): void {
     if (!this.isBreakable) return
+    this.drawBar(health)
     const stage = crackStage(health)
     if (stage === this.stage) return
     this.stage = stage
@@ -61,6 +73,8 @@ export class Wall {
 
   destroy(): void {
     this.gfx.destroy()
+    this.bar?.destroy()
+    this.bar = null
     this.swirl?.destroy()
     this.swirl = null
   }
@@ -97,7 +111,13 @@ export class Wall {
     }
     this.swirl?.destroy()
     this.swirl = null
-    if (this.rect.kind === 'breakable') return this.drawBricks(lx, ly, w, h, inset)
+    if (this.rect.kind === 'breakable') {
+      this.barHp = -1
+      this.drawBar(this.lastHealth)
+      return this.drawBricks(lx, ly, w, h, inset)
+    }
+    this.bar?.destroy()
+    this.bar = null
     g.fillStyle(theme.wallEdge, 1)
     g.fillRoundedRect(lx, ly, w, h, Math.min(5, w / 2, h / 2))
     g.fillStyle(theme.wall, 1)
@@ -168,6 +188,41 @@ export class Wall {
         v = nv
       }
     }
+  }
+
+  private lastHealth = 1
+
+  /**
+   * The hp bar: small and notched like the shield's, centred just outside the
+   * wall's long edge (above a lying wall, left of a standing one) and turned
+   * with it. Hidden once it breaks.
+   */
+  private drawBar(health: number): void {
+    this.lastHealth = health
+    const max = Math.max(1, Math.round(this.rect.hp ?? 1))
+    const hp = Math.max(0, Math.min(max, Math.ceil(health * max - 1e-6)))
+    if (hp === this.barHp && this.bar) return
+    this.barHp = hp
+    if (!this.bar) this.bar = this.scene.add.graphics().setDepth(1.25)
+    const b = this.bar
+    b.clear()
+    b.setVisible(hp > 0)
+    if (hp <= 0) return
+    const { x, y, w, h } = this.rect
+    const along = w >= h
+    const len = along ? w : h
+    const thick = along ? h : w
+    const angle = (this.rect.angle ?? 0) + (along ? 0 : Math.PI / 2)
+    const cos = Math.cos(angle)
+    const sin = Math.sin(angle)
+    // Drawn on the local -v side; mirror so it sits above (or left of) the wall on screen, and so
+    // it fills from the left (or from the bottom) whichever way the wall was turned.
+    const above = cos - sin * 0.5 >= 0 ? 1 : -1
+    const fromLeft = Math.abs(cos) >= Math.abs(sin) ? (cos > 0 ? 1 : -1) : sin < 0 ? 1 : -1
+    b.setPosition(x + w / 2, y + h / 2).setRotation(angle).setScale(fromLeft, above)
+    const bw = Math.max(36, Math.min(96, len * 0.6))
+    const bh = 4
+    drawHpBar(b, -bw / 2, -thick / 2 - 5 - bh, bw, bh, hp / max, BAR_COLOUR, 1, max)
   }
 
   /** The swirl exactly fills the wall's inside, so it needs no mask. */

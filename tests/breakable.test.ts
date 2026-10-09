@@ -173,3 +173,14 @@ describe('breakable wall', () => {
     expect(back.walls.map((w) => [w.kind, w.hp])).toEqual(level.walls.map((w) => [w.kind, w.hp]))
   })
 })
+
+describe('brick hp bar notches', () => {
+  it('a notch per hit when few; grouped into a handful of segments when many', async () => {
+    const { notchStep, HP_BAR_MAX_SEGMENTS } = await import('../src/render/hpBar')
+    expect(notchStep(6)).toBe(1)
+    expect(notchStep(8)).toBe(1)
+    expect(notchStep(24)).toBe(3)
+    expect(notchStep(40)).toBe(5)
+    for (let hp = 1; hp <= 40; hp++) expect(hp / notchStep(hp)).toBeLessThanOrEqual(HP_BAR_MAX_SEGMENTS)
+  })
+})

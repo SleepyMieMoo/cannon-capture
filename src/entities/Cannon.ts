@@ -1,6 +1,7 @@
 import type Phaser from 'phaser'
 import { TUNING } from '../config/tuning'
 import { lerpColor, ownerRing, shade, sideColor, theme } from '../config/theme'
+import { drawHpBar } from '../render/hpBar'
 import { aimAngle, aimShot, type Ball, type Barrier } from '../sim/ballistics'
 import { angleDelta, turnToward } from '../sim/aim'
 import { applyCaptureHit } from '../sim/capture'
@@ -792,7 +793,7 @@ export class Cannon {
     const y = trackR() + 5 * k
     const team = this.shieldFlash > 0 ? lerpColor(sideColor(this.side), 0xffffff, this.shieldFlash * 0.6) : sideColor(this.side)
     const fill = this.shieldDown > 0 ? 1 - this.shieldDown / s.downMs : this.shieldHp / s.hp
-    hpBar(g, -w / 2, y, w, h, fill, this.shieldDown > 0 ? 0xfff4d2 : team, this.shieldDown > 0 ? 0.6 : 1, this.shieldDown > 0 ? 0 : s.hp)
+    drawHpBar(g, -w / 2, y, w, h, fill, this.shieldDown > 0 ? 0xfff4d2 : team, this.shieldDown > 0 ? 0.6 : 1, this.shieldDown > 0 ? 0 : s.hp)
   }
 
   /**
@@ -907,17 +908,3 @@ export class Cannon {
   }
 }
 
-/** A small health bar (dark edge, fill from the left, a notch per point when `notches` > 1). */
-function hpBar(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill: number, color: number, alpha: number, notches: number): void {
-  const f = Math.max(0, Math.min(1, fill))
-  g.fillStyle(theme.ringEdge, 0.9)
-  g.fillRoundedRect(x - 1.5, y - 1.5, w + 3, h + 3, (h + 3) / 2)
-  g.fillStyle(0x000000, 0.35)
-  g.fillRoundedRect(x, y, w, h, h / 2)
-  if (f > 0) {
-    g.fillStyle(color, alpha)
-    g.fillRoundedRect(x, y, Math.max(h, w * f), h, h / 2)
-  }
-  g.fillStyle(theme.ringEdge, 0.9)
-  for (let i = 1; i < notches; i++) g.fillRect(x + (w * i) / notches - 0.6, y, 1.2, h)
-}
