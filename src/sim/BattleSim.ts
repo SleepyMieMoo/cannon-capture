@@ -13,8 +13,14 @@ import { LaneBuilder, lanesOf, levelFans, shotOpts, type LaneTable } from './sol
 /** How a round ended, for gold: 'draw' only in player vs player (the time limit with equal cannons). */
 export type Outcome = 'win' | 'lose' | 'draw'
 
-/** Puzzle: lose once out of aims and no neutral has been hit for this long. */
+/**
+ * Puzzle: lose once out of aims and the board has been quiet this long: no
+ * neutral hit and no order of yours (aim, swap, stop) for this long, and
+ * every cannon you gave an order has had its first shot land since.
+ */
 export const PUZZLE_STALL_MS = 5000
+/** Puzzle: stop waiting for an ordered cannon's first shot after this long (say it never fires again). */
+export const PUZZLE_AWAIT_MAX_MS = 15000
 /**
  * Safety cap on live shots; the oldest are dropped beyond it. Sized so even
  * 60 machine guns (each keeps about a dozen short-lived shots in the air)
@@ -98,6 +104,8 @@ export class BattleSim {
   ended: Outcome | null = null
   endReason = ''
   private lastPuzzleProgress = 0
+  /** Puzzle: cannons (by id) given an order whose first shot since has not landed yet: when, and the last shot id before it. */
+  private puzzleAwait = new Map<string, { at: number; seq: number }>()
   private readonly fans
   private readonly bodies: Body[]
   private near: Broadphase
@@ -379,6 +387,7 @@ export class BattleSim {
       ended: this.ended,
       endReason: '',
       lastPuzzleProgress: this.lastPuzzleProgress,
+      puzzleAwait: new Map(this.puzzleAwait),
       fans: this.fans,
       bodies: this.bodies,
       near: this.near,
@@ -432,7 +441,10 @@ export class BattleSim {
     // Sides can't change while paused, so each order is still its giver's.
     const stillTheirs = (cannon: Cannon) => this.humans.has(cannon.side) && (this.queuedBy.get(cannon) ?? 'player') === cannon.side
     for (const [cannon, kind] of this.queuedKinds) {
-      if (stillTheirs(cannon) && cannon.setKind(kind)) this.events.swapped?.(cannon)
+      if (stillTheirs(cannon) && cannon.setKind(kind)) {
+        this.puzzleOrder(cannon)
+        this.events.swapped?.(cannon)
+      }
     }
     const aims = [...this.queuedAims]
     const stops = [...this.queuedStops]
@@ -441,11 +453,16 @@ export class BattleSim {
     this.queuedAims.clear()
     this.queuedStops.clear()
     this.queuedBy.clear()
-    for (const cannon of stops) if (this.humans.has(cannon.side) && (by.get(cannon) ?? 'player') === cannon.side) cannon.clearAim()
+    for (const cannon of stops) {
+      if (!this.humans.has(cannon.side) || (by.get(cannon) ?? 'player') !== cannon.side) continue
+      cannon.clearAim()
+      this.puzzleOrder(cannon, false)
+    }
     for (const [cannon, aim] of aims) {
       if (!this.humans.has(cannon.side) || (by.get(cannon) ?? 'player') !== cannon.side) continue
       this.applyAim(cannon, aim)
       if (this.level.aims !== undefined) this.aimsUsed += 1
+      this.puzzleOrder(cannon)
     }
     for (const ai of this.ais) ai.afterPause(this.cannons)
   }
@@ -574,6 +591,13 @@ export class BattleSim {
   /** A player aim order (from gold, or `side` in PvP). Returns false when the puzzle aim budget is spent. */
   playerAim(cannon: Cannon, aim: Cannon | Point, side: Side = 'player'): boolean {
     if (this.ended || cannon.side !== side || !this.humans.has(side)) return false
+    // Aiming a cannon where it already aims changes nothing, so it costs nothing (paused: drops any other queued aim).
+    if (this.sameAim(cannon, aim)) {
+      if (this.paused && this.queuedAims.delete(cannon) && !this.queuedKinds.has(cannon) && !this.queuedStops.has(cannon)) this.queuedBy.delete(cannon)
+      if (this.paused) this.queuedStops.delete(cannon)
+      this.events.aimed?.({ x: aim.x, y: aim.y })
+      return true
+    }
     // Re-aiming a cannon that already has an order queued in this pause is free.
     if (this.aimsLeft <= 0 && !(this.paused && this.queuedAims.has(cannon))) {
       this.events.noAims?.(cannon)
@@ -588,8 +612,28 @@ export class BattleSim {
     }
     this.applyAim(cannon, aim)
     if (this.level.aims !== undefined) this.aimsUsed += 1
+    this.puzzleOrder(cannon)
     this.events.aimed?.({ x: aim.x, y: aim.y })
     return true
+  }
+
+  /** Is `aim` exactly what the cannon already does (same target or heal, or the same point)? Never while paused with another order queued for it. */
+  private sameAim(cannon: Cannon, aim: Cannon | Point): boolean {
+    if (this.paused && (this.queuedAims.has(cannon) || this.queuedStops.has(cannon))) {
+      const q = this.queuedAims.get(cannon)
+      if (!q) return false
+      return q === aim || (!(q instanceof Cannon) && !(aim instanceof Cannon) && Math.hypot(q.x - aim.x, q.y - aim.y) < 1)
+    }
+    if (aim instanceof Cannon) return cannon.target === aim || cannon.healing === aim
+    return !cannon.target && !cannon.healing && !!cannon.aimPoint && Math.hypot(cannon.aimPoint.x - aim.x, cannon.aimPoint.y - aim.y) < 1
+  }
+
+  /** Puzzle: an order of yours livens the board (the out-of-aims clock starts again and waits for its first shot). */
+  private puzzleOrder(cannon: Cannon, waitShot = true): void {
+    if (!this.isPuzzle) return
+    this.lastPuzzleProgress = this.clock
+    if (waitShot) this.puzzleAwait.set(cannon.id, { at: this.clock, seq: this.shotSeq })
+    else this.puzzleAwait.delete(cannon.id)
   }
 
   /**
@@ -614,6 +658,7 @@ export class BattleSim {
     }
     if (!cannon.aim()) return false
     cannon.clearAim()
+    this.puzzleOrder(cannon, false)
     return true
   }
 
@@ -642,6 +687,7 @@ export class BattleSim {
       return true
     }
     if (!cannon.setKind(kind)) return false
+    this.puzzleOrder(cannon)
     this.events.swapped?.(cannon)
     return true
   }
@@ -697,6 +743,8 @@ export class BattleSim {
       if (!shot.ball.alive) {
         // Let the AIs see where their shots went (every level but Impossible corrects its aim after a miss).
         for (const ai of this.ais) ai.shotLanded(shot.ball.ownerId, result.hitId, result.blockedBy)
+        const wait = this.puzzleAwait.get(shot.ball.ownerId)
+        if (wait && shot.id > wait.seq) this.puzzleAwait.delete(shot.ball.ownerId)
         this.shots.splice(i, 1)
       }
     }
@@ -788,9 +836,23 @@ export class BattleSim {
     const player = this.count('player')
     if (player === this.cannons.length) return this.finish('win')
     if (player === 0) return this.finish('lose', 'The enemy took every cannon you held.')
-    if (this.isPuzzle && this.aimsLeft === 0 && this.clock - this.lastPuzzleProgress > PUZZLE_STALL_MS) {
-      this.finish('lose', 'Out of aims, and the board has gone quiet.')
+    if (this.isPuzzle && this.aimsLeft === 0 && this.puzzleQuiet()) this.finish('lose', 'Out of aims, and the board has gone quiet.')
+  }
+
+  /**
+   * Puzzle: nothing can change any more. No neutral hit and no order for
+   * PUZZLE_STALL_MS, and every cannon you ordered (aimed or swapped) has had
+   * its first shot since land (a swap reloads, and a sniper takes a while),
+   * so the last aim is never judged before it has had its chance.
+   */
+  private puzzleQuiet(): boolean {
+    if (this.paused || this.clock - this.lastPuzzleProgress <= PUZZLE_STALL_MS) return false
+    for (const [id, wait] of this.puzzleAwait) {
+      const c = this.byId(id)
+      if (!c || c.side !== 'player' || !c.aim() || this.clock - wait.at > PUZZLE_AWAIT_MAX_MS) this.puzzleAwait.delete(id)
+      else return false
     }
+    return true
   }
 
   private finish(result: Outcome, reason = ''): void {
