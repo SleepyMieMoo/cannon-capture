@@ -842,7 +842,7 @@ export class Cannon {
     // like the aim line: stronger while you hover or select the cannon.
     const k = RING.width / 5
     const cue = this.selected ? 0.8 : this.hovered ? 0.65 : 0.3
-    const cx = R + t / 2 + 8 * k
+    const cx = R + t / 2 + 6.5 + 5 * k
     g.lineStyle(2.5 * k, theme.ringEdge, cue * 0.6)
     g.beginPath()
     g.moveTo(cx, -6 * k)

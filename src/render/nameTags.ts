@@ -51,7 +51,7 @@ export function tagClearance(kind: CannonKind): number {
   const s = TUNING.shield
   // Past the barrier, its little bar and the facing chevron; and past the hp bar under the cannon.
   const k = RING.width / 5
-  return Math.max(halo, s.reach + s.thickness / 2 + 16 * k, trackR() + 13 * k + 3)
+  return Math.max(halo, s.reach + s.thickness / 2 + 8 + 11 * k, trackR() + 13 * k + 3)
 }
 
 interface Tag {
