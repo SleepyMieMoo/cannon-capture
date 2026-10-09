@@ -11,6 +11,8 @@ import type { BattleSim } from './BattleSim'
 export type Order =
   /** Aim a cannon at another cannon (a foe to capture, a friend to heal) or at a point. */
   | { t: 'aim'; cannon: string; at: { cannon: string } | Point }
+  /** Stop aiming: the cannon drops its aim (and any heal) and holds its fire until it gets a new one. */
+  | { t: 'stop'; cannon: string }
   /** Change a cannon's tower type (queued while paused; its current type cancels a queued swap). */
   | { t: 'swap'; cannon: string; kind: CannonKind }
   /** Flip one cannon's own auto-target toggle. */
@@ -39,6 +41,10 @@ export function applyOrder(sim: BattleSim, side: Side, order: Order): OrderResul
       const at = 'cannon' in order.at ? sim.byId(order.at.cannon) : clampToBoard(sim, order.at)
       if (!at || at === cannon) return NO
       return { ok: sim.playerAim(cannon, at, side) }
+    }
+    case 'stop': {
+      const cannon = sim.byId(order.cannon)
+      return { ok: !!cannon && sim.playerStop(cannon, side) }
     }
     case 'swap': {
       const cannon = sim.byId(order.cannon)
@@ -87,6 +93,8 @@ export function parseOrder(raw: unknown): Order | null {
       return isId(o.cannon) && (CANNON_KINDS as readonly unknown[]).includes(o.kind) ? { t: 'swap', cannon: o.cannon, kind: o.kind as CannonKind } : null
     case 'auto':
       return isId(o.cannon) ? { t: 'auto', cannon: o.cannon } : null
+    case 'stop':
+      return isId(o.cannon) ? { t: 'stop', cannon: o.cannon } : null
     case 'autoAll':
       return typeof o.on === 'boolean' ? { t: 'autoAll', on: o.on } : null
     case 'pause':

@@ -12,9 +12,11 @@ const PAD = 5
 /** The auto-target toggle at the end of the row. */
 const AUTO_W = 92
 const AUTO_GAP = 14
+/** The "Stop aiming" pill (only while the cannon has an aim to stop). */
+const STOP_W = 96
 
-/** What a pill does: swap to a tower type, or flip the cannon's auto-target toggle. */
-export type MenuPick = CannonKind | 'auto'
+/** What a pill does: swap to a tower type, flip the cannon's auto-target toggle, or stop its aim. */
+export type MenuPick = CannonKind | 'auto' | 'stop'
 
 /**
  * The cannon's auto-target state as the toggle pill shows it: on, off (its
@@ -53,14 +55,16 @@ export class SwapMenu {
     private readonly autoState: (cannon: Cannon) => AutoState = () => null,
     /** A type swap queued for this cannon during a pause (shown outlined), if any. */
     private readonly pending: (cannon: Cannon) => CannonKind | null = () => null,
+    /** True when the cannon has an aim (or a queued one) that "Stop aiming" would clear. */
+    private readonly stoppable: (cannon: Cannon) => boolean = () => false,
   ) {
     this.g = ui(scene.add.graphics().setDepth(40))
     this.labels = new Map(
-      [...KIND_IDS, 'auto' as const].map((k) => [
+      [...KIND_IDS, 'auto' as const, 'stop' as const].map((k) => [
         k,
         ui(
           scene.add
-            .text(0, 0, k === 'auto' ? 'Auto' : kindLabel(k), { fontFamily: theme.font, fontSize: '12px', fontStyle: 'bold', color: theme.text })
+            .text(0, 0, k === 'auto' ? 'Auto' : k === 'stop' ? 'Stop aiming' : kindLabel(k), { fontFamily: theme.font, fontSize: '12px', fontStyle: 'bold', color: theme.text })
             .setOrigin(0.5)
             .setDepth(41)
             .setVisible(false),
@@ -133,7 +137,8 @@ export class SwapMenu {
     }
     const n = KIND_IDS.length
     const auto = this.autoState(cannon)
-    const w = n * PILL_W + (n - 1) * GAP + PAD * 2 + (auto ? AUTO_GAP + AUTO_W : 0)
+    const stop = this.stoppable(cannon)
+    const w = n * PILL_W + (n - 1) * GAP + PAD * 2 + (auto ? AUTO_GAP + AUTO_W : 0) + (stop ? AUTO_GAP + STOP_W : 0)
     const h = PILL_H + PAD * 2
     let y = at.y - radius - 18 - h
     if (y < top) y = at.y + radius + 18 // no room above: open below instead
@@ -174,11 +179,12 @@ export class SwapMenu {
     const autoLabel = this.labels.get('auto')!
     if (auto) {
       // The auto-target toggle, set apart from the types by a thin divider.
-      const dx = x + w - PAD - AUTO_W - AUTO_GAP / 2
+      const right = x + w - PAD - (stop ? STOP_W + AUTO_GAP : 0)
+      const dx = right - AUTO_W - AUTO_GAP / 2
       const cy = y + h / 2
       this.g.lineStyle(1, theme.boardEdge, 1)
       this.g.lineBetween(dx, y + 6, dx, y + h - 6)
-      const cx = x + w - PAD - AUTO_W / 2
+      const cx = right - AUTO_W / 2
       this.pills.push({ kind: 'auto', x: cx, y: cy, w: AUTO_W })
       const hot = this.hot === 'auto'
       const on = auto === 'on'
@@ -199,6 +205,22 @@ export class SwapMenu {
         .setColor(on ? theme.text : theme.textMuted)
         .setVisible(true)
     } else autoLabel.setVisible(false)
+    const stopLabel = this.labels.get('stop')!
+    if (stop) {
+      // Stop aiming: the cannon drops its aim and holds its fire until you aim it again.
+      const dx = x + w - PAD - STOP_W - AUTO_GAP / 2
+      const cy = y + h / 2
+      this.g.lineStyle(1, theme.boardEdge, 1)
+      this.g.lineBetween(dx, y + 6, dx, y + h - 6)
+      const cx = x + w - PAD - STOP_W / 2
+      this.pills.push({ kind: 'stop', x: cx, y: cy, w: STOP_W })
+      const hot = this.hot === 'stop'
+      this.g.fillStyle(hot ? theme.grid : theme.board, 1)
+      this.g.fillRoundedRect(cx - STOP_W / 2, cy - PILL_H / 2, STOP_W, PILL_H, 8)
+      this.g.lineStyle(1.5, hot ? theme.player : theme.boardEdge, 1)
+      this.g.strokeRoundedRect(cx - STOP_W / 2, cy - PILL_H / 2, STOP_W, PILL_H, 8)
+      stopLabel.setPosition(cx, cy).setColor(hot ? theme.text : theme.textMuted).setVisible(true)
+    } else stopLabel.setVisible(false)
     // A small tick from the menu to the cannon.
     const tipY = y > at.y ? y : y + h
     this.g.fillStyle(theme.hud, 0.94)

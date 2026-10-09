@@ -46,7 +46,12 @@ interface Lead {
   aim: AimRef
 }
 
-const predictable = (o: Order): boolean => o.t === 'aim' || o.t === 'swap' || o.t === 'auto' || o.t === 'autoAll'
+const predictable = (o: Order): boolean => o.t === 'aim' || o.t === 'stop' || o.t === 'swap' || o.t === 'auto' || o.t === 'autoAll'
+
+/** Show a stop-aiming order on a view's cannon (sim playerStop / Cannon.clearAim). */
+export function showStop(c: Cannon): void {
+  c.clearAim()
+}
 
 /** Show an aim on a view's cannon the way the server will apply it (sim applyAim). */
 export function showAim(c: Cannon, aim: Cannon | Point): void {
@@ -136,7 +141,7 @@ export class Predictor {
         view.setAutoTarget(p.on ?? o.on, 'player')
         continue
       }
-      if (o.t !== 'aim' && o.t !== 'swap' && o.t !== 'auto') continue
+      if (o.t !== 'aim' && o.t !== 'stop' && o.t !== 'swap' && o.t !== 'auto') continue
       const c = view.byId(o.cannon)
       // Captured meanwhile (or not ours): the server will refuse it; show what is.
       if (!c || c.side !== 'player') continue
@@ -149,8 +154,20 @@ export class Predictor {
         queued ??= view.queuedOrders()
         let q = queued.find((e) => e.cannon === c)
         if (!q) queued.push((q = { cannon: c, aim: null, kind: null }))
-        if (o.t === 'aim') q.aim = 'cannon' in o.at ? (view.byId(o.at.cannon) ?? null) : { x: o.at.x, y: o.at.y }
-        else q.kind = o.kind === c.kind ? null : o.kind
+        if (o.t === 'aim') {
+          q.aim = 'cannon' in o.at ? (view.byId(o.at.cannon) ?? null) : { x: o.at.x, y: o.at.y }
+          q.stop = false
+        } else if (o.t === 'stop') {
+          // The same rule as BattleSim.playerStop: it drops a queued aim, and queues a stop if it is aiming now.
+          q.aim = null
+          q.stop = !!c.aim()
+        } else q.kind = o.kind === c.kind ? null : o.kind
+        continue
+      }
+      if (o.t === 'stop') {
+        // Stop aiming: the barrel holds where the server has it.
+        this.leads.delete(c.id)
+        showStop(c)
         continue
       }
       if (o.t === 'aim') {
@@ -161,7 +178,7 @@ export class Predictor {
         showAim(c, at)
       } else c.showNetSwap(o.kind, now - p.at)
     }
-    if (queued) view.setViewQueued(queued.filter((q) => q.aim || q.kind))
+    if (queued) view.setViewQueued(queued.filter((q) => q.aim || q.kind || q.stop))
     this.steer(view, frameMs)
   }
 

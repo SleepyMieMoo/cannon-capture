@@ -59,6 +59,14 @@ export interface SimEvents {
  * every frame and draws the result; tests and level checks run it headless
  * (pass `scene = null`).
  */
+/** An order waiting for the pause to end: an aim, a type swap, or stop aiming. */
+export interface QueuedOrder {
+  cannon: Cannon
+  aim: Cannon | Point | null
+  kind: CannonKind | null
+  stop?: boolean
+}
+
 export class BattleSim {
   readonly level: LevelDef
   readonly lanes: LaneTable
@@ -130,6 +138,8 @@ export class BattleSim {
   /** Which side gave each queued order (both players may queue during a PvP pause). */
   private queuedBy = new Map<Cannon, Side>()
   private queuedKinds = new Map<Cannon, CannonKind>()
+  /** Stop-aiming orders queued during a pause (applied on resume, like aims). */
+  private queuedStops = new Set<Cannon>()
   /** Scratch list: shields with their barrier up this step. */
   private readonly upShields: Cannon[] = []
 
@@ -365,6 +375,7 @@ export class BattleSim {
       queuedAims: new Map(),
       queuedBy: new Map(),
       queuedKinds: new Map(),
+      queuedStops: new Set(),
       ended: this.ended,
       endReason: '',
       lastPuzzleProgress: this.lastPuzzleProgress,
@@ -424,10 +435,13 @@ export class BattleSim {
       if (stillTheirs(cannon) && cannon.setKind(kind)) this.events.swapped?.(cannon)
     }
     const aims = [...this.queuedAims]
+    const stops = [...this.queuedStops]
     const by = new Map(this.queuedBy)
     this.queuedKinds.clear()
     this.queuedAims.clear()
+    this.queuedStops.clear()
     this.queuedBy.clear()
+    for (const cannon of stops) if (this.humans.has(cannon.side) && (by.get(cannon) ?? 'player') === cannon.side) cannon.clearAim()
     for (const [cannon, aim] of aims) {
       if (!this.humans.has(cannon.side) || (by.get(cannon) ?? 'player') !== cannon.side) continue
       this.applyAim(cannon, aim)
@@ -446,11 +460,17 @@ export class BattleSim {
     return this.queuedKinds.get(cannon) ?? null
   }
 
+  /** A stop-aiming order is queued for this cannon in this pause. */
+  queuedStop(cannon: Cannon): boolean {
+    return this.queuedStops.has(cannon)
+  }
+
   /** Every queued order (for drawing them), or only those `side` gave (each player sees only their own). */
-  queuedOrders(side?: Side): { cannon: Cannon; aim: Cannon | Point | null; kind: CannonKind | null }[] {
-    const out = new Map<Cannon, { cannon: Cannon; aim: Cannon | Point | null; kind: CannonKind | null }>()
+  queuedOrders(side?: Side): QueuedOrder[] {
+    const out = new Map<Cannon, QueuedOrder>()
     const mine = (cannon: Cannon) => side === undefined || (this.queuedBy.get(cannon) ?? 'player') === side
     for (const [cannon, aim] of this.queuedAims) if (mine(cannon)) out.set(cannon, { cannon, aim, kind: null })
+    for (const cannon of this.queuedStops) if (mine(cannon)) out.set(cannon, { cannon, aim: null, kind: null, stop: true })
     for (const [cannon, kind] of this.queuedKinds) {
       if (!mine(cannon)) continue
       const o = out.get(cannon)
@@ -461,12 +481,14 @@ export class BattleSim {
   }
 
   /** Network views: show these queued orders (the viewer's own, as the authoritative round has them). */
-  setViewQueued(orders: { cannon: Cannon; aim: Cannon | Point | null; kind: CannonKind | null }[]): void {
+  setViewQueued(orders: QueuedOrder[]): void {
     this.queuedAims.clear()
     this.queuedKinds.clear()
+    this.queuedStops.clear()
     this.queuedBy.clear()
     for (const o of orders) {
       if (o.aim) this.queuedAims.set(o.cannon, o.aim)
+      else if (o.stop) this.queuedStops.add(o.cannon)
       if (o.kind) this.queuedKinds.set(o.cannon, o.kind)
       this.queuedBy.set(o.cannon, 'player')
     }
@@ -559,6 +581,7 @@ export class BattleSim {
     }
     if (this.paused) {
       this.queuedAims.set(cannon, aim)
+      this.queuedStops.delete(cannon)
       this.queuedBy.set(cannon, side)
       this.events.aimed?.({ x: aim.x, y: aim.y })
       return true
@@ -566,6 +589,31 @@ export class BattleSim {
     this.applyAim(cannon, aim)
     if (this.level.aims !== undefined) this.aimsUsed += 1
     this.events.aimed?.({ x: aim.x, y: aim.y })
+    return true
+  }
+
+  /**
+   * Your stop-aiming order: the cannon drops its aim (and any heal) and holds
+   * its fire until you aim it again (auto-target only steps in on its usual
+   * cues, like a capture). Never spends a puzzle aim. Paused: queued, and it
+   * replaces an aim queued for that cannon (or cancels one, when it had none
+   * to begin with). False when there is nothing to stop.
+   */
+  playerStop(cannon: Cannon, side: Side = 'player'): boolean {
+    if (this.ended || cannon.side !== side || !this.humans.has(side)) return false
+    if (this.paused) {
+      const queuedAim = this.queuedAims.delete(cannon)
+      if (!cannon.aim()) {
+        // Nothing aimed now: stopping just cancels a queued aim.
+        if (!this.queuedKinds.has(cannon) && !this.queuedStops.has(cannon)) this.queuedBy.delete(cannon)
+        return queuedAim
+      }
+      this.queuedStops.add(cannon)
+      this.queuedBy.set(cannon, side)
+      return true
+    }
+    if (!cannon.aim()) return false
+    cannon.clearAim()
     return true
   }
 
