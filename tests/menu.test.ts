@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { BRAND } from '../src/config/brand'
-import { CAMPAIGN, EXAMPLE_MAPS, SKIRMISH } from '../src/levels'
+import { CAMPAIGN, SKIRMISH, findLevel, isRetired, VS_AI_BUILT_IN } from '../src/levels'
+
+const DEMO_IDS = (): string[] => VS_AI_BUILT_IN.map((l) => l.id)
 import { DEFAULT_PREFS, DIFFICULTY, loadMenuPrefs, nextPuzzle, pickMap, puzzleChoices, saveMenuPrefs, vsAiMaps } from '../src/menu/menuModel'
 import { PauseHold } from '../src/menu/pauseHold'
 import { EDITOR_KEY, MAIN_MENU, MenuNav, backLabel, backRoute, editorReturn, vsAiLevel } from '../src/menu/routes'
@@ -85,11 +87,20 @@ describe('battle routes', () => {
 })
 
 describe('Play vs AI', () => {
-  it('offers Skirmish first, the campaign battle boards, the obstacle examples, then your playable battle maps', () => {
+  it('offers Crossfire, Last Stand and the obstacle examples (retired maps hidden), then your playable battle maps', () => {
     const maps = vsAiMaps([saved(myBattle), saved(myPuzzle), saved(broken)])
-    expect(maps[0].id).toBe('skirmish')
-    expect(maps.filter((m) => m.group === 'Built-in').map((m) => m.id)).toEqual(['skirmish', ...CAMPAIGN.filter((l) => l.kind !== 'puzzle').map((l) => l.id), ...EXAMPLE_MAPS.map((l) => l.id)])
+    expect(maps.filter((m) => m.group === 'Built-in').map((m) => m.name)).toEqual(['Crossfire', 'Last Stand', 'Glass Garden', 'Void Gate', 'Warp Works'])
     expect(maps.filter((m) => m.group === 'My maps').map((m) => m.id)).toEqual(['map-mine'])
+  })
+
+  it('keeps retired maps playable everywhere else', () => {
+    for (const id of ['skirmish', 'tug-of-war', 'walls-up', 'sniper-duel']) {
+      expect(isRetired(id)).toBe(true)
+      expect(findLevel(id)?.id).toBe(id)
+      expect(vsAiMaps([]).some((m) => m.id === id)).toBe(false)
+    }
+    expect(CAMPAIGN.map((l) => l.id)).toEqual(expect.arrayContaining(['tug-of-war', 'walls-up', 'sniper-duel', 'crossfire']))
+    expect(DEMO_IDS()).toEqual(vsAiMaps([]).map((m) => m.id))
   })
 
   it('plays the map unchanged except for the picked difficulty (no campaign hint or par)', () => {
@@ -108,10 +119,12 @@ describe('Play vs AI', () => {
     expect(campaignBattle.level.hint).toBeTruthy()
   })
 
-  it('falls back to the first map when the remembered one is gone', () => {
+  it('falls back to Crossfire when the remembered map is gone or retired', () => {
     const maps = vsAiMaps([saved(myBattle)])
     expect(pickMap(maps, 'map-mine').id).toBe('map-mine')
-    expect(pickMap(maps, 'deleted').id).toBe('skirmish')
+    expect(pickMap(maps, 'deleted').id).toBe('crossfire')
+    for (const id of ['skirmish', 'tug-of-war', 'walls-up', 'sniper-duel']) expect(pickMap(maps, id).id).toBe('crossfire')
+    expect(DEFAULT_PREFS.mapId).toBe('crossfire')
   })
 
   it('has a one-line description for every difficulty', () => {

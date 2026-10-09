@@ -1,5 +1,5 @@
 import { DIFFICULTY, validateMap, type SavedMap } from '../editor/maps'
-import { CAMPAIGN, EXAMPLE_MAPS, SKIRMISH } from '../levels'
+import { CAMPAIGN, DEFAULT_VS_AI_MAP, VS_AI_BUILT_IN } from '../levels'
 import type { Progress } from '../sim/stars'
 import { AI_LEVELS, type AiLevel, type LevelDef } from '../types'
 import type { MapChoice } from './routes'
@@ -14,7 +14,7 @@ export interface MenuPrefs {
 
 export const MENU_KEY = 'cannon-capture:menu:v1'
 const KEY = MENU_KEY
-export const DEFAULT_PREFS: MenuPrefs = { difficulty: 'normal', mapId: SKIRMISH.id }
+export const DEFAULT_PREFS: MenuPrefs = { difficulty: 'normal', mapId: DEFAULT_VS_AI_MAP }
 
 export function loadMenuPrefs(): MenuPrefs {
   try {
@@ -39,12 +39,13 @@ export function saveMenuPrefs(p: MenuPrefs): void {
 }
 
 /**
- * Maps for Play vs AI: Skirmish, the campaign's battle boards (played as
- * plain battles at your difficulty; the levels themselves are unchanged),
- * the obstacle example boards, then your own battle maps that are playable.
+ * Maps for Play vs AI: the campaign's battle boards (played as plain
+ * battles at your difficulty; the levels themselves are unchanged) and the
+ * obstacle example boards, minus retired ones (src/data/mapInfo.json), then
+ * your own battle maps that are playable.
  */
 export function vsAiMaps(saved: SavedMap[]): MapChoice[] {
-  const builtIn: LevelDef[] = [SKIRMISH, ...CAMPAIGN.filter((l) => l.kind !== 'puzzle'), ...EXAMPLE_MAPS]
+  const builtIn: readonly LevelDef[] = VS_AI_BUILT_IN
   const mine = saved.map((m) => m.level).filter((l) => l.kind !== 'puzzle' && validateMap(l).length === 0)
   return [
     ...builtIn.map((level) => ({ id: level.id, name: level.name, group: 'Built-in' as const, level })),
@@ -52,9 +53,9 @@ export function vsAiMaps(saved: SavedMap[]): MapChoice[] {
   ]
 }
 
-/** The remembered map, or the first one if it is gone (deleted, say). */
+/** The remembered map, or Crossfire if it is gone (deleted, say, or retired from the list). */
 export function pickMap(choices: MapChoice[], id: string): MapChoice {
-  return choices.find((c) => c.id === id) ?? choices[0]
+  return choices.find((c) => c.id === id) ?? choices.find((c) => c.id === DEFAULT_VS_AI_MAP) ?? choices[0]
 }
 
 export interface PuzzleChoice {
