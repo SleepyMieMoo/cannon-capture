@@ -6,10 +6,19 @@ import { TUNING } from './tuning'
  * (server/) and the game both read these.
  */
 export const PVP_RULES = {
-  /** Each player may pause this many times per match... */
-  pausesPerPlayer: 3,
-  /** ...for at most this long each (then it resumes by itself). Both screens pause. */
-  pauseMaxMs: 30_000,
+  /**
+   * Pauses: how many each player gets and how long one lasts are the host's
+   * room settings (net/online.ts RoomSettings). With no time limit a pause
+   * still ends by itself after this long, so nobody can hold a match forever.
+   */
+  pauseSafetyMs: 5 * 60_000,
+  /**
+   * Pause anti-spam (even with unlimited pauses): this many pauses within
+   * windowMs and that player can't pause again for lockoutMs, counted from
+   * when that last pause ends. Both are real (wall-clock) time on the
+   * server, not the match clock, which stands still while paused.
+   */
+  pauseSpam: { count: 10, windowMs: 30_000, lockoutMs: 60_000 },
   /** Countdown before each match (the round clock starts at Go; no pausing during it). */
   countdownMs: TUNING.countdownMs,
   /** Round time (it stops while paused); then whoever holds the most cannons wins (equal = draw). */

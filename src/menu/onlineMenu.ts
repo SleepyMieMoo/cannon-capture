@@ -5,7 +5,7 @@ import { TEAM_COLOUR } from '../config/teamColours'
 import { PVP_RULES } from '../config/pvpRules'
 import { drawThumb } from '../editor/thumb'
 import { MAP_SIZES } from '../levels/board'
-import { COUNTDOWN_CHOICES, DEFAULT_SETTINGS, PVP_MAPS, SERVER_REGIONS, cleanName, isServerRegion, normaliseCode, isRoomCode, pvpLevel, type RoomInfo, type RoomSettings, type SeatInfo, type ServerRegion } from '../net/online'
+import { COUNTDOWN_CHOICES, DEFAULT_SETTINGS, PAUSE_COUNT_MAX, PAUSE_SECS_CHOICES, type PauseCount, PVP_MAPS, SERVER_REGIONS, cleanName, isServerRegion, normaliseCode, isRoomCode, pvpLevel, type RoomInfo, type RoomSettings, type SeatInfo, type ServerRegion } from '../net/online'
 import type { OnlineRoom } from '../net/onlineClient'
 import { h } from '../ui/overlay'
 import { serverLine } from '../net/onlineView'
@@ -43,13 +43,22 @@ export function rulesLine(s: RoomSettings = DEFAULT_SETTINGS): string {
   return (
     `${mins(PVP_RULES.matchMs)} matches: take every cannon, or hold the most when time runs out. ` +
     (s.countdown > 0 ? `A ${s.countdown}-second countdown first. ` : 'No countdown: firing starts at once. ') +
-    (s.pauses ? `${PVP_RULES.pausesPerPlayer} pauses each, up to ${PVP_RULES.pauseMaxMs / 1000} s. ` : 'No pauses. ') +
+    (s.pauses ? `${pauseRule(s)}. ` : 'No pauses. ') +
     `Drop out for more than ${PVP_RULES.graceMs / 1000} s and an AI plays your side. Sides swap every rematch. You always wear your own colour and skin with the light rings; if your looks are too alike, names appear on the cannons. ` +
     'Your side of the board glows in your colour.'
   )
 }
 
 export const RULES_LINE = rulesLine() + ' The host can change the countdown, pauses and sides in the room.'
+
+/** "3 pauses each, up to 5 s" / "Unlimited pauses, until resumed". */
+export function pauseRule(s: RoomSettings): string {
+  const count = s.pauseCount === null ? 'Unlimited pauses' : `${s.pauseCount} pause${s.pauseCount === 1 ? '' : 's'} each`
+  return `${count}, ${s.pauseLimit ? `up to ${s.pauseSecs} s` : 'until resumed'}`
+}
+
+/** The pauses-per-player stepper's order: 1 to 10, then Unlimited. */
+const PAUSE_COUNTS: readonly PauseCount[] = [...Array.from({ length: PAUSE_COUNT_MAX }, (_, i) => i + 1), null]
 
 const COUNTDOWN_LABEL: Record<number, string> = { 0: 'Chaotic rush', 3: 'Standard', 5: 'Relaxed' }
 
@@ -62,7 +71,7 @@ function settingsBlock(room: OnlineRoom, r: RoomInfo): HTMLElement[] {
   const s = r.settings
   const rules = 'Fair maps only: both sides start the same. ' + rulesLine(s)
   // An older server has no settings: say what it plays.
-  if (!s) return [groupHead('Match settings', rules), h('div.mm-note', {}, 'This room’s server plays a 3-second countdown, 3 pauses each, host on the left.')]
+  if (!s) return [groupHead('Match settings', rules), h('div.mm-note', {}, 'This room’s server plays a 3-second countdown, 3 pauses each up to 30 s, host on the left.')]
   const edit = r.you.host && r.phase !== 'playing'
   const segs = COUNTDOWN_CHOICES.map((c) => {
     const b = h('button.mm-seg', { type: 'button', dataset: { id: 'countdown-' + c }, 'aria-pressed': String(c === s.countdown), disabled: !edit },
@@ -81,7 +90,26 @@ function settingsBlock(room: OnlineRoom, r: RoomInfo): HTMLElement[] {
   const swap = h('button.mm-btn.small', { type: 'button', dataset: { id: 'swap' }, disabled: !edit }, 'Swap sides')
   swap.addEventListener('click', () => room.send({ t: 'swap' }))
   const afterMatch = r.match > 0 ? ' Rematches swap sides from here.' : ' Each rematch then swaps.'
-  const pauses = `${PVP_RULES.pausesPerPlayer} pauses each, up to ${PVP_RULES.pauseMaxMs / 1000} s`
+  const pauses = pauseRule(s)
+  const pauseEdit = edit && s.pauses
+  // Pauses per player: − value +, 1 to 10 then Unlimited.
+  const ci = Math.max(0, PAUSE_COUNTS.indexOf(s.pauseCount))
+  const step = (d: number, id: string, label: string, sym: string) => {
+    const j = ci + d
+    const b = h('button.mm-step', { type: 'button', dataset: { id }, 'aria-label': label, title: label, disabled: !pauseEdit || j < 0 || j >= PAUSE_COUNTS.length }, sym)
+    b.addEventListener('click', () => room.send({ t: 'settings', pauseCount: PAUSE_COUNTS[j] }))
+    return b
+  }
+  const countVal = h('output.mm-step-v', { dataset: { id: 'pausecount' }, 'aria-live': 'polite' }, s.pauseCount === null ? 'Unlimited' : String(s.pauseCount))
+  const stepper = h('div.mm-stepper', { role: 'group', 'aria-label': 'Pauses per player' }, step(-1, 'pausecount-minus', 'Fewer pauses', '−'), countVal, step(1, 'pausecount-plus', 'More pauses', '+'))
+  // Pause time limit: on/off, then how long.
+  const lim = h('input.mm-switch', { type: 'checkbox', role: 'switch', checked: s.pauseLimit, id: 'mm-pauselimit', disabled: !pauseEdit, dataset: { id: 'pauselimit' } }) as HTMLInputElement
+  lim.addEventListener('change', () => room.send({ t: 'settings', pauseLimit: lim.checked }))
+  const secs = PAUSE_SECS_CHOICES.map((c) => {
+    const b = h('button.mm-seg', { type: 'button', dataset: { id: 'pausesecs-' + c }, 'aria-pressed': String(c === s.pauseSecs), disabled: !pauseEdit || !s.pauseLimit }, `${c} s`)
+    b.addEventListener('click', () => room.send({ t: 'settings', pauseSecs: c }))
+    return b
+  })
   return [
     groupHead(edit ? 'Match settings' : 'Match settings (the host sets these)', rules),
     settingRow({
@@ -96,8 +124,24 @@ function settingsBlock(room: OnlineRoom, r: RoomInfo): HTMLElement[] {
       label: 'Disable pauses',
       for: 'mm-nopause',
       sub: s.pauses ? `Pauses on: ${pauses}.` : 'Pauses off.',
-      help: `With pauses on, each player has ${pauses}. Off: no Pause button, and Space does nothing.`,
+      help: 'Off: no Pause button, and Space does nothing. On: the two settings below say how many pauses each player gets and how long one lasts.',
       control: [sw],
+    }),
+    settingRow({
+      id: 'pausecount',
+      label: 'Pauses per player',
+      sub: s.pauses ? (s.pauseCount === null ? 'As many as you like.' : `Each player, each match.`) : 'Pauses are off.',
+      help: `How many times each player may pause in one match (1 to 10, or Unlimited). The Pause button shows how many you have left and greys out when they are used up. Even on Unlimited, ${PVP_RULES.pauseSpam.count} pauses within ${PVP_RULES.pauseSpam.windowMs / 1000} s lock that player's Pause for ${PVP_RULES.pauseSpam.lockoutMs / 1000} s.`,
+      control: [stepper],
+    }),
+    settingRow({
+      id: 'pauselimit',
+      label: 'Pause time limit',
+      for: 'mm-pauselimit',
+      sub: !s.pauses ? 'Pauses are off.' : s.pauseLimit ? `A pause ends by itself after ${s.pauseSecs} s.` : 'A pause lasts until its player resumes.',
+      help: `On: a pause ends by itself after the time you pick, with a countdown on both screens; whoever paused can still resume early. Off: it lasts until the player who paused resumes (at most ${PVP_RULES.pauseSafetyMs / 60_000} minutes, so nobody can hold a match forever).`,
+      layout: 'wide',
+      control: [lim, h('div.mm-segs.mm-segs5', { dataset: { id: 'pausesecs' } }, ...secs)],
     }),
     settingRow({
       id: 'sides',

@@ -237,6 +237,15 @@ export function injectMenuStyles(): void {
 .mm-seg:disabled[aria-pressed="true"]:hover { border-color: ${gold}; }
 .mm-seg:disabled:not([aria-pressed="true"]) { opacity: .6; }
 .mm-segs3 { grid-template-columns: repeat(3, 1fr); }
+.mm-segs5 { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; flex: 1 1 auto; min-width: 0; }
+.mm-segs5 .mm-seg { min-height: 34px; min-width: 0; padding: 2px 0; font-size: 13px; white-space: nowrap; }
+.mm-srow[data-row="pauselimit"] .mm-srow-c { display: flex; align-items: center; gap: 10px; }
+.mm-stepper { display: inline-flex; align-items: center; gap: 4px; }
+.mm-step { font: inherit; font-weight: bold; font-size: 18px; line-height: 1; width: 34px; height: 34px; border-radius: 10px; color: ${theme.text}; background: ${rgba(theme.panel, 0.9)}; border: 2px solid ${cssHex(theme.boardEdge)}; cursor: pointer; }
+.mm-step:hover:not(:disabled) { border-color: ${gold}; }
+.mm-step:disabled { opacity: .45; cursor: default; }
+.mm-step:focus-visible { outline: 3px solid ${gold}; outline-offset: 2px; }
+.mm-step-v { min-width: 82px; text-align: center; font-weight: bold; color: ${gold}; }
 .mm-segs3 .mm-seg { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px 2px; line-height: 1.15; }
 .mm-segs3 .mm-seg small { font-weight: normal; font-size: .78em; opacity: .85; }
 .mm-sub { font-size: .85em; font-weight: bold; color: ${theme.textMuted}; margin: 10px 0 4px; }

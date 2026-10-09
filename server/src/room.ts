@@ -92,8 +92,15 @@ interface Match {
   colours: SideColours
   /** Pauses allowed this match (the host's setting when it started). */
   pauses: boolean
+  /** Pauses left per seat (-1: unlimited). */
   pausesLeft: [number, number]
-  pause: { seat: 0 | 1; until: number } | null
+  /** How long a pause lasts before it resumes by itself (null: no time limit, only the safety cap). */
+  pauseMs: number | null
+  pause: { seat: 0 | 1; until: number; limited: boolean } | null
+  /** Anti-spam: when each seat paused lately, and until when it can't pause (0: free). `lockNext`: the running pause starts a lockout when it ends. */
+  pausedAt: [number[], number[]]
+  lockUntil: [number, number]
+  lockNext: boolean
   ai: [boolean, boolean]
   last: number
   acc: number
@@ -291,7 +298,13 @@ export class RoomCore {
       case 'settings': {
         if (seat === null || seat !== st.host || this.running) return this.refuse(conn, 'Only the host changes the match settings, between matches.')
         const cur = this.settings()
-        st.settings = { countdown: msg.countdown ?? cur.countdown, pauses: msg.pauses ?? cur.pauses }
+        st.settings = {
+          countdown: msg.countdown ?? cur.countdown,
+          pauses: msg.pauses ?? cur.pauses,
+          pauseCount: msg.pauseCount !== undefined ? msg.pauseCount : cur.pauseCount,
+          pauseLimit: msg.pauseLimit ?? cur.pauseLimit,
+          pauseSecs: msg.pauseSecs ?? cur.pauseSecs,
+        }
         st.rematch = [false, false]
         return this.changed()
       }
@@ -500,8 +513,12 @@ export class RoomCore {
       skins,
       colours,
       pauses: settings.pauses,
-      // Pauses off: nobody has any (older games show "0 pauses left" and the server refuses them).
-      pausesLeft: settings.pauses ? [PVP_RULES.pausesPerPlayer, PVP_RULES.pausesPerPlayer] : [0, 0],
+      // Pauses off: nobody has any (older games show "0 pauses left" and the server refuses them). -1: unlimited.
+      pausesLeft: !settings.pauses ? [0, 0] : settings.pauseCount === null ? [-1, -1] : [settings.pauseCount, settings.pauseCount],
+      pauseMs: settings.pauseLimit ? settings.pauseSecs * 1000 : null,
+      pausedAt: [[], []],
+      lockUntil: [0, 0],
+      lockNext: false,
       pause: null,
       ai: [false, false],
       last: now,
@@ -559,7 +576,7 @@ export class RoomCore {
     // A pause runs out.
     if (sim.paused && m.pause && now >= m.pause.until) {
       sim.resume()
-      m.pause = null
+      this.pauseEnded(m, now)
     }
     // Time is up: most cannons wins.
     if (!sim.ended && sim.clock >= PVP_RULES.matchMs) {
@@ -597,6 +614,16 @@ export class RoomCore {
     this.endMatch(now)
   }
 
+  /** A pause is over: a spammed one starts its player's lockout now. */
+  private pauseEnded(m: Match, now: number): void {
+    if (m.pause && m.lockNext) {
+      m.lockUntil[m.pause.seat] = now + PVP_RULES.pauseSpam.lockoutMs
+      m.pausedAt[m.pause.seat] = []
+    }
+    m.lockNext = false
+    m.pause = null
+  }
+
   private takeOver(seat: 0 | 1): void {
     const m = this.match
     if (!m || m.over || m.ai[seat]) return
@@ -604,7 +631,7 @@ export class RoomCore {
     m.sim.setController(m.sides[seat], PVP_RULES.takeoverAi)
     if (m.pause?.seat === seat) {
       m.sim.resume()
-      m.pause = null
+      this.pauseEnded(m, this.host.now())
     }
     this.broadcastRoom()
   }
@@ -638,16 +665,23 @@ export class RoomCore {
     if (m && !m.over && order && !m.sim.ended && !m.ai[seat]) {
       const sim = m.sim
       if (order.t === 'pause') {
-        ok = !sim.paused && m.pausesLeft[seat] > 0 && sim.pause()
+        ok = m.pauses && !sim.paused && m.pausesLeft[seat] !== 0 && now >= m.lockUntil[seat] && sim.pause()
         if (ok) {
-          m.pausesLeft[seat] -= 1
-          m.pause = { seat, until: now + PVP_RULES.pauseMaxMs }
+          if (m.pausesLeft[seat] > 0) m.pausesLeft[seat] -= 1
+          const limited = m.pauseMs !== null
+          m.pause = { seat, until: now + (m.pauseMs ?? PVP_RULES.pauseSafetyMs), limited }
+          // Anti-spam: too many pauses in a short time and this one ends in a lockout.
+          const spam = PVP_RULES.pauseSpam
+          const times = m.pausedAt[seat].filter((t) => now - t < spam.windowMs)
+          times.push(now)
+          m.pausedAt[seat] = times
+          m.lockNext = times.length >= spam.count
         }
       } else if (order.t === 'resume') {
         ok = sim.paused && m.pause?.seat === seat
         if (ok) {
           sim.resume()
-          m.pause = null
+          this.pauseEnded(m, now)
         }
       } else ok = applyOrder(sim, m.sides[seat], order).ok
     }
@@ -673,8 +707,9 @@ export class RoomCore {
     return {
       tl: Math.max(0, Math.round(PVP_RULES.matchMs - sim.clock)),
       pz: m.pause ? sideIx(m.sides[m.pause.seat]) : -1,
-      pzl: m.pause ? Math.max(0, Math.round(m.pause.until - now)) : 0,
+      pzl: !m.pause ? 0 : m.pause.limited ? Math.max(0, Math.round(m.pause.until - now)) : -1,
       pl: bySide((s) => m.pausesLeft[s]),
+      plk: bySide((s) => Math.max(0, Math.round(m.lockUntil[s] - now))),
       ai: bySide((s) => (m.ai[s] ? 1 : 0)),
       on: bySide((s) => (this.connected(s) ? 1 : 0)),
       ...(m.over || sim.ended ? { why: m.why ?? 'wipe' } : {}),

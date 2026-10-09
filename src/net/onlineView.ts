@@ -50,22 +50,60 @@ export function pauseCheck(t: 'pause' | 'resume', x: SnapExtra | undefined, me: 
   if (me === null) return { ok: false, why: 'You are watching this match.' }
   if (t === 'pause') {
     if (paused) return { ok: false }
-    if (x && x.pl[me] <= 0) return { ok: false, why: 'No pauses left this match.' }
+    if (x && x.pl[me] === 0) return { ok: false, why: 'No pauses left this match.' }
+    const lock = pauseLockMs(x, me)
+    if (lock > 0) return { ok: false, why: `Pausing too fast, wait ${clock(lock)}` }
     return { ok: true }
   }
   if (!paused) return { ok: false }
-  if (x && x.pz !== me) return { ok: false, why: `Only ${nameOnSide(info, (1 - me) as 0 | 1)} can resume early (it resumes by itself in ${Math.ceil(x.pzl / 1000)} s).` }
+  if (x && x.pz !== me) {
+    const who = nameOnSide(info, (1 - me) as 0 | 1)
+    return { ok: false, why: x.pzl < 0 ? `Only ${who} can resume (no time limit in this room).` : `Only ${who} can resume early (it resumes by itself in ${Math.ceil(x.pzl / 1000)} s).` }
+  }
   return { ok: true }
+}
+
+/** Anti-spam: ms until this player may pause again (0: free now). */
+export function pauseLockMs(x: SnapExtra | undefined, me: 0 | 1): number {
+  return x?.plk?.[me] ?? 0
+}
+
+/** Pauses left as words: "2 pauses left", "unlimited pauses". */
+export function pausesLeftText(n: number): string {
+  return n < 0 ? 'unlimited pauses' : `${n} pause${n === 1 ? '' : 's'} left`
+}
+
+/**
+ * The top bar's Pause / Resume button: its label, tooltip and whether it
+ * can be pressed (out of pauses: disabled, and the tooltip says why).
+ */
+export function pauseButton(x: SnapExtra | undefined, me: 0 | 1 | null, paused: boolean, info: RoomInfo | null): { label: string; title: string; disabled: boolean } {
+  if (paused) {
+    const check = pauseCheck('resume', x, me, true, info)
+    return { label: 'Resume', title: check.ok ? 'Resume the match (Space)' : (check.why ?? 'Paused'), disabled: false }
+  }
+  const left = x && me !== null ? x.pl[me] : -1
+  if (left === 0) return { label: 'Pause', title: 'No pauses left this match.', disabled: true }
+  const lock = me === null ? 0 : pauseLockMs(x, me)
+  if (lock > 0) return { label: `Pause ${clock(lock)}`, title: `Pausing too fast, wait ${clock(lock)}`, disabled: true }
+  return { label: left > 0 ? `Pause (${left})` : 'Pause', title: `Pause the match (Space): ${pausesLeftText(left)}.`, disabled: false }
+}
+
+/** Whole seconds until a pause ends by itself (null: no time limit, or not paused). */
+export function pauseSecondsLeft(x: SnapExtra | undefined): number | null {
+  if (!x || x.pz < 0 || x.pzl < 0) return null
+  return Math.ceil(x.pzl / 1000)
 }
 
 /** The paused banner. */
 export function pauseLabel(x: SnapExtra | undefined, me: 0 | 1 | null, info: RoomInfo | null): string {
   if (!x || x.pz < 0) return 'Paused'
   const left = Math.ceil(x.pzl / 1000)
-  if (me === null) return `Paused by ${nameOnSide(info, x.pz as 0 | 1)}  ·  resumes in ${left} s`
+  const timed = x.pzl >= 0
+  if (me === null) return `Paused by ${nameOnSide(info, x.pz as 0 | 1)}  ·  ${timed ? `resumes in ${left} s` : 'until they resume'}`
   const other = nameOnSide(info, (1 - me) as 0 | 1)
-  if (x.pz === me) return `You paused  ·  ${left} s left  ·  your orders stay hidden from ${other} until you resume (Space)`
-  return `${other} paused  ·  resumes in ${left} s  ·  queue orders now: ${other} won't see them until then`
+  if (x.pz === me) return `You paused  ·  ${timed ? `${left} s left` : 'no time limit'}  ·  your orders stay hidden from ${other} until you resume (Space)`
+  return `${other} paused  ·  ${timed ? `resumes in ${left} s` : `until ${other} resumes`}  ·  queue orders now: ${other} won't see them until then`
 }
 
 /** The HUD's small line: pauses left (or "pauses off", the host's setting) and ping. */
@@ -79,7 +117,7 @@ export function netLine(x: SnapExtra | undefined, me: 0 | 1 | null, rtt: number 
 export function netParts(x: SnapExtra | undefined, me: 0 | 1 | null, pausesOff = false): string[] {
   const parts: string[] = []
   if (pausesOff) parts.push('pauses off')
-  else if (x && me !== null) parts.push(`${x.pl[me]} pause${x.pl[me] === 1 ? '' : 's'} left`)
+  else if (x && me !== null) parts.push(pausesLeftText(x.pl[me]))
   if (me === null) parts.push('watching')
   return parts
 }

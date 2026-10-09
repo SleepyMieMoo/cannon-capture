@@ -4,6 +4,9 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.8.0: pause rules for online rooms", "text": "Hosts now pick how many pauses each player gets and how long a pause lasts." },
+        { "kind": "new", "title": "Pauses per player", "text": "Online rooms: the host sets 1 to 10 pauses per player, or Unlimited (the default). The Pause button shows how many you have left. Pausing 10 times within 30 s locks your Pause for a minute." },
+        { "kind": "new", "title": "Pause time limit", "text": "Online rooms: a pause ends by itself after 5 s by default (10, 15, 30 or 60 s also on offer), with a countdown on both screens. Turn the limit off and a pause lasts until its player resumes." },
         { "kind": "fix", "title": "Version 0.7.9: Long Shot can be finished", "text": "Puzzles no longer end before your last shot has had its chance." },
         { "kind": "change", "title": "Warp Works beaten on Impossible", "text": "Warp Works now wears the gold Beatable on Impossible chip, like every other Play vs AI map." },
         { "kind": "fix", "title": "Out of aims waits for your last shot", "text": "A puzzle now only ends out of aims once your last orders have had their shots land and the board has gone quiet. Long Shot's slow sniper finish works again. Aiming a cannon at what it already aims at no longer spends an aim." },
