@@ -4,6 +4,8 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.7.5: a clearer top bar", "text": "The top bar now says where you are, who you are up against and how long the match has run." },
+        { "kind": "new", "title": "Top bar and cannon strip", "text": "The cannon bar moved to its own strip under the top bar, as wide as the board. The top bar shows the map, your opponent (the bot and its difficulty, or the other player online) and the match time. On small screens the board moves down to stay clear." },
         { "kind": "new", "title": "Version 0.7.4: stop on command", "text": "Any of your cannons can now be told to stop aiming and hold its fire." },
         { "kind": "new", "title": "Stop aiming", "text": "Right-click one of your aiming cannons (or pick Stop aiming above it) and it drops its aim and holds its fire until you aim it again. Right-click while aiming cancels. Works paused and online." },
         { "kind": "new", "title": "Version 0.7.3: focus while you aim", "text": "Picking a cannon to aim now dims the board around what matters." },

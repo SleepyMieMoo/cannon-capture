@@ -16,14 +16,18 @@ const POP_TIMING: KeyframeAnimationOptions = { duration: 420, easing: 'cubic-bez
 
 /**
  * The battle's top bar, as HTML over the canvas: real buttons (Dark Choco,
- * like the main menu's), the tug-of-war cannon bar, the online clock.
+ * like the main menu's), the map name, who you play (the bot and its
+ * difficulty, or the other player online) and the match time. Under it, a
+ * strip as wide as the board: the tug-of-war cannon bar.
  *
  * It is sized in CSS pixels, not scaled with the 1200x720 layout, so text
  * and tap targets stay readable on a phone and in a Discord frame. Its
  * bottom lines up with the canvas's HUD band; when it needs more height than
  * the band has it grows upward into the space above the canvas (portrait
  * phones), or, with no room there, a little way over the board's top margin.
- * Below 600 px it takes two rows: the cannon bar and clock, then the buttons.
+ * Below 600 px it takes two rows: map, opponent and clock, then the buttons.
+ * The cannon strip always sits right under the bar; the scene moves the
+ * board's view down if the two together reach past their band.
  * Buttons that still don't fit fold into the Menu, least used first.
  *
  * Nothing here runs per frame unless something changed: the scene calls the
@@ -54,9 +58,13 @@ export interface HudCounts {
 
 export interface HudOpts {
   title: string
+  /** Who you play ("vs Pip · Normal", the other player online); null leaves it out. */
+  opponent: string | null
+  /** Tooltip for the opponent line. */
+  opponentTitle?: string
   buttons: HudButton[]
   counts: HudCounts
-  /** Online: the match clock and the ping / pauses line. */
+  /** Online: the ping / pauses line under the clock (the clock itself always shows). */
   clock: boolean
   /** Puzzles with an aim budget: "3 aims left". */
   aims: boolean
@@ -68,6 +76,36 @@ const SCENE_SHUTDOWN = 'shutdown'
 
 /** The HUD band at the top of the canvas, in layout px (BattleScene's HUD_H). */
 const BAND = 54
+/** The cannon strip's band under it (layout px): the board's view starts below both (plus the 2 px edge). */
+export const HUD_STRIP = 16
+/** The view's top in layout px when nothing reaches past the bands. */
+export const VIEW_TOP = BAND + 2 + HUD_STRIP
+/** The strip is never thinner than this (CSS px), so its numbers stay readable on a phone. */
+const STRIP_MIN_PX = 14
+
+/** Elapsed match time as m:ss (whole seconds, rounded down). */
+export function matchTime(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+/**
+ * Where the bar and the strip go (CSS px). Their stack ends at the view's
+ * top when there's room above the canvas; otherwise it starts at the safe
+ * top and `cover` (CSS px below the canvas top) says how far it reaches.
+ */
+export function stackPlacement(canvasTop: number, k: number, safeTop: number, barH: number, stripH: number): { top: number; stripTop: number; cover: number } {
+  const viewTop = canvasTop + VIEW_TOP * k
+  const top = Math.max(safeTop, viewTop - barH - stripH)
+  return { top, stripTop: top + barH, cover: top + barH + stripH - canvasTop }
+}
+
+/** The strip's span in layout px: the board's left and right edges on screen, kept inside the canvas. */
+export function stripSpan(boardLeft: number, boardRight: number, width = GAME_WIDTH): { x: number; w: number } {
+  const x0 = Math.max(6, Math.min(boardLeft, width - 66))
+  const x1 = Math.min(width - 6, Math.max(boardRight, x0 + 60))
+  return { x: x0, w: x1 - x0 }
+}
 /** Below this width (CSS px) the bar takes two rows. */
 const TWO_ROWS_BELOW = 600
 
@@ -116,12 +154,17 @@ export class BattleHud {
   private readonly rowA: HTMLDivElement
   private readonly rowB: HTMLDivElement
   private readonly titleEl: HTMLDivElement
+  private readonly vsEl: HTMLDivElement
+  /** The strip under the bar with the cannon bar (as wide as the board). */
+  readonly strip: HTMLDivElement
+  private span = { x: 24, w: GAME_WIDTH - 48 }
+  private canvasLeft = 0
   private readonly tug: HTMLDivElement
   private readonly seg: { mine: HTMLDivElement; neutral: HTMLDivElement; theirs: HTMLDivElement }
   private readonly num: { mine: HTMLSpanElement; neutral: HTMLSpanElement; theirs: HTMLSpanElement }
   private readonly dots: { mine: HTMLSpanElement; theirs: HTMLSpanElement }
-  private readonly clockBox: HTMLDivElement | null = null
-  private readonly clockEl: HTMLElement | null = null
+  private readonly clockBox: HTMLDivElement
+  private readonly clockEl: HTMLElement
   private readonly netEl: HTMLElement | null = null
   private readonly aimsEl: HTMLSpanElement | null = null
   private readonly btn = new Map<HudButtonId, HTMLButtonElement>()
@@ -135,12 +178,15 @@ export class BattleHud {
   private readonly onResize = (): void => this.place()
   private placing = 0
   private twoRows = false
-  /** Bar bottom below the canvas top (CSS px) and CSS px per layout px, from the last place(). */
+  private readonly onPlace: ((coverBelow: number) => void) | undefined
+  /** Strip bottom below the canvas top (CSS px) and CSS px per layout px, from the last place(). */
   private cover = 0
   private k = 1
 
-  constructor(scene: Phaser.Scene, opts: HudOpts) {
+  /** `onPlace`: after each layout, how far (layout px) the bar and strip reach past VIEW_TOP. */
+  constructor(scene: Phaser.Scene, opts: HudOpts, onPlace?: (coverBelow: number) => void) {
     injectHudStyles()
+    this.onPlace = onPlace
     this.canvas = scene.game.canvas
     this.defs = opts.buttons
     const stop = (e: Event): void => e.preventDefault()
@@ -156,6 +202,8 @@ export class BattleHud {
       return el
     }
     this.titleEl = h('div.bh-title', { title: opts.title }, opts.title)
+    this.vsEl = h('div.bh-vs', { title: opts.opponentTitle ?? opts.opponent ?? '' }, opts.opponent ?? '')
+    if (!opts.opponent) this.vsEl.style.display = 'none'
     const mk = (cls: string): [HTMLDivElement, HTMLSpanElement] => {
       const n = h('span.bh-n')
       return [h(`div.bh-seg.${cls}`, {}, h('span.bh-glint'), n), n]
@@ -172,17 +220,17 @@ export class BattleHud {
     if (!opts.counts.enemy) this.dots.theirs.style.visibility = 'hidden'
     const tugWrap = h('div.bh-tugwrap', {}, left ? this.dots.mine : this.dots.theirs, this.tug, left ? this.dots.theirs : this.dots.mine)
     if (opts.aims) this.aimsEl = h('span.bh-aims')
-    if (opts.clock) {
-      this.clockEl = h('b.bh-clock')
-      this.netEl = h('small.bh-net')
-      this.clockBox = h('div.bh-clockbox', {}, this.clockEl, this.netEl)
-    }
+    this.clockEl = h('b.bh-clock', { title: opts.clock ? 'Match time left' : 'Match time' }, '0:00')
+    if (opts.clock) this.netEl = h('small.bh-net')
+    this.clockBox = h('div.bh-clockbox', {}, this.clockEl, this.netEl)
     const lefts = opts.buttons.filter((b) => b.left).map(button)
     const rights = opts.buttons.filter((b) => !b.left).map(button)
-    this.rowA = h('div.bh-row.a', {}, ...lefts, this.titleEl, tugWrap, this.aimsEl, this.clockBox)
+    this.rowA = h('div.bh-row.a', {}, ...lefts, this.titleEl, this.vsEl, h('span.bh-gap'), this.aimsEl, this.clockBox)
     this.rowB = h('div.bh-row.b', {}, ...rights)
     this.el = h('div.bh', { role: 'toolbar', 'aria-label': 'Battle controls' }, this.rowA, this.rowB)
+    this.strip = h('div.bh-strip', {}, tugWrap)
     document.body.appendChild(this.el)
+    document.body.appendChild(this.strip)
     window.addEventListener('resize', this.onResize)
     scene.scale.on(SCALE_RESIZE, this.onResize)
     this.observer = 'ResizeObserver' in window ? new ResizeObserver(this.onResize) : null
@@ -216,16 +264,52 @@ export class BattleHud {
     this.layoutButtons()
     const rowH = btnH + 8
     const height = two ? rowH + Math.max(34, rowH - 8) : Math.max(Math.round(band), rowH)
-    const safeTop = safeInsetTop()
-    const top = Math.max(safeTop, r.top + band - height)
+    const stripH = Math.max(STRIP_MIN_PX, Math.round((HUD_STRIP + 2) * k))
+    const at = stackPlacement(r.top, k, safeInsetTop(), height, stripH)
     this.el.style.left = `${Math.round(r.left)}px`
-    this.el.style.top = `${Math.round(top)}px`
+    this.el.style.top = `${Math.round(at.top)}px`
     this.el.style.width = `${Math.round(r.width)}px`
     this.el.style.height = `${Math.round(height)}px`
+    this.strip.style.top = `${Math.round(at.stripTop)}px`
+    this.strip.style.height = `${stripH}px`
+    this.strip.classList.toggle('thin', stripH < 18)
     this.k = k
-    this.cover = Math.round(top + height) - r.top
+    this.canvasLeft = r.left
+    this.placeStrip()
+    this.cover = Math.round(at.cover)
     this.fold()
     if (this.confirmEl) this.placeConfirm()
+    this.onPlace?.(this.coverBelow())
+  }
+
+  /** The strip across the board: `left`/`right` are the board's edges on screen, in layout px (cheap: only moves on a change). */
+  setSpan(left: number, right: number): void {
+    const s = stripSpan(left, right)
+    if (Math.abs(s.x - this.span.x) < 0.5 && Math.abs(s.w - this.span.w) < 0.5) return
+    this.span = s
+    this.placeStrip()
+  }
+
+  private placeStrip(): void {
+    const k = this.k || 1
+    this.strip.style.left = `${Math.round(this.canvasLeft + this.span.x * k)}px`
+    this.strip.style.width = `${Math.round(this.span.w * k)}px`
+  }
+
+  /** Who you play (online it can change: someone joins, leaves or renames). */
+  setOpponent(text: string | null, title?: string): void {
+    const el = this.vsEl
+    const t = text ?? ''
+    if (el.textContent === t) return
+    el.textContent = t
+    el.title = title ?? t
+    el.style.display = text ? '' : 'none'
+    this.schedulePlace()
+  }
+
+  /** Bottom of the strip on the page (CSS px): panels that drop from the bar open below it. */
+  get bottom(): number {
+    return this.strip.getBoundingClientRect().bottom
   }
 
   /** Buttons in their row (row B on two rows, else the end of row A, Editor first). */
@@ -239,19 +323,31 @@ export class BattleHud {
   private fold(): void {
     this.folded.clear()
     this.titleEl.style.display = ''
+    if (this.vsEl.textContent) this.vsEl.style.display = ''
     for (const d of this.defs) this.btn.get(d.id)!.style.display = this.off.has(d.id) ? 'none' : ''
     const over = (): boolean => {
       const rows = this.twoRows ? [this.rowA, this.rowB] : [this.rowA]
       return rows.some((row) => rowOverflows(row))
     }
+    // On two rows the buttons have their own row: only the first row decides about the names.
+    const namesOver = (): boolean => (this.twoRows ? rowOverflows(this.rowA) : over())
     // A title cut down to "Ski…" says nothing: drop it instead.
     const titleTooSmall = (): boolean => this.titleEl.scrollWidth > this.titleEl.clientWidth + 1 && this.titleEl.clientWidth < 110
-    if (over() || titleTooSmall()) this.titleEl.style.display = 'none'
-    for (const id of foldOrder(this.defs)) {
-      if (!over()) break
-      if (this.off.has(id)) continue
+    // The opponent goes first (the end screen names them too), then the map name.
+    const vsTooSmall = (): boolean => this.vsEl.scrollWidth > this.vsEl.clientWidth + 1 && this.vsEl.clientWidth < 90
+    if (this.vsEl.textContent && (namesOver() || vsTooSmall())) this.vsEl.style.display = 'none'
+    const foldOne = (id: HudButtonId): void => {
       this.btn.get(id)!.style.display = 'none'
       this.folded.add(id)
+    }
+    // The map name is worth more than the least used button (Restart, still in the Menu).
+    const cheap = (id: HudButtonId): boolean => (this.defs.find((d) => d.id === id)?.keep ?? Infinity) <= 1
+    if (!this.twoRows) for (const id of foldOrder(this.defs).filter(cheap)) if (!this.off.has(id) && (over() || titleTooSmall())) foldOne(id)
+    if (namesOver() || titleTooSmall()) this.titleEl.style.display = 'none'
+    for (const id of foldOrder(this.defs)) {
+      if (!over()) break
+      if (this.off.has(id) || this.folded.has(id)) continue
+      foldOne(id)
     }
   }
 
@@ -259,9 +355,9 @@ export class BattleHud {
     if (!this.placing) this.placing = requestAnimationFrame(this.onResize)
   }
 
-  /** How far the bar reaches below the canvas's top `band` layout px (landscape phones), in layout px; 0 when it doesn't. */
-  coverBelow(band: number): number {
-    return Math.max(0, this.cover / (this.k || 1) - band - 1)
+  /** How far the bar and strip reach below the view's usual top (VIEW_TOP), in layout px; 0 when they don't (landscape phones can). */
+  coverBelow(): number {
+    return Math.max(0, Math.ceil(this.cover / (this.k || 1) - VIEW_TOP - 0.5))
   }
 
   /** Show or hide a button (not folding: the scene says it doesn't apply now). */
@@ -347,7 +443,6 @@ export class BattleHud {
 
   setClock(text: string, warn: boolean): void {
     const el = this.clockEl
-    if (!el) return
     if (el.textContent !== text) el.textContent = text
     el.classList.toggle('warn', warn)
   }
@@ -420,13 +515,14 @@ export class BattleHud {
     const el = this.confirmEl
     if (!el) return
     const bar = this.el.getBoundingClientRect()
+    const below = this.strip.getBoundingClientRect().bottom
     const b = this.visible('surrender') ? this.btn.get('surrender')!.getBoundingClientRect() : null
     const w = Math.min(300, bar.width - 16)
     el.style.width = `${w}px`
     const cx = b ? b.left + b.width / 2 : bar.left + bar.width / 2
     const left = Math.max(bar.left + 8, Math.min(bar.right - 8 - w, cx - w / 2))
     el.style.left = `${Math.round(left)}px`
-    el.style.top = `${Math.round(bar.bottom + 6)}px`
+    el.style.top = `${Math.round(below + 6)}px`
   }
 
   destroy(): void {
@@ -435,6 +531,7 @@ export class BattleHud {
     window.removeEventListener('resize', this.onResize)
     this.observer?.disconnect()
     this.el.remove()
+    this.strip.remove()
   }
 }
 
@@ -471,12 +568,20 @@ function injectHudStyles(): void {
 .bh.two .bh-row.b { gap: 6px; justify-content: flex-end; }
 .bh.two .bh-row.b .bh-btn { flex: 1 0 auto; max-width: 160px; }
 .bh.two .bh-row.a { min-height: 30px; }
-.bh-title { font-weight: bold; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; max-width: 240px; margin-right: 4px; }
-.bh-tugwrap { flex: 1 1 220px; min-width: 120px; max-width: 420px; display: flex; align-items: center; gap: 8px; margin: 0 auto; }
-.bh.two .bh-tugwrap { max-width: none; }
+.bh-title { font-weight: bold; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; max-width: 260px; }
+.bh-vs { font-size: 14px; color: ${theme.textMuted}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; max-width: 260px; }
+.bh-vs::before { content: '·'; margin-right: 8px; color: ${edge}; font-weight: bold; }
+.bh-gap { flex: 1 1 0; min-width: 0; }
+.bh-strip {
+  position: fixed; z-index: 4; box-sizing: border-box; display: flex; align-items: center; padding: 2px 0 1px;
+  font-family: ${theme.font}; color: ${theme.text}; pointer-events: none; user-select: none; -webkit-user-select: none;
+}
+.bh-strip .bh-tug { pointer-events: auto; }
+.bh-tugwrap { flex: 1 1 auto; min-width: 0; height: 100%; display: flex; align-items: center; gap: 8px; }
 .bh-dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
-.bh-tug { flex: 1 1 auto; min-width: 0; display: flex; height: 16px; border-radius: 999px; overflow: hidden; background: ${cssHex(theme.board)}; box-shadow: 0 0 0 1.5px ${edge}; }
-.bh.touch .bh-tug { height: 18px; }
+.bh-strip.thin .bh-dot { width: 8px; height: 8px; }
+.bh-tug { flex: 1 1 auto; min-width: 0; display: flex; height: 100%; max-height: 18px; border-radius: 999px; overflow: hidden; background: ${cssHex(theme.board)}; box-shadow: 0 0 0 1.5px ${edge}; }
+.bh-strip.thin .bh-seg { font-size: 10px; }
 .bh-seg { flex: 0 1 0px; flex-grow: 0; min-width: 0; display: flex; align-items: center; overflow: hidden; transition: flex-grow .34s cubic-bezier(.2,.8,.3,1); font-weight: bold; font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; }
 .bh-seg + .bh-seg { box-shadow: inset 2px 0 0 ${cssHex(theme.hud)}; }
 .bh-seg .bh-n { padding: 0 6px; white-space: nowrap; }
@@ -486,7 +591,7 @@ function injectHudStyles(): void {
 .bh-seg.zero .bh-n { visibility: hidden; }
 .bh-aims { font-weight: bold; font-size: 14px; white-space: nowrap; flex: none; }
 .bh-aims.out { color: ${cssHex(theme.enemy)}; }
-.bh-clockbox { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; flex: none; min-width: 64px; }
+.bh-clockbox { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; flex: none; min-width: 44px; margin-right: 4px; }
 .bh-clock { font-size: 17px; font-variant-numeric: tabular-nums; }
 .bh-clock.warn { color: ${cssHex(theme.enemy)}; }
 .bh-net { font-size: 12px; color: ${theme.textMuted}; white-space: nowrap; }

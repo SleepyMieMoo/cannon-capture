@@ -11,7 +11,7 @@ import { loadColour } from '../menu/colourPref'
 import { TUNING } from '../config/tuning'
 import { DEBUG } from '../debug'
 import { BattleMenu } from '../ui/battleMenu'
-import { BattleHud, type HudButton } from '../ui/battleHud'
+import { BattleHud, HUD_STRIP, VIEW_TOP, matchTime, type HudButton } from '../ui/battleHud'
 import type { ClientMsg } from '../net/online'
 import { ICONS } from '../menu/art'
 import { music } from '../audio/music'
@@ -124,14 +124,18 @@ const LOBBY: Route = { scene: 'title', data: { screen: 'lobby' } }
 /** In player vs player the menu and leaving the window don't pause the round (the other player is still playing). */
 const NO_HOLD = { paused: false, ended: null, pause: () => false, resume: () => {} }
 
-/** The world viewport: everything under the HUD band. */
 /** Slim HUD band on top (same info as before, less height). */
 const HUD_H = 54
 /** Catch-up time per frame after a hidden tab (ms of work, not game time). */
 const CATCH_UP_FRAME_MS = 12
 /** How long "Go!" shows after the countdown (ms). */
 const GO_MS = 850
-const WORLD_VIEW = { x: 0, y: HUD_H + 2, w: GAME_WIDTH, h: GAME_HEIGHT - HUD_H - 2 }
+/**
+ * The world viewport: everything under the HUD band and the cannon strip.
+ * Its top moves down when the bar and strip reach further (small phones),
+ * so they never cover the board; see fitViewUnderBar.
+ */
+const WORLD_VIEW = { x: 0, y: VIEW_TOP, w: GAME_WIDTH, h: GAME_HEIGHT - VIEW_TOP }
 /** Hold a press this long on one of your cannons to open its type menu (touch). */
 const LONG_PRESS_MS = 450
 /** How-to hints show for this long after Go (until your first aim, if that's sooner). */
@@ -558,7 +562,9 @@ export class BattleScene extends Phaser.Scene {
     }
     // Everything created so far is board content.
     this.children.list.forEach((obj) => this.world(obj))
-    this.wc = new WorldCamera(this, this.board, WORLD_VIEW, undefined, 1)
+    WORLD_VIEW.y = VIEW_TOP
+    WORLD_VIEW.h = GAME_HEIGHT - VIEW_TOP
+    this.wc = new WorldCamera(this, this.board, { ...WORLD_VIEW }, undefined, 1)
     if (this.startView && this.wc.canZoomOut) {
       // Playtest from the editor: same zoom and centre (play never zooms past near).
       this.wc.zoom = Math.min(1, this.startView.zoom)
@@ -661,7 +667,7 @@ export class BattleScene extends Phaser.Scene {
         // Under the top bar, lined up with its right end.
         const c = this.game.canvas.getBoundingClientRect()
         const bar = this.hud?.el.getBoundingClientRect()
-        return bar && bar.height > 0 ? { top: bar.bottom + 8, right: bar.right - 8 } : { top: c.top + (HUD_H + 8) * (c.width / GAME_WIDTH), right: c.right - 8 }
+        return bar && bar.height > 0 ? { top: this.hud!.bottom + 8, right: bar.right - 8 } : { top: c.top + (VIEW_TOP + 8) * (c.width / GAME_WIDTH), right: c.right - 8 }
       },
       () => this.settings.hide(),
       { online: pvp?.role === 'online', versus: !!pvp },
@@ -1568,7 +1574,7 @@ export class BattleScene extends Phaser.Scene {
     if (!c) return menu.draw(null, 0, 0)
     const p = this.wc.toScreen(c.x, c.y)
     const k = layoutScale(this)
-    menu.draw({ x: p.x / k, y: p.y / k }, TUNING.cannonRadius * this.wc.zoom, HUD_H + 6)
+    menu.draw({ x: p.x / k, y: p.y / k }, TUNING.cannonRadius * this.wc.zoom, WORLD_VIEW.y + 4)
   }
 
   /** E: back to the editor from a playtest (never while typing in a text field, or with Ctrl/Cmd/Alt). */
@@ -1880,6 +1886,9 @@ export class BattleScene extends Phaser.Scene {
     hud.fillRect(0, 0, GAME_WIDTH, HUD_H)
     hud.fillStyle(theme.boardEdge, 1)
     hud.fillRect(0, HUD_H, GAME_WIDTH, 2)
+    // The cannon strip's band (the HTML strip sits on it, as wide as the board).
+    hud.fillStyle(theme.hud, 0.6)
+    hud.fillRect(0, HUD_H + 2, GAME_WIDTH, HUD_STRIP)
   }
 
   /**
@@ -1908,17 +1917,56 @@ export class BattleScene extends Phaser.Scene {
     // Your segment on your side of the board (watchers: the gold seat's side), like the side glow.
     const edges = glowEdges(this.cannons, this.board)
     const mineOn = edges.player ?? (edges.enemy === 'left' ? 'right' : 'left')
-    this.hud = new BattleHud(this, {
-      title,
-      buttons,
-      counts: { mineOn, enemy: !this.isPuzzle },
-      clock: !!this.online,
-      aims: this.isPuzzle && this.level.aims !== undefined,
-    })
+    const vs = this.opponentLine()
+    this.hud = new BattleHud(
+      this,
+      {
+        title,
+        opponent: vs?.text ?? null,
+        opponentTitle: vs?.title,
+        buttons,
+        counts: { mineOn, enemy: !this.isPuzzle },
+        clock: !!this.online,
+        aims: this.isPuzzle && this.level.aims !== undefined,
+      },
+      (cover) => this.fitViewUnderBar(cover),
+    )
     if (DEBUG.enabled) this.hud.el.dataset.mineOn = mineOn
     this.paintHud()
     this.syncPauseButton()
     this.syncButtons()
+  }
+
+  /**
+   * Who you play, for the top bar: the bot and its difficulty, the other
+   * player online (both names when watching), or nothing (puzzles).
+   */
+  private opponentLine(): { text: string; title: string } | null {
+    if (this.online) {
+      const info = this.online.info
+      const seat = this.me
+      if (seat === null) {
+        const text = `${nameOnSide(info, 0)} vs ${nameOnSide(info, 1)}`
+        return { text, title: `Watching: ${text}` }
+      }
+      const name = info?.seats[1 - seat]?.name || 'Player ' + (2 - seat)
+      return { text: `vs ${name}`, title: `You are playing ${name} online` }
+    }
+    if (this.pvp) return { text: 'vs Player 2', title: 'Two players on one network' }
+    const bot = this.botLevel()
+    if (!bot) return null
+    const { name, vibe } = BOTS[bot]
+    const label = DIFFICULTY[bot].label
+    return { text: `vs ${name} · ${label}`, title: `${name} (${label}): ${vibe}` }
+  }
+
+  /** The bar and strip reach past their band (small screens): start the board's view below them, never under them. */
+  private fitViewUnderBar(cover: number): void {
+    const y = VIEW_TOP + cover
+    if (Math.abs(y - WORLD_VIEW.y) < 0.5) return
+    WORLD_VIEW.y = y
+    WORLD_VIEW.h = GAME_HEIGHT - y
+    this.wc?.setView(WORLD_VIEW)
   }
 
   /** The hint pill under the top bar (UI camera, never takes a click). */
@@ -1927,7 +1975,7 @@ export class BattleScene extends Phaser.Scene {
     this.hint = this.add
       .text(0, 0, '', { fontFamily: theme.font, fontSize: '14px', color: theme.text, align: 'center', wordWrap: { width: 860 } })
       .setOrigin(0.5)
-    this.hintBox = this.add.container(GAME_WIDTH / 2, HUD_H + 24, [this.hintBg, this.hint]).setDepth(29).setVisible(false)
+    this.hintBox = this.add.container(GAME_WIDTH / 2, VIEW_TOP + 24, [this.hintBg, this.hint]).setDepth(29).setVisible(false)
   }
 
   /** Words for the cannon bar's tooltip and screen readers. */
@@ -1957,6 +2005,17 @@ export class BattleScene extends Phaser.Scene {
         hud.setAims(`${left} aim${left === 1 ? '' : 's'} left`, left === 0)
       }
       this.syncButtons()
+      // The cannon strip spans the board as it shows on screen (zoom and pan included).
+      const k = layoutScale(this)
+      const b = this.board
+      hud.setSpan(this.wc.toScreen(b.x, b.y).x / k, this.wc.toScreen(b.x + b.w, b.y).x / k)
+      if (!this.online) {
+        const sec = Math.floor(this.sim.clock / 1000)
+        if (sec !== this.clockShown) {
+          this.clockShown = sec
+          hud.setClock(matchTime(this.sim.clock), false)
+        }
+      }
     }
     if (this.online) this.refreshOnlineHud()
     this.refreshHint()
@@ -1981,16 +2040,13 @@ export class BattleScene extends Phaser.Scene {
     if (t >= this.netAt) {
       this.netAt = t + 250
       this.hud?.setNet(netParts(x, this.me, this.pausesOff).join('  ·  '), this.online!.rttAvg)
+      const vs = this.opponentLine()
+      this.hud?.setOpponent(vs?.text ?? null, vs?.title)
       if (this.sim.paused) {
         const label = pauseLabel(x, this.me, this.online!.info)
         if (this.pausedLabel.text !== label) this.pausedLabel.setText(label)
       }
     }
-  }
-
-  /** How far the top bar reaches below the canvas's HUD band, in layout px (it can on landscape phones). */
-  private barCover(): number {
-    return this.hud ? this.hud.coverBelow(HUD_H) : 0
   }
 
   /**
@@ -2039,7 +2095,7 @@ export class BattleScene extends Phaser.Scene {
       box.setScale(k)
       this.hintK = k
     }
-    box.setY(HUD_H + this.barCover() + 8 + ((this.hint.height + 12) * k) / 2)
+    box.setY(WORLD_VIEW.y + 6 + ((this.hint.height + 12) * k) / 2)
     box.setVisible(true)
   }
 
@@ -2379,7 +2435,7 @@ export class BattleScene extends Phaser.Scene {
     g.lineStyle(3, theme.select, 0.55 + 0.25 * Math.sin(time / 300))
     g.strokeRect(v.x + 2, v.y + 2, v.w - 4, v.h - 4)
     const w = this.pausedLabel.width + 28
-    const top = HUD_H + 10 + this.barCover()
+    const top = WORLD_VIEW.y + 8
     this.pausedLabel.setY(top + 14)
     g.fillStyle(theme.select, 0.95)
     g.fillRoundedRect(GAME_WIDTH / 2 - w / 2, top, w, 28, 14)
