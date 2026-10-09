@@ -1,5 +1,4 @@
-import { fxLabel } from '../render/vfx/fxPrefs'
-import { badgeCount, loadBadges } from '../menu/badges'
+import { debugNow } from '../perf/debugNow'
 import Phaser from 'phaser'
 import { perf } from '../perf/PerfOverlay'
 import { applyAudioSettings, preloadSfx, previewPop } from '../audio/Sfx'
@@ -15,15 +14,8 @@ import { cleanName, isRoomCode, normaliseCode } from '../net/online'
 import { createRoom, online, saveName, savedName, type OnlineRoom } from '../net/onlineClient'
 import type { OnlineMenu } from '../menu/onlineMenu'
 import { resetAllPreferences } from '../menu/prefs'
-import { loadMotionPref, motionOK } from '../ui/motion'
-import { loadMenuPrefs } from '../menu/menuModel'
-import { loadSkin } from '../menu/skinPref'
-import { loadColour } from '../menu/colourPref'
-import { settingsText } from '../menu/debugInfo'
-import { debugReport } from '../perf/debugEnv'
 import { DemoWatch, keepDemoRunning, type DemoScenes } from './demoWatch'
 import { music } from '../audio/music'
-import { loadTabPrefs } from '../menu/tabPrefs'
 
 let launchedFromUrl = false
 let joinedFromUrl = false
@@ -179,25 +171,7 @@ export class TitleScene extends Phaser.Scene {
           music.reload()
         },
         music,
-        debugInfo: () => {
-          const audio = loadAudioSettings()
-          return debugReport(
-            this.game,
-            settingsText({
-              sound: !audio.muted,
-              volume: audio.volume,
-              perf: perf.shown,
-              skin: loadSkin(),
-              colour: loadColour(),
-              difficulty: loadMenuPrefs().difficulty,
-              music: { on: music.playing, volume: music.settings.volume, track: music.current, default: music.settings.track, pulse: music.settings.pulse },
-              tabbed: { music: music.settings.keepHidden, pauseVsAi: loadTabPrefs().pauseVsAi },
-              motion: { pref: loadMotionPref(), reduced: !motionOK() },
-              effects: fxLabel(),
-              badges: badgeCount(loadBadges()),
-            }),
-          )
-        },
+        debugInfo: () => debugNow(this.game),
       },
       screen,
     )

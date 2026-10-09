@@ -4,6 +4,8 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.7.2: every setting in battle", "text": "The battle's Settings now has everything the main menu does, so you never need to leave a round to change one." },
+        { "kind": "new", "title": "Settings in battle", "text": "Sound, music (song, Repeat, volume, pulse), effects quality, reduce motion, performance, tabbed-out choices, your skin and colour (worn from the next round) and Copy debug info, all in the battle's Settings. Two columns on wide screens." },
         { "kind": "new", "title": "Version 0.7.1: tidier credits", "text": "Credits now list just the people and tools behind the game." },
         { "kind": "new", "title": "Version 0.7.0: the jukebox plays on", "text": "Songs now play one after another, all three in turn, and a new Repeat button keeps your favourite going." },
         { "kind": "new", "title": "Jukebox Repeat", "text": "When a song ends the next one starts. Turn on Repeat (the button beside Next) to keep the current song going round instead; the jukebox remembers your choice." },

@@ -68,7 +68,8 @@ import { GLOW, SideGlow, glowColours, glowEdges } from '../render/sideGlow'
 import { cannonsFromResult, clock, endTexts, nameOnSide, outcomeFromResult, tagNames, netParts, opponentLine, pauseCheck, pauseLabel, rematchLine, sideIndex } from '../net/onlineView'
 import { CatchUp } from '../sim/catchUp'
 import { ResultGate } from './resultGate'
-import { loadTabPrefs, type TabPrefs } from '../menu/tabPrefs'
+import { loadTabPrefs, saveTabPrefs, type TabPrefs } from '../menu/tabPrefs'
+import { debugNow } from '../perf/debugNow'
 import type { Side } from '../types'
 import { PVP_RULES } from '../config/pvpRules'
 
@@ -635,6 +636,11 @@ export class BattleScene extends Phaser.Scene {
         mute: () => this.sfx.toggleMute(),
         volume: (v) => this.sfx.setVolume(v),
         perf: () => perf.toggle(),
+        tabPause: (on) => {
+          this.tabPrefs = { ...this.tabPrefs, pauseVsAi: on }
+          saveTabPrefs(this.tabPrefs)
+        },
+        debugInfo: () => debugNow(this.game),
       },
       () => {
         // Under the top bar, lined up with its right end.
@@ -643,6 +649,8 @@ export class BattleScene extends Phaser.Scene {
         return bar && bar.height > 0 ? { top: bar.bottom + 8, right: bar.right - 8 } : { top: c.top + (HUD_H + 8) * (c.width / GAME_WIDTH), right: c.right - 8 }
       },
       () => this.settings.hide(),
+      { online: pvp?.role === 'online', versus: !!pvp },
+      music,
     )
     this.menuHold.release()
     // A restart from the open menu left keys off (the scene object is reused).
@@ -1835,7 +1843,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.surrenderHere) buttons.push({ id: 'surrender', label: 'Surrender', title: this.online ? 'Surrender: give this match to the other player (asks first)' : 'Surrender: give up this round (asks first)', keep: 3, danger: true, onPress: () => this.askSurrender() })
     // Watchers can't pause.
     if (!(this.online && this.me === null)) buttons.push({ id: 'pause', label: 'Pause', title: 'Pause or resume (Space)', keep: 5, onPress: () => this.togglePause() })
-    buttons.push({ id: 'settings', label: 'Settings', title: 'Settings: auto-target, sound, performance', keep: 2, onPress: () => this.settings.toggle() })
+    buttons.push({ id: 'settings', label: 'Settings', title: 'Settings: auto-target, sound, music, display and more', keep: 2, onPress: () => this.settings.toggle() })
     if (!this.online) buttons.push({ id: 'restart', label: 'Restart', title: 'Restart the round (R)', keep: 1, onPress: () => this.restart() })
     buttons.push({ id: 'menu', label: 'Menu', title: 'Menu (Esc)', keep: Infinity, onPress: () => this.openMenu() })
     // Your segment on your side of the board (watchers: the gold seat's side), like the side glow.
