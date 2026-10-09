@@ -23,6 +23,8 @@ export const PILLAR_SIZES = [18, 28, 44] as const
  */
 export const ROCK = {
   shadow: 0x0c0806,
+  /** The outline band on a rock's exact edge (where shots bounce). */
+  outline: 0x140e0b,
   edge: 0x2b221c,
   base: 0x564638,
   mid: 0x6b5847,
