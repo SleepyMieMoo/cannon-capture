@@ -110,6 +110,7 @@ describe('one order API', () => {
       { t: 'aim', cannon: 'p1', at: { x: 10, y: 20 } },
       { t: 'swap', cannon: 'p1', kind: 'machinegun' },
       { t: 'auto', cannon: 'p1' },
+      { t: 'stop', cannon: 'p1' },
       { t: 'autoAll', on: true },
       { t: 'pause' },
       { t: 'resume' },

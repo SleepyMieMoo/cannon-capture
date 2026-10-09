@@ -4,6 +4,8 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.7.4: stop on command", "text": "Any of your cannons can now be told to stop aiming and hold its fire." },
+        { "kind": "new", "title": "Stop aiming", "text": "Right-click one of your aiming cannons (or pick Stop aiming above it) and it drops its aim and holds its fire until you aim it again. Right-click while aiming cancels. Works paused and online." },
         { "kind": "new", "title": "Version 0.7.3: focus while you aim", "text": "Picking a cannon to aim now dims the board around what matters." },
         { "kind": "new", "title": "Target mode", "text": "While a cannon is selected, the board dims except that cannon, its current target, anything aiming at it and the cannon you point at. Aiming or cancelling clears it. Reduce motion skips the fade." },
         { "kind": "new", "title": "Version 0.7.2: every setting in battle", "text": "The battle's Settings now has everything the main menu does, so you never need to leave a round to change one." },

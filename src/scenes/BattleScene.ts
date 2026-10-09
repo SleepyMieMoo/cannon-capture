@@ -573,7 +573,13 @@ export class BattleScene extends Phaser.Scene {
 
     this.createHud()
     this.uiBlock(() => this.createHint())
-    this.swapMenu = new SwapMenu(this, (obj) => this.ui(obj), (c) => this.autoState(c), (c) => this.sim.queuedKind(c))
+    this.swapMenu = new SwapMenu(
+      this,
+      (obj) => this.ui(obj),
+      (c) => this.autoState(c),
+      (c) => this.sim.queuedKind(c),
+      (c) => this.canStop(c),
+    )
     this.pausedFx = this.ui(this.add.graphics().setDepth(30))
     this.pausedLabel = this.ui(
       this.add
@@ -1044,6 +1050,27 @@ export class BattleScene extends Phaser.Scene {
    * the round itself, or to the host when this is the second player. The other
    * player's orders reach the host's round through the same applyOrder.
    */
+  /**
+   * Can "Stop aiming" do anything for this cannon? It has an aim now (and no
+   * stop queued yet), or, paused, an aim queued that the stop would cancel.
+   */
+  private canStop(c: Cannon): boolean {
+    if (this.ended || this.restarting || c.side !== 'player') return false
+    if (this.sim.paused) return this.sim.queuedAim(c) !== null || (!!c.aim() && !this.sim.queuedStop(c))
+    return !!c.aim()
+  }
+
+  /** Stop aiming (right-click, or the menu's pill): the cannon drops its aim and holds its fire until you aim it again. */
+  private stopAiming(c: Cannon): boolean {
+    if (!this.canStop(c)) return false
+    const paused = this.sim.paused
+    const ok = this.order({ t: 'stop', cannon: c.id }).ok
+    if (!ok) return false
+    if (this.selected === c) this.selected = null
+    this.popup(c.x, c.y - 30, paused ? 'Stops when you resume' : 'Stopped aiming', theme.textMuted)
+    return true
+  }
+
   private order(o: Order): OrderResult {
     if (!this.client) return applyOrder(this.sim, 'player', o)
     if (this.client.lost || this.sim.ended) return { ok: false }
@@ -1100,6 +1127,10 @@ export class BattleScene extends Phaser.Scene {
         const at = 'cannon' in o.at ? sim.byId(o.at.cannon)! : o.at
         this.simEvents.aimed?.({ x: at.x, y: at.y })
         return { ok: true }
+      }
+      case 'stop': {
+        const c = mine(o.cannon)
+        return { ok: !!c && this.canStop(c) }
       }
       case 'swap': {
         const c = mine(o.cannon)
@@ -1340,6 +1371,8 @@ export class BattleScene extends Phaser.Scene {
   // ---------------------------------------------------------------- input
 
   private bindInput(): void {
+    // Right-click is Stop aiming / cancel on the board, so the browser's own menu stays shut.
+    this.input.mouse?.disableContextMenu()
     this.input.off('pointerdown', this.onPointerDown, this)
     this.input.off('pointermove', this.onPointerMove, this)
     this.input.off('pointerup', this.onPointerUp, this)
@@ -1571,12 +1604,29 @@ export class BattleScene extends Phaser.Scene {
         return
       }
     }
+    if (pointer.rightButtonDown()) {
+      // Right-click: cancel target mode if it's on, else stop the aim of the cannon under it.
+      this.pressOnUi = true
+      if (over && over.length > 0) return
+      if (this.selected) {
+        this.selected = null
+        return
+      }
+      if (this.ended || !this.wc.inView(pointer.x, pointer.y)) return
+      const w = this.wc.toWorld(pointer.x, pointer.y)
+      const c = this.cannonAt(w.x, w.y)
+      if (c && c.side === 'player') this.stopAiming(c)
+      return
+    }
     if (this.swapMenu.open && this.swapMenu.contains(lp.x, lp.y)) {
       this.pressOnUi = true
       const kind = this.swapMenu.pillAt(lp.x, lp.y)
       const cannon = this.swapMenu.cannon
       if (kind === 'auto') {
         if (cannon) this.toggleCannonAuto(cannon)
+      } else if (kind === 'stop') {
+        if (cannon) this.stopAiming(cannon)
+        if (this.swapMenu.pinned) this.swapMenu.hide()
       } else if (kind && cannon) {
         this.order({ t: 'swap', cannon: cannon.id, kind })
         if (this.swapMenu.pinned) this.swapMenu.hide()
@@ -2036,6 +2086,7 @@ export class BattleScene extends Phaser.Scene {
     const pill = lp && this.swapMenu.open ? this.swapMenu.pillAt(lp.x, lp.y) : null
     const c = this.swapMenu.cannon
     if (pill === 'auto') return this.guideLine()
+    if (pill === 'stop') return !c ? '' : this.sim.queuedAim(c) ? `Cancel ${c.name}'s queued aim.` : `Queue: ${c.name} stops aiming when you resume (it holds its fire).`
     if (pill && c) {
       if (pill === c.kind) return this.sim.queuedKind(c) ? `Cancel ${c.name}'s queued swap (it stays a ${kindLabel(c.kind)}).` : `${c.name} is a ${kindLabel(c.kind)}.`
       return `Queue: ${c.name} → ${kindLabel(pill)} when you resume (its reload starts then, not now).`
@@ -2054,13 +2105,14 @@ export class BattleScene extends Phaser.Scene {
       if (c.autoTarget) return `${c.name} auto-targets: when its target is captured it picks the nearest foe itself. Click (or M) for manual: it keeps your aim and waits for orders.`
       return `${c.name} is on manual: it never picks a target by itself. Click (or M) to turn auto-target back on.`
     }
+    if (pill === 'stop') return `Stop aiming: ${this.swapMenu.cannon?.name ?? 'it'} holds its fire until you aim it again (or right-click it).`
     if (pill && this.swapMenu.cannon) {
       const c = this.swapMenu.cannon
       if (pill === c.kind) return `${c.name} is a ${kindLabel(c.kind)}: ${KINDS[c.kind].blurb}.`
       return `Swap ${c.name} to ${kindLabel(pill)}: ${KINDS[pill].blurb}. ${KINDS[pill].fires ? 'It reloads before its first shot.' : 'Its barrier comes up after the reload.'}`
     }
     if (!this.selected) {
-      if (this.hover && this.hover.side === 'player') return `Click to select ${this.hover.name}, or pick a type above it (long-press on touch).`
+      if (this.hover && this.hover.side === 'player') return `Click to select ${this.hover.name}, or pick a type above it (long-press on touch).${this.hover.aim() ? ' Right-click stops its aim.' : ''}`
       return 'Click one of your cannons (light ring) to select it, then click where it should aim.'
     }
     const name = this.selected.name
@@ -2075,7 +2127,7 @@ export class BattleScene extends Phaser.Scene {
       return `${name} → ${this.hover.name}`
     }
     if (this.hover === this.selected) return `Click ${name} again to deselect.`
-    return `${name}: click anywhere to aim (it deselects after), or click it again to cancel.`
+    return `${name}: click anywhere to aim (it deselects after), or click it again (or right-click) to cancel.`
   }
 
   private showBanner(message: string): void {
@@ -2261,8 +2313,19 @@ export class BattleScene extends Phaser.Scene {
   private drawQueued(g: Phaser.GameObjects.Graphics, time: number, walls: Rect[]): void {
     const seen = new Set<Cannon>()
     const pulse = 0.85 + 0.15 * Math.sin(time / 160)
-    for (const { cannon: c, aim, kind } of this.sim.queuedOrders()) {
+    for (const { cannon: c, aim, kind, stop } of this.sim.queuedOrders()) {
       const fires = firesAs(kind ?? c.kind)
+      if (stop) {
+        // A crossed-out ring by the cannon: it stops aiming when you resume.
+        const r = 9
+        const sx = c.x + TUNING.cannonRadius + 6
+        const sy = c.y - TUNING.cannonRadius - 6
+        g.fillStyle(theme.hud, 0.85)
+        g.fillCircle(sx, sy, r + 2)
+        g.lineStyle(2.5, theme.select, pulse)
+        g.strokeCircle(sx, sy, r)
+        g.lineBetween(sx - r * 0.7, sy + r * 0.7, sx + r * 0.7, sy - r * 0.7)
+      }
       if (aim) {
         if (fires) {
           const end = this.clipAim(c.x, c.y, aim.x, aim.y, walls)

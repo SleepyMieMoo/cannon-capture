@@ -24,7 +24,7 @@ const r3 = (v: number) => Math.round(v * 1000) / 1000
 export type CannonRow = number[]
 /** One shot: [id, side, kind, x, y, vx, vy, age (ms since fired; newer servers)]. */
 export type ShotRow = number[]
-/** A queued order (paused): [cannon, target (-1 none), aimX, aimY (NaN-free: -1 when none), kind (-1 none), hasAim]. */
+/** A queued order (paused): [cannon, target (-1 none), aimX, aimY (NaN-free: -1 when none), kind (-1 none), hasAim (1 aim, 2 stop aiming, 0 neither)]. */
 export type QueuedRow = number[]
 
 /** A sim event to replay on the view, at its sim time: [clock, type, ...args]. */
@@ -149,7 +149,7 @@ export function encodeSnap(sim: BattleSim, tick: number, forSide: Side, events: 
   const q = sim.queuedOrders(forSide).map((o): QueuedRow => {
     const aimCannon = o.aim instanceof Cannon ? ix(o.aim.id) : -1
     const point = o.aim && !(o.aim instanceof Cannon) ? o.aim : null
-    return [ix(o.cannon.id), aimCannon, point ? r1(point.x) : -1, point ? r1(point.y) : -1, kindNo(o.kind), o.aim ? 1 : 0]
+    return [ix(o.cannon.id), aimCannon, point ? r1(point.x) : -1, point ? r1(point.y) : -1, kindNo(o.kind), o.aim ? 1 : o.stop ? 2 : 0]
   })
   const walls = sim.breakableHp().map(r3)
   return {
@@ -310,6 +310,7 @@ export function applySnap(view: BattleSim, a: Snap, b: Snap, t: number, latest: 
         cannon: cannons[row[0]],
         aim: row[5] !== 1 ? null : row[1] >= 0 ? (cannons[row[1]] ?? null) : ({ x: row[2], y: row[3] } as Point),
         kind: row[4] >= 0 ? (CANNON_KINDS[row[4]] ?? null) : null,
+        stop: row[5] === 2,
       })),
   )
 }
