@@ -8,6 +8,7 @@ import { BOTS, botAvatarSvg } from '../ui/bots'
 import { loadColour, saveColour } from './colourPref'
 import { BRAND } from '../config/brand'
 import { MAP_SIZES } from '../levels/board'
+import { beatableOnImpossible } from '../levels'
 import { drawThumb } from '../editor/thumb'
 import { listMaps } from '../editor/maps'
 import { loadProgress } from '../progress'
@@ -66,6 +67,10 @@ function mePreview(ai: boolean, skin: SkinId): string {
 }
 
 const icon = (svg: string): HTMLSpanElement => h('span', { innerHTML: svg, style: 'display:inline-flex' })
+
+/** The tag on built-in maps the dev has beaten on Impossible by hand (src/data/mapInfo.json). */
+export const VERIFIED_TIP = 'Beatable on Impossible: verified by hand by the dev. Hard, but fair.'
+const SHIELD_CHECK = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M8 1.2 13.4 3v4.4c0 3.3-2.3 6-5.4 7.4C4.9 13.4 2.6 10.7 2.6 7.4V3Z" fill="currentColor" opacity=".22" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="m5.3 8.1 1.9 1.9 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 
 function summary(level: LevelDef): string {
   const n = (side: string): number => level.cannons.filter((c) => c.side === side).length
@@ -310,7 +315,8 @@ export class MainMenu {
       saveMenuPrefs(this.prefs)
     }
     const pickName = h('div.n', {}, map.name)
-    const pickInfo = h('div.mm-note', {}, summary(map.level))
+    const info = (c: MapChoice): string => summary(c.level) + (c.group === 'Built-in' && beatableOnImpossible(c.id) ? ' · beatable on Impossible' : '')
+    const pickInfo = h('div.mm-note', {}, info(map))
     // The bot you'll face: its face and name beside what the level means.
     const botFace = h('div.mm-botface')
     const botName = h('b', {})
@@ -332,8 +338,11 @@ export class MainMenu {
       const canvas = h('canvas')
       drawThumb(canvas, c.level, 168)
       this.thumbs.push(() => drawThumb(canvas, c.level, 168))
-      const el = h('button.mm-card', { type: 'button', dataset: { id: 'map-' + c.id }, title: c.name, 'aria-pressed': String(c.id === map.id) },
-        canvas,
+      const verified = c.group === 'Built-in' && beatableOnImpossible(c.id)
+      const thumb = h('div.mm-thumb', {}, canvas)
+      if (verified) thumb.append(h('span.mm-verified', { title: VERIFIED_TIP, innerHTML: SHIELD_CHECK + '<span>Impossible</span>' }))
+      const el = h('button.mm-card', { type: 'button', dataset: { id: 'map-' + c.id }, title: verified ? `${c.name}\n${VERIFIED_TIP}` : c.name, 'aria-pressed': String(c.id === map.id) },
+        thumb,
         h('div.n', {}, c.name),
         h('div.m', {}, h('span', {}, MAP_SIZES[c.level.size ?? 'small'].label), h('span', {}, c.group === 'My maps' ? 'Yours' : '')),
       )
@@ -351,7 +360,7 @@ export class MainMenu {
         }
         el.dataset.clicked = '1'
         pickName.textContent = c.name
-        pickInfo.textContent = summary(c.level)
+        pickInfo.textContent = info(c)
         save()
       })
       el.addEventListener('dblclick', start)
