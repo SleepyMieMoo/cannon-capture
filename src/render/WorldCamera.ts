@@ -76,6 +76,17 @@ export class WorldCamera {
     return !!this.press?.dragging || !!this.pinch
   }
 
+  /**
+   * A new viewport (the top bar grew on a small screen). A view that showed
+   * the whole board keeps showing all of it.
+   */
+  setView(view: ViewRect): void {
+    const fitted = this.zoom <= this.minZoom + 1e-6
+    this.view = { ...view }
+    if (fitted) this.zoom = this.minZoom
+    this.apply()
+  }
+
   setBoard(board: Rect): void {
     this.board = board
     this.zoom = Phaser.Math.Clamp(this.zoom, this.minZoom, this.maxZoom)
