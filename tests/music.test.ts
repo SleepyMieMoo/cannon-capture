@@ -13,6 +13,7 @@ class FakeCtx {
   private listeners = new Map<string, Set<() => void>>()
   started: { id: number; offset: number; loopStart: number; loopEnd: number }[] = []
   stopped: number[] = []
+  sources: { id: number; loop: boolean; onended: null | (() => void) }[] = []
   private nextId = 1
   addEventListener(e: string, fn: () => void): void {
     const set = this.listeners.get(e) ?? new Set()
@@ -68,6 +69,7 @@ class FakeCtx {
       start: (_when: number, offset = 0) => ctx.started.push({ id, offset, loopStart: src.loopStart, loopEnd: src.loopEnd }),
       stop: () => ctx.stopped.push(id),
     }
+    ctx.sources.push(src)
     return src as unknown as AudioBufferSourceNode
   }
   decodeAudioData(bytes: ArrayBuffer): Promise<AudioBuffer> {
@@ -190,15 +192,15 @@ describe('music settings', () => {
   it('default to about half the sound effects’ volume, on, on the title song', () => {
     expect(MUSIC_DEFAULT_VOLUME).toBeGreaterThanOrEqual(SFX.defaultVolume * 0.4)
     expect(MUSIC_DEFAULT_VOLUME).toBeLessThanOrEqual(SFX.defaultVolume * 0.6)
-    expect(MUSIC_DEFAULTS).toEqual({ volume: MUSIC_DEFAULT_VOLUME, on: true, track: DEFAULT_TRACK, keepHidden: true, pulse: true })
+    expect(MUSIC_DEFAULTS).toEqual({ volume: MUSIC_DEFAULT_VOLUME, on: true, track: DEFAULT_TRACK, keepHidden: true, pulse: true, repeat: false })
     expect(TRACKS.find((t) => t.theme)?.id).toBe(DEFAULT_TRACK)
     expect(loadMusicSettings({ getItem: () => null, setItem: () => {} })).toEqual({ ...MUSIC_DEFAULTS })
   })
 
   it('saves and loads the song, the volume and play/pause, and ignores broken values', () => {
     const store = new MemoryStore()
-    saveMusicSettings({ volume: 0.2, on: false, track: 'singularity', keepHidden: false, pulse: false }, store)
-    expect(loadMusicSettings(store)).toEqual({ volume: 0.2, on: false, track: 'singularity', keepHidden: false, pulse: false })
+    saveMusicSettings({ volume: 0.2, on: false, track: 'singularity', keepHidden: false, pulse: false, repeat: true }, store)
+    expect(loadMusicSettings(store)).toEqual({ volume: 0.2, on: false, track: 'singularity', keepHidden: false, pulse: false, repeat: true })
     store.setItem(MUSIC_KEY, JSON.stringify({ volume: 7, on: 'yes', track: 'no-such-song' }))
     expect(loadMusicSettings(store)).toEqual({ ...MUSIC_DEFAULTS, volume: 1 })
     store.setItem(MUSIC_KEY, JSON.stringify({ volume: 'loud' }))
@@ -355,7 +357,7 @@ describe('MusicPlayer', () => {
     await flush()
     r.player.setDefault('singularity')
     r.player.setVolume(0.1)
-    expect(loadMusicSettings(r.store)).toEqual({ volume: 0.1, on: true, track: 'singularity', keepHidden: true, pulse: true })
+    expect(loadMusicSettings(r.store)).toEqual({ volume: 0.1, on: true, track: 'singularity', keepHidden: true, pulse: true, repeat: false })
     expect(r.player.current).toBe('fartysoup')
     r.player.reload()
     expect(r.player.settings.track).toBe('singularity')
@@ -421,7 +423,7 @@ describe('the audible position (for the beat pulses)', () => {
   })
 
   it('follows getOutputTimestamp, moving with the page clock between samples, and wraps at the loop', async () => {
-    const r = rig()
+    const r = rig({ repeat: true })
     let perf = 1000
     Object.assign(r.ctx, { getOutputTimestamp: () => ({ contextTime: r.ctx.currentTime - 0.04, performanceTime: perf }) })
     r.player.boot()
@@ -440,3 +442,53 @@ describe('the audible position (for the beat pulses)', () => {
     expect(pos).toBeLessThan(5.2)
   })
 })
+
+describe('auto-advance and repeat', () => {
+  it('plays each song once, then the next one (round all of them)', async () => {
+    const r = rig()
+    r.ctx.state = 'running'
+    r.player.boot()
+    await flush()
+    const first = r.player.current
+    const src = r.ctx.sources.at(-1)!
+    expect(src.loop).toBe(false)
+    src.onended?.()
+    await flush()
+    expect(r.player.current).toBe(stepTrack(first, 1))
+    expect(r.ctx.sources.length).toBe(2)
+    // Round all three and back to the start.
+    for (let i = 0; i < TRACKS.length - 1; i++) {
+      r.ctx.sources.at(-1)!.onended?.()
+      await flush()
+    }
+    expect(r.player.current).toBe(first)
+  })
+
+  it('repeat keeps the song going round, is saved, and applies to the song playing now', async () => {
+    const r = rig()
+    r.ctx.state = 'running'
+    r.player.boot()
+    await flush()
+    const src = r.ctx.sources.at(-1)!
+    r.player.setRepeat(true)
+    expect(src.loop).toBe(true)
+    expect(loadMusicSettings(r.store).repeat).toBe(true)
+    r.player.setRepeat(false)
+    expect(src.loop).toBe(false)
+    expect(loadMusicSettings(r.store).repeat).toBe(false)
+  })
+
+  it('a song stopped on purpose (pause, a pick) never skips ahead', async () => {
+    const r = rig()
+    r.ctx.state = 'running'
+    r.player.boot()
+    await flush()
+    const first = r.player.current
+    const src = r.ctx.sources.at(-1)!
+    r.player.pause()
+    src.onended?.()
+    await flush()
+    expect(r.player.current).toBe(first)
+  })
+})
+

@@ -4,6 +4,8 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.7.0: the jukebox plays on", "text": "Songs now play one after another, all three in turn, and a new Repeat button keeps your favourite going." },
+        { "kind": "new", "title": "Jukebox Repeat", "text": "When a song ends the next one starts. Turn on Repeat (the button beside Next) to keep the current song going round instead; the jukebox remembers your choice." },
         { "kind": "new", "title": "Version 0.6.1: badges to earn", "text": "A tidier Play vs AI list, a tag on maps the dev has beaten on Impossible, and win badges for every bot on every map." },
         { "kind": "new", "title": "Win badges", "text": "Beat Dumpling, Pip, Rivet or Vex on a map and their little face lights up on that map's card. The first time, the result panel shows a New badge! chip. Profile counts them all; Reset all preferences clears them." },
         { "kind": "new", "title": "Beatable on Impossible", "text": "Crossfire, Last Stand, Glass Garden and Void Gate carry a small shield tag: the dev has beaten each of them on Impossible by hand. Hard, but fair." },

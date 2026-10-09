@@ -1,6 +1,6 @@
 {
   "name": "cannon-capture",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "description": "Cannon capture battle prototype by SleepyMie. Cannons auto-fire and flip sides when overpowered.",
   "type": "module",

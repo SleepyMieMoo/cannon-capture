@@ -8,8 +8,9 @@ import { stepTrack, trackById, type MusicTrack, type TrackId } from './musicTrac
  * - Its own Web Audio context and volume, separate from the sound effects
  *   (Phaser's), so the SFX mute (N) and volume never touch the music, and
  *   clicking outside a Discord frame (a window blur) doesn't stop it.
- * - Songs loop on an AudioBufferSourceNode, between loop points that skip
- *   the encoder's silent padding, so there is no gap at the seam.
+ * - Each song plays once and the next one follows (round all of them), or,
+ *   with Repeat on, loops on its AudioBufferSourceNode between loop points
+ *   that skip the encoder's silent padding, so there is no gap at the seam.
  * - Only the playing song is downloaded and decoded; the others are fetched
  *   when picked. Nothing loads until boot() (after the first menu paint).
  * - Browsers (and Discord) keep audio locked until the first click, tap or
@@ -152,6 +153,7 @@ export class MusicPlayer {
     if (!v || !this.ctx) return this.offset
     const p = v.offset + Math.max(0, this.ctx.currentTime - v.startedAt)
     if (p < v.loop.end) return p
+    if (!v.src.loop) return v.loop.end
     const span = v.loop.end - v.loop.start
     return span > 0 ? v.loop.start + ((p - v.loop.start) % span) : 0
   }
@@ -171,6 +173,7 @@ export class MusicPlayer {
     const p = v.offset + (heard - v.startedAt)
     if (p < v.offset) return NaN
     if (p < v.loop.end) return p
+    if (!v.src.loop) return NaN
     const span = v.loop.end - v.loop.start
     return span > 0 ? v.loop.start + ((p - v.loop.start) % span) : NaN
   }
@@ -193,6 +196,14 @@ export class MusicPlayer {
     }
     this.heardCtx = now - (ctx.outputLatency || 0) - (ctx.baseLatency || 0)
     this.heardAt = nowMs
+  }
+
+  /** Jukebox → Repeat: keep this song going round, or move on to the next when it ends (saved). Applies to the song playing now too. */
+  setRepeat(on: boolean): void {
+    this.settings.repeat = on
+    if (this.voice) this.voice.src.loop = on
+    this.save()
+    this.emit()
   }
 
   /** Settings → Music → Pulse to the music (saved). */
@@ -445,9 +456,13 @@ export class MusicPlayer {
     const loop = this.loopOf(buf)
     const src = ctx.createBufferSource()
     src.buffer = buf
-    src.loop = true
+    // Repeat: go round between the loop points. Otherwise play to the end and move on (onended).
+    src.loop = this.settings.repeat
     src.loopStart = loop.start
     src.loopEnd = loop.end
+    src.onended = () => {
+      if (this.voice?.src === src) this.advance()
+    }
     const fade = ctx.createGain()
     const now = ctx.currentTime
     fade.gain.setValueAtTime(0, now)
@@ -460,6 +475,24 @@ export class MusicPlayer {
     // Keep only this song decoded (a decoded song is tens of MB).
     for (const k of [...this.buffers.keys()]) if (k !== id) this.buffers.delete(k)
     this.emit()
+  }
+
+  /** The song played to its end (Repeat off): the next one follows. */
+  private advance(): void {
+    const v = this.voice
+    if (!v) return
+    this.voice = null
+    try {
+      v.src.disconnect()
+      v.fade.disconnect()
+    } catch {
+      // Already gone.
+    }
+    if (!this.settings.on) return this.emit()
+    this.current = stepTrack(v.track, 1)
+    this.offset = 0
+    this.missing.delete(this.current)
+    this.start()
   }
 
   private stopVoice(fadeS: number): void {
