@@ -844,7 +844,6 @@ export class MainMenu {
         row('Made with', link(LINKS.typescript, 'TypeScript'), ' and ', link(LINKS.vite, 'Vite')),
         row('Font', 'Verdana (or your device’s closest match). No web fonts are downloaded.'),
         row('Special thanks', 'Playtesters, for every round and every bug report'),
-        row('Source code', link(LINKS.repo, 'github.com/SleepyMieMoo/cannon-capture')),
       ),
       this.versionFoot(),
     ])

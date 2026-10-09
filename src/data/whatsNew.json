@@ -4,6 +4,7 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "new", "title": "Version 0.7.1: tidier credits", "text": "Credits now list just the people and tools behind the game." },
         { "kind": "new", "title": "Version 0.7.0: the jukebox plays on", "text": "Songs now play one after another, all three in turn, and a new Repeat button keeps your favourite going." },
         { "kind": "new", "title": "Jukebox Repeat", "text": "When a song ends the next one starts. Turn on Repeat (the button beside Next) to keep the current song going round instead; the jukebox remembers your choice." },
         { "kind": "new", "title": "Version 0.6.1: badges to earn", "text": "A tidier Play vs AI list, a tag on maps the dev has beaten on Impossible, and win badges for every bot on every map." },
