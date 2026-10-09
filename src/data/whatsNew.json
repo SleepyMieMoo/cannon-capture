@@ -4,6 +4,8 @@
     {
       "date": "2026-10-09",
       "entries": [
+        { "kind": "fix", "title": "Version 0.7.8: aiming fixed online", "text": "Online matches no longer stop taking your aims partway through." },
+        { "kind": "fix", "title": "Aim cannons under fire", "text": "Online, a cannon of yours that had been hit could no longer be aimed on your screen, so aiming seemed to stop working as a match went on. Hit cannons take aims again, and a long match of quick clicking can no longer get you disconnected." },
         { "kind": "new", "title": "Version 0.7.7: buy me a coffee", "text": "A small way to support the game, if you'd like to." },
         { "kind": "new", "title": "Support SleepyMie", "text": "A Buy me a coffee ☕ link now sits in a corner of the title screen and in Credits. It opens Buy Me a Coffee in a new tab. It never shows in a match, and the game loads nothing from the site." },
         { "kind": "new", "title": "Version 0.7.6: a proper link preview", "text": "Sharing the game's link now shows a picture of a real battle with the game's name." },

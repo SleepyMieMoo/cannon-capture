@@ -287,6 +287,9 @@ export class PvpClient {
       if (this.events.length > PVP.maxQueuedEvents) this.events.splice(0, this.events.length - PVP.maxQueuedEvents / 2)
     } else if (msg.t === 'start') {
       if (msg.match !== this.start.match) this.onStart?.(msg)
+      // The same match again: we reconnected. Orders sent on the old line will never be answered,
+      // so drop their predictions now and show the server's picture (instead of waiting out the timeout).
+      else this.predictor.clear()
     } else if (msg.t === 'ack') {
       // Every snapshot after this answer includes the order.
       this.predictor.ack(Number(msg.seq), !!msg.ok, this.received + 1)

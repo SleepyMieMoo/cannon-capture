@@ -11,6 +11,7 @@ import { loadColour } from '../menu/colourPref'
 import { TUNING } from '../config/tuning'
 import { DEBUG } from '../debug'
 import { BattleMenu } from '../ui/battleMenu'
+import { canStop, clientAccepts } from '../net/orderCheck'
 import { BattleHud, HUD_STRIP, VIEW_TOP, matchTime, type HudButton } from '../ui/battleHud'
 import type { ClientMsg } from '../net/online'
 import { ICONS } from '../menu/art'
@@ -1061,9 +1062,7 @@ export class BattleScene extends Phaser.Scene {
    * stop queued yet), or, paused, an aim queued that the stop would cancel.
    */
   private canStop(c: Cannon): boolean {
-    if (this.ended || this.restarting || c.side !== 'player') return false
-    if (this.sim.paused) return this.sim.queuedAim(c) !== null || (!!c.aim() && !this.sim.queuedStop(c))
-    return !!c.aim()
+    return !this.restarting && canStop(this.sim, c) && !this.ended
   }
 
   /** Stop aiming (right-click, or the menu's pill): the cannon drops its aim and holds its fire until you aim it again. */
@@ -1126,28 +1125,24 @@ export class BattleScene extends Phaser.Scene {
       const c = sim.byId(id)
       return c && c.side === 'player' ? c : null
     }
+    // The same rules as the server (net/orderCheck): never stricter, or orders are lost on your screen.
+    if (!clientAccepts(sim, o)) return { ok: false }
     switch (o.t) {
       case 'aim': {
-        const c = mine(o.cannon)
-        if (!c || c.damaged || ('cannon' in o.at && (!sim.byId(o.at.cannon) || o.at.cannon === o.cannon))) return { ok: false }
         const at = 'cannon' in o.at ? sim.byId(o.at.cannon)! : o.at
         this.simEvents.aimed?.({ x: at.x, y: at.y })
         return { ok: true }
       }
-      case 'stop': {
-        const c = mine(o.cannon)
-        return { ok: !!c && this.canStop(c) }
-      }
+      case 'stop':
+        return { ok: true }
       case 'swap': {
-        const c = mine(o.cannon)
-        const ok = !!c && (o.kind !== c.kind || sim.queuedKind(c) !== null)
+        const c = mine(o.cannon)!
         // The new type's label pops now (the server's echo of it then shows nothing).
-        if (ok && !sim.paused) this.popup(c!.x, c!.y, kindLabel(o.kind), cssHex(sideColor('player')))
-        return { ok }
+        if (!sim.paused) this.popup(c.x, c.y, kindLabel(o.kind), cssHex(sideColor('player')))
+        return { ok: true }
       }
       case 'auto': {
-        const c = mine(o.cannon)
-        if (!c || sim.isPuzzle) return { ok: false }
+        const c = mine(o.cannon)!
         c.autoTarget = !c.autoTarget
         return { ok: true, on: c.autoTarget }
       }
@@ -1155,9 +1150,8 @@ export class BattleScene extends Phaser.Scene {
         sim.autoTarget = o.on
         return { ok: true, on: o.on }
       case 'pause':
-        return { ok: !sim.paused }
       case 'resume':
-        return { ok: sim.paused }
+        return { ok: true }
     }
   }
 

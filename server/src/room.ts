@@ -248,7 +248,11 @@ export class RoomCore {
     this.host.save(null)
   }
 
-  /** Token bucket per connection; a flood gets the connection closed. */
+  /**
+   * Token bucket per connection; a flood gets the connection closed. Only
+   * drops in a row count towards closing: a quick burst now and then in a
+   * long match (spam-clicking) must never add up to a hang-up.
+   */
   private allow(conn: Conn, now: number): boolean {
     let b = this.buckets.get(conn.data.id)
     if (!b) this.buckets.set(conn.data.id, (b = { tokens: PVP_LIMITS.rateBurst, at: now, dropped: 0 }))
@@ -256,6 +260,7 @@ export class RoomCore {
     b.at = now
     if (b.tokens >= 1) {
       b.tokens -= 1
+      b.dropped = 0
       return true
     }
     b.dropped += 1
